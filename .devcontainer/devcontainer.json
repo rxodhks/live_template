@@ -1,0 +1,18 @@
+{
+  // GitHub Codespaces에서 LiveTemplate 전체(화면 + 실시간 협업 서버)를 실행한다.
+  // 주소: https://<codespace 이름>-3001.app.github.dev
+  "name": "LiveTemplate",
+  "image": "mcr.microsoft.com/devcontainers/javascript-node:22",
+  "hostRequirements": { "cpus": 2 },
+  // 의존성 설치와 화면 빌드 (Codespace를 만들 때 한 번)
+  "updateContentCommand": "npm ci && npm run build",
+  // Codespace를 열 때마다 서버를 켜고, 공유할 주소를 터미널에 보여준다
+  "postAttachCommand": { "LiveTemplate 서버": "bash scripts/codespaces-start.sh" },
+  "forwardPorts": [3001],
+  "portsAttributes": {
+    "3001": { "label": "LiveTemplate", "onAutoForward": "openBrowser" }
+  },
+  "customizations": {
+    "codespaces": { "openFiles": ["README.md"] }
+  }
+}

@@ -1,0 +1,54 @@
+# 앱 화면을 GitHub Pages(https://<사용자>.github.io/<저장소>/)에 배포한다.
+# Pages는 정적 파일만 제공하므로 실시간 협업 서버 주소가 필요하다:
+#   - 저장소 Settings → Secrets and variables → Actions → Variables 에 LIVETEMPLATE_SERVER_URL 을 넣으면 기본값으로 사용
+#   - 넣지 않으면 처음 열 때 "협업 서버 연결" 화면에서 주소를 입력 (초대 링크에는 서버 주소가 함께 담김)
+name: GitHub Pages
+
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  pages: write
+  id-token: write
+
+concurrency:
+  group: pages
+  cancel-in-progress: true
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-node@v7
+        with:
+          node-version: 22
+          cache: npm
+      - id: pages
+        uses: actions/configure-pages@v6
+      - run: npm ci
+      - name: 화면 빌드 (Pages 경로에 맞춤)
+        run: npm run build
+        env:
+          BASE_PATH: ${{ steps.pages.outputs.base_path }}/
+          VITE_STATIC_HOST: '1'
+          VITE_REPO: ${{ github.repository }}
+          VITE_SERVER_URL: ${{ vars.LIVETEMPLATE_SERVER_URL }}
+      # 새로고침/직접 링크(/t/...)도 앱이 열리도록 404 페이지를 앱으로 대체
+      - run: cp client/dist/index.html client/dist/404.html
+      - uses: actions/upload-pages-artifact@v5
+        with:
+          path: client/dist
+
+  deploy:
+    needs: build
+    runs-on: ubuntu-latest
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    steps:
+      - id: deployment
+        uses: actions/deploy-pages@v5

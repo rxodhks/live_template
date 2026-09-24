@@ -692,6 +692,7 @@ textarea.input {
 }
 .confirm-message {
   color: var(--text-2);
+  white-space: pre-line;
   margin-bottom: 12px;
 }
 

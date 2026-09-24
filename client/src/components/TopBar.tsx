@@ -20,6 +20,7 @@ import {
   X,
   Download,
   Check,
+  Server,
 } from 'lucide-react';
 import { FEATURE_INFO } from '@shared/presets';
 import { useOptionalWorkspace, viewPath } from '../workspace/context';
@@ -33,6 +34,7 @@ import { SaveIndicator } from './SaveIndicator';
 import { modKey } from '../lib/util';
 import { setToken } from '../lib/api';
 import { resetSocket } from '../lib/socket';
+import { BASE_URL, IS_STATIC_HOST, SERVER_URL, isExternalServer, saveServerUrl } from '../lib/server';
 import { MODULE_NAMES, viewLabel } from '../workspace/viewLabel';
 import { itemsMap } from '../workspace/actions';
 import { useYField } from '../hooks/useY';
@@ -176,6 +178,23 @@ export function TopBar() {
                 : []),
               { divider: true, label: '' },
               { label: '키보드 단축키', icon: <Keyboard size={15} />, onSelect: () => ui.setShortcutsOpen(true) },
+              ...(IS_STATIC_HOST || isExternalServer()
+                ? [
+                    {
+                      label: '협업 서버 변경',
+                      icon: <Server size={15} />,
+                      hint: SERVER_URL ? new URL(SERVER_URL).host.split('.')[0].slice(0, 14) : undefined,
+                      onSelect: async () => {
+                        const ok = await confirmDialog({
+                          title: '다른 협업 서버에 연결할까요?',
+                          message: `지금 연결된 서버: ${SERVER_URL}\n서버를 바꾸면 그 서버의 템플릿이 보입니다. 이 서버의 프로필은 이 브라우저에 그대로 남습니다.`,
+                          confirmText: '서버 변경',
+                        });
+                        if (ok) saveServerUrl(null);
+                      },
+                    },
+                  ]
+                : []),
               { divider: true, label: '' },
               {
                 label: '이 기기에서 로그아웃',
@@ -191,7 +210,7 @@ export function TopBar() {
                   if (!ok) return;
                   setToken(null);
                   resetSocket();
-                  location.href = '/';
+                  location.href = BASE_URL;
                 },
               },
             ]}

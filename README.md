@@ -19,10 +19,40 @@ npm start          # 서버가 API + 빌드된 화면을 한 포트에서 제공
 | 환경 변수 | 기본값 | 설명 |
 | --- | --- | --- |
 | `PORT` | `3001` | 서버 포트 |
+| `CORS_ORIGINS` | (없음) | 화면을 다른 주소에 둘 때 추가로 허용할 출처 (쉼표 구분, `*`은 모두 허용) |
 | `DATA_DIR` | `./data` | 데이터 저장 위치 (JSON, Yjs 바이너리, 암호화된 비밀 노트) |
 | `SAVE_DEBOUNCE_MS` | `600` | 연속 입력을 묶어 디스크에 쓰는 지연 (최대 4초 안에는 반드시 저장) |
 
 두 개의 브라우저(또는 시크릿 창)로 접속해 한쪽에서 템플릿을 만들고 **초대** 버튼의 링크로 다른 쪽을 참여시키면 협업 기능을 바로 확인할 수 있습니다.
+
+## 🌐 GitHub에서 열기
+
+GitHub 도메인 두 곳을 함께 사용합니다. **GitHub Pages(`github.io`)는 정적 파일만 올릴 수 있어서** 실시간 협업 서버는 **GitHub Codespaces(`app.github.dev`)**에서 실행합니다.
+
+| | 주소 | 역할 |
+| --- | --- | --- |
+| **GitHub Codespaces** | `https://<codespace 이름>-3001.app.github.dev` | 서버 + 화면 전체 실행. 이 주소만으로도 모든 기능 사용 가능 |
+| **GitHub Pages** | `https://rxodhks.github.io/live_template/` | 항상 열려 있는 고정 주소. Codespaces 등의 서버에 연결해 사용 |
+
+### ① Codespaces로 서버 실행 (버튼 한 번)
+
+[![Open in GitHub Codespaces](https://github.com/codespaces/badge.svg)](https://codespaces.new/rxodhks/live_template?quickstart=1)
+
+1. 위 버튼(또는 저장소 **Code → Codespaces → Create codespace**)을 누릅니다.
+2. 1~2분 뒤 터미널에 **앱 주소**가 표시되고 브라우저 탭이 열립니다.
+3. 팀원과 함께 쓰려면 아래 **Ports** 탭에서 `3001` 포트를 우클릭 → **Port Visibility → Public**으로 바꾸세요. (Private이면 본인만 접속할 수 있습니다)
+4. 앱의 **초대** 버튼으로 링크를 보내면 됩니다.
+
+> Codespace는 일정 시간(기본 30분) 사용하지 않으면 잠들고, 다시 열면 서버가 자동으로 켜집니다. 데이터는 Codespace의 `data/` 폴더에 남습니다. 무료 사용 시간은 GitHub 계정 요금제를 따릅니다.
+
+### ② GitHub Pages에 화면 배포
+
+1. 이 브랜치를 `main`에 병합합니다. (`.github/workflows/pages.yml`이 `main`에 push될 때 배포합니다)
+2. 저장소 **Settings → Pages → Build and deployment → Source**를 **GitHub Actions**로 선택합니다.
+3. **Actions** 탭에서 *GitHub Pages* 워크플로가 끝나면 `https://rxodhks.github.io/live_template/`가 열립니다.
+4. 처음 열면 **협업 서버 연결** 화면이 나오니 Codespaces 앱 주소를 붙여 넣으세요. 초대 링크에는 서버 주소가 함께 담기므로, 링크를 받은 사람은 따로 입력할 필요가 없습니다.
+
+항상 같은 서버를 쓰게 하려면 **Settings → Secrets and variables → Actions → Variables**에 `LIVETEMPLATE_SERVER_URL`(예: 상시 운영 서버 주소)을 추가하고 워크플로를 다시 실행하세요. 서버는 `https://*.github.io`, `https://*.app.github.dev` 출처의 요청을 기본으로 허용하며, 다른 주소는 `CORS_ORIGINS` 환경 변수로 추가할 수 있습니다.
 
 ## 📱 휴대폰에서 열기
 
@@ -150,6 +180,9 @@ docker run -p 3001:3001 -v live-template-data:/data live-template
 ## 프로젝트 구조
 
 ```
+.devcontainer/     GitHub Codespaces 설정 (열면 서버 자동 실행)
+.github/workflows/ CI(타입 검사·테스트·빌드), GitHub Pages 배포
+scripts/           Codespaces 시작 스크립트 (공유 주소 안내)
 shared/            서버·클라이언트 공용 (타입, 활동 정의, Y.Doc 스키마, 프리셋)
 server/src/
   app.ts           서버 조립 (Express + Socket.IO + 정적 파일)

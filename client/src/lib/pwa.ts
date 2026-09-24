@@ -1,4 +1,5 @@
 import { useUI, type InstallPromptEvent } from '../store/ui';
+import { BASE_URL } from './server';
 
 /**
  * 설치형 앱(PWA) 지원
@@ -14,6 +15,6 @@ export function setupPwa(): void {
 
   if (!import.meta.env.PROD || !('serviceWorker' in navigator) || !window.isSecureContext) return;
   window.addEventListener('load', () => {
-    navigator.serviceWorker.register('/sw.js').catch((err) => console.warn('서비스 워커 등록 실패', err));
+    navigator.serviceWorker.register(`${BASE_URL}sw.js`, { scope: BASE_URL }).catch((err) => console.warn('서비스 워커 등록 실패', err));
   });
 }

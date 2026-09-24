@@ -6,6 +6,7 @@ import { useTemplates } from '../store/templates';
 import { toast } from '../store/toasts';
 import { api, errorMessage } from '../lib/api';
 import { copyText, modKey } from '../lib/util';
+import { shareUrl } from '../lib/server';
 import type { PublicUser, TemplateSummary } from '@shared/types';
 import { useOptionalWorkspace } from '../workspace/context';
 import { Avatar, Button, Kbd, Modal, confirmDialog } from './ui';
@@ -59,7 +60,7 @@ function ProfileDialog_() {
 }
 
 export function inviteUrl(code: string): string {
-  return `${location.origin}/join/${code}`;
+  return shareUrl(`join/${code}`);
 }
 
 export function ShareDialog() {

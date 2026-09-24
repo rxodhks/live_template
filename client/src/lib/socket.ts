@@ -1,5 +1,6 @@
-import { io, type Socket } from 'socket.io-client';
+import { io, type ManagerOptions, type Socket, type SocketOptions } from 'socket.io-client';
 import { getToken } from './api';
+import { SERVER_URL } from './server';
 import { useConnection } from '../store/connection';
 
 let socket: Socket | null = null;
@@ -7,12 +8,14 @@ let socket: Socket | null = null;
 /** 앱 전체에서 하나의 소켓 연결을 공유한다 */
 export function getSocket(): Socket {
   if (socket) return socket;
-  const s = io({
+  const opts: Partial<ManagerOptions & SocketOptions> = {
     auth: (cb) => cb({ token: getToken() }),
     transports: ['websocket', 'polling'],
     reconnectionDelay: 500,
     reconnectionDelayMax: 4000,
-  });
+  };
+  // 같은 주소면 io(opts), 외부 서버면 io(url, opts)
+  const s = SERVER_URL ? io(SERVER_URL, opts) : io(opts);
   const setStatus = useConnection.getState().setStatus;
   s.on('connect', () => setStatus('online'));
   s.on('disconnect', () => setStatus('offline'));

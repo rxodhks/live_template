@@ -2,6 +2,7 @@ import { useState } from 'react';
 import { Code2, FileText, Lock, MousePointer2, Palette, Sparkles } from 'lucide-react';
 import type { PublicUser } from '@shared/types';
 import { api, errorMessage, setToken } from '../lib/api';
+import { appPathname } from '../lib/server';
 import { useSession } from '../store/session';
 import { toast } from '../store/toasts';
 import { Button } from '../components/ui';
@@ -20,7 +21,7 @@ export function Onboarding() {
   const [draft, setDraft] = useProfileDraft();
   const [saving, setSaving] = useState(false);
   const setUser = useSession((s) => s.setUser);
-  const joining = location.pathname.startsWith('/join/');
+  const joining = appPathname().startsWith('/join/');
 
   const submit = async () => {
     if (!draft.name.trim() || saving) return;

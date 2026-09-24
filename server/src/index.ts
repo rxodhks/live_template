@@ -10,7 +10,7 @@ const lan = Object.values(os.networkInterfaces())
   .flat()
   .filter((n) => n && n.family === 'IPv4' && !n.internal)
   .map((n) => `http://${n!.address}:${running.port}`);
-if (lan.length) console.log(`[live-template] 휴대폰(같은 네트워크)에서 열기: ${lan.join('  ')}`);
+if (lan.length && !process.env.CODESPACE_NAME) console.log(`[live-template] 휴대폰(같은 네트워크)에서 열기: ${lan.join('  ')}`);
 
 let shuttingDown = false;
 async function shutdown(signal: string) {

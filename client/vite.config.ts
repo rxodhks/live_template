@@ -5,6 +5,8 @@ import path from 'node:path';
 const apiTarget = process.env.API_URL ?? 'http://localhost:3001';
 
 export default defineConfig({
+  // GitHub Pages 프로젝트 사이트는 /저장소이름/ 아래에서 열린다 (BASE_PATH로 지정)
+  base: process.env.BASE_PATH ?? '/',
   plugins: [react()],
   resolve: {
     alias: { '@shared': path.resolve(__dirname, '../shared') },

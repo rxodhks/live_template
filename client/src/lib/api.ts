@@ -1,4 +1,4 @@
-const TOKEN_KEY = 'lt.token';
+import { TOKEN_KEY, apiUrl } from './server';
 
 export function getToken(): string | null {
   try {
@@ -31,7 +31,7 @@ export async function api<T>(method: 'GET' | 'POST' | 'PATCH' | 'DELETE', path: 
   const token = getToken();
   let res: Response;
   try {
-    res = await fetch(`/api${path}`, {
+    res = await fetch(apiUrl(path), {
       method,
       headers: {
         ...(body !== undefined ? { 'content-type': 'application/json' } : {}),

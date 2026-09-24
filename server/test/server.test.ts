@@ -264,3 +264,29 @@ describe('비밀 노트', () => {
     assert.ok(locked.data.retryAfter > 0);
   });
 });
+
+describe('다른 주소의 화면 (GitHub Pages)', () => {
+  it('GitHub 도메인은 허용하고 그 외 출처는 막는다', async () => {
+    const allowed = await fetch(`${base}/api/health`, { headers: { origin: 'https://rxodhks.github.io' } });
+    assert.equal(allowed.headers.get('access-control-allow-origin'), 'https://rxodhks.github.io');
+
+    const codespace = await fetch(`${base}/api/users`, {
+      method: 'OPTIONS',
+      headers: { origin: 'https://fuzzy-space-3001.app.github.dev', 'access-control-request-method': 'POST' },
+    });
+    assert.equal(codespace.status, 204);
+    assert.match(codespace.headers.get('access-control-allow-headers') ?? '', /authorization/);
+
+    const evil = await fetch(`${base}/api/health`, { headers: { origin: 'https://evil.example.com' } });
+    assert.equal(evil.headers.get('access-control-allow-origin'), null);
+    const evilPreflight = await fetch(`${base}/api/users`, {
+      method: 'OPTIONS',
+      headers: { origin: 'https://evil.example.com', 'access-control-request-method': 'POST' },
+    });
+    assert.equal(evilPreflight.status, 403);
+
+    // http로 흉내 낸 github.io는 허용하지 않는다
+    const insecure = await fetch(`${base}/api/health`, { headers: { origin: 'http://rxodhks.github.io' } });
+    assert.equal(insecure.headers.get('access-control-allow-origin'), null);
+  });
+});

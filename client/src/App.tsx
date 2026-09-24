@@ -1,9 +1,11 @@
-import { useEffect } from 'react';
+import { useEffect, useState } from 'react';
 import { BrowserRouter, Navigate, Route, Routes, useNavigate } from 'react-router-dom';
 import type { PublicUser, TemplateSummary, TimelineEvent, ToastPayload } from '@shared/types';
 import { api, getToken, setToken } from './lib/api';
 import { getSocket, resetSocket } from './lib/socket';
 import { isTypingTarget } from './lib/util';
+import { ROUTER_BASENAME, SERVER_URL, appPathname, checkServer, isExternalServer, needsServerSetup } from './lib/server';
+import { ServerSetup } from './pages/ServerSetup';
 import { useSession } from './store/session';
 import { dispatchTimelineEvent, useTemplates } from './store/templates';
 import { toast } from './store/toasts';
@@ -20,20 +22,36 @@ import { Workspace } from './workspace/Workspace';
 export function App() {
   const ready = useSession((s) => s.ready);
   const user = useSession((s) => s.user);
+  const [server, setServer] = useState<'ok' | 'setup' | 'down'>(() => (needsServerSetup() ? 'setup' : 'ok'));
 
   useEffect(() => {
     const { setUser, setReady } = useSession.getState();
-    if (!getToken()) {
+    if (needsServerSetup()) {
       setReady(true);
       return;
     }
-    api<{ user: PublicUser }>('GET', '/me')
+    const start = async () => {
+      // 다른 주소의 서버(GitHub Pages → Codespaces 등)는 먼저 살아 있는지 확인
+      if (isExternalServer() && !(await checkServer(SERVER_URL))) {
+        setServer('down');
+        setReady(true);
+        return;
+      }
+      if (!getToken()) {
+        setReady(true);
+        return;
+      }
+      await loadMe();
+    };
+    const loadMe = () =>
+      api<{ user: PublicUser }>('GET', '/me')
       .then((res) => setUser(res.user))
       .catch((err) => {
         if (err.status === 401) setToken(null);
         else toast.error('서버에 연결할 수 없습니다', '잠시 후 새로고침해 주세요.');
       })
       .finally(() => setReady(true));
+    void start();
   }, []);
 
   if (!ready) {
@@ -44,8 +62,17 @@ export function App() {
     );
   }
 
+  if (server !== 'ok') {
+    return (
+      <>
+        <ServerSetup reason={server} />
+        <TooltipHost />
+      </>
+    );
+  }
+
   return (
-    <BrowserRouter>
+    <BrowserRouter basename={ROUTER_BASENAME}>
       {user ? <AuthedApp /> : <Onboarding />}
       <ToastViewport />
       <TooltipHost />
@@ -86,7 +113,7 @@ function useGlobalSocket() {
     const store = useTemplates.getState();
     store.load().catch(() => toast.error('템플릿 목록을 불러오지 못했습니다'));
 
-    const inside = (id: string) => window.location.pathname.startsWith(`/t/${id}`);
+    const inside = (id: string) => appPathname().startsWith(`/t/${id}`);
 
     const onToast = (t: ToastPayload) => toast.show(t);
     const onUpdated = (t: TemplateSummary) => useTemplates.getState().upsert(t);
