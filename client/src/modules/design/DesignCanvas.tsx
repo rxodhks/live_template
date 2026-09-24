@@ -5,6 +5,7 @@ import type { Viewport } from '@shared/types';
 import { useWorkspace } from '../../workspace/context';
 import { useSession } from '../../store/session';
 import { useUserPresence } from '../../store/presence';
+import { useIsTouch } from '../../hooks/useMedia';
 import { useYField } from '../../hooks/useY';
 import { RemoteCursor, useViewers, ACTION_BUBBLE_MS } from '../../components/Cursors';
 import { isTypingTarget, newId, throttle } from '../../lib/util';
@@ -19,7 +20,11 @@ type Drag =
   | { kind: 'resize'; id: string; handle: Handle; orig: Shape }
   | { kind: 'create'; id: string; start: { x: number; y: number }; type: Shape['type'] }
   | { kind: 'pen'; id: string; points: number[] }
-  | { kind: 'marquee'; start: { x: number; y: number }; base: string[] };
+  | { kind: 'marquee'; start: { x: number; y: number }; base: string[] }
+  | { kind: 'pinch'; startDist: number; startMid: { x: number; y: number }; orig: Viewport };
+
+const dist = (a: { x: number; y: number }, b: { x: number; y: number }) => Math.max(1, Math.hypot(a.x - b.x, a.y - b.y));
+const mid = (a: { x: number; y: number }, b: { x: number; y: number }) => ({ x: (a.x + b.x) / 2, y: (a.y + b.y) / 2 });
 
 const TOOL_KEYS: Record<string, Tool> = { v: 'select', h: 'hand', r: 'rect', o: 'ellipse', d: 'diamond', l: 'line', a: 'arrow', p: 'pen', t: 'text', s: 'sticky' };
 const TEXT_TYPES = new Set(['rect', 'ellipse', 'diamond', 'sticky', 'text']);
@@ -55,6 +60,11 @@ export function DesignCanvas({ board, onApi, onZoom }: Props) {
   const byId = useMemo(() => new Map(shapes.map((s) => [s.id, s])), [shapes]);
   const { tool, setTool, selection, setSelection, editingId, setEditing, showGrid, snap } = useDesign();
   const readOnly = !ws.canEdit;
+  const isTouch = useIsTouch();
+  /** 화면에 닿아 있는 손가락들 (두 손가락 확대/이동용) */
+  const touches = useRef(new Map<number, { x: number; y: number }>());
+  const lastTap = useRef<{ t: number; x: number; y: number } | null>(null);
+  const lastPointerType = useRef('mouse');
 
   const wrapRef = useRef<HTMLDivElement>(null);
   const svgRef = useRef<SVGSVGElement>(null);
@@ -207,7 +217,37 @@ export function DesignCanvas({ board, onApi, onZoom }: Props) {
     svgRef.current?.setPointerCapture(pointerId);
   };
 
+  /** 두 번째 손가락이 닿으면 진행 중이던 조작을 취소한다 (방금 만들던 도형은 지움) */
+  const cancelDrag = () => {
+    const d = drag.current;
+    if (d && (d.kind === 'create' || d.kind === 'pen')) deleteShapes(map, [d.id]);
+    drag.current = null;
+    setMarquee(null);
+    undo.stopCapturing();
+  };
+
   const onPointerDown = (e: React.PointerEvent) => {
+    lastPointerType.current = e.pointerType;
+    if (e.pointerType === 'touch') {
+      touches.current.set(e.pointerId, { x: e.clientX, y: e.clientY });
+      if (touches.current.size >= 2) {
+        const [a, b] = Array.from(touches.current.values());
+        cancelDrag();
+        stopFollow();
+        lastTap.current = null;
+        beginDrag({ kind: 'pinch', startDist: dist(a, b), startMid: mid(a, b), orig: viewRef.current }, e.pointerId);
+        return;
+      }
+      // 더블 탭 = 더블 클릭 (텍스트 편집)
+      const now = Date.now();
+      const lt = lastTap.current;
+      if (lt && now - lt.t < 320 && Math.hypot(e.clientX - lt.x, e.clientY - lt.y) < 24) {
+        lastTap.current = null;
+        openAt(e.target as Element, e.clientX, e.clientY);
+        return;
+      }
+      lastTap.current = { t: now, x: e.clientX, y: e.clientY };
+    }
     if (editingId && !(e.target as Element).closest('.canvas-textedit')) finishEditing();
     stopFollow();
     wrapRef.current?.focus({ preventScroll: true });
@@ -245,6 +285,11 @@ export function DesignCanvas({ board, onApi, onZoom }: Props) {
       }
       const base = e.shiftKey ? selection : [];
       if (!e.shiftKey) setSelection([]);
+      // 손가락으로 빈 곳을 끌면 화면 이동 (영역 선택은 마우스로)
+      if (e.pointerType === 'touch') {
+        beginDrag({ kind: 'pan', sx: e.clientX, sy: e.clientY, orig: v }, e.pointerId);
+        return;
+      }
       beginDrag({ kind: 'marquee', start: p, base }, e.pointerId);
       return;
     }
@@ -271,9 +316,23 @@ export function DesignCanvas({ board, onApi, onZoom }: Props) {
   };
 
   const onPointerMove = (e: React.PointerEvent) => {
+    if (e.pointerType === 'touch' && touches.current.has(e.pointerId)) touches.current.set(e.pointerId, { x: e.clientX, y: e.clientY });
+    const d = drag.current;
+    if (d?.kind === 'pinch') {
+      if (touches.current.size < 2) return;
+      const [a, b] = Array.from(touches.current.values());
+      const r = svgRef.current!.getBoundingClientRect();
+      const o = d.orig;
+      const zoom = Math.min(MAX_ZOOM, Math.max(MIN_ZOOM, (o.zoom * dist(a, b)) / d.startDist));
+      // 처음 두 손가락 가운데 있던 지점이 지금 가운데에 오도록
+      const wx = (d.startMid.x - r.left - o.x) / o.zoom;
+      const wy = (d.startMid.y - r.top - o.y) / o.zoom;
+      const m = mid(a, b);
+      setView({ zoom, x: m.x - r.left - wx * zoom, y: m.y - r.top - wy * zoom });
+      return;
+    }
     const p = toWorld(e.clientX, e.clientY);
     ws.publishCursor(p);
-    const d = drag.current;
     if (!d) return;
     switch (d.kind) {
       case 'pan':
@@ -353,6 +412,16 @@ export function DesignCanvas({ board, onApi, onZoom }: Props) {
   };
 
   const onPointerUp = (e: React.PointerEvent) => {
+    if (e.pointerType === 'touch') touches.current.delete(e.pointerId);
+    if (drag.current?.kind === 'pinch') {
+      svgRef.current?.releasePointerCapture?.(e.pointerId);
+      // 두 손가락을 모두 뗄 때까지 다른 조작을 시작하지 않는다
+      if (touches.current.size === 0) {
+        drag.current = null;
+        setDragKind(null);
+      }
+      return;
+    }
     const d = drag.current;
     drag.current = null;
     setDragKind(null);
@@ -393,8 +462,15 @@ export function DesignCanvas({ board, onApi, onZoom }: Props) {
   };
 
   const onDoubleClick = (e: React.MouseEvent) => {
+    // 터치는 직접 더블 탭을 감지하므로 브라우저의 dblclick은 무시
+    if (lastPointerType.current === 'touch') return;
+    openAt(e.target as Element, e.clientX, e.clientY);
+  };
+
+  /** 도형의 글자를 편집하거나, 빈 곳이면 새 텍스트 상자를 만든다 */
+  function openAt(target: Element, clientX: number, clientY: number) {
     if (readOnly) return;
-    const shapeId = (e.target as Element).closest('[data-shape-id]')?.getAttribute('data-shape-id');
+    const shapeId = target.closest('[data-shape-id]')?.getAttribute('data-shape-id');
     const s = shapeId ? byId.get(shapeId) : undefined;
     if (s && TEXT_TYPES.has(s.type) && !s.locked) {
       setSelection([s.id]);
@@ -402,14 +478,14 @@ export function DesignCanvas({ board, onApi, onZoom }: Props) {
       return;
     }
     if (!s && tool === 'select') {
-      const p = toWorld(e.clientX, e.clientY);
+      const p = toWorld(clientX, clientY);
       const shape = { ...defaultShape('text', p.x, p.y - 17, maxZ(map) + 1, me.id), w: 220, h: 34 };
       insertShapes(map, [shape]);
       setSelection([shape.id]);
       setEditing(shape.id);
       report('design.shape.add', SHAPE_LABEL.text);
     }
-  };
+  }
 
   /* ── 휠: 이동 / Ctrl+휠: 확대 ── */
   useEffect(() => {
@@ -577,7 +653,7 @@ export function DesignCanvas({ board, onApi, onZoom }: Props) {
 
   const selectedShapes = selection.map((id) => byId.get(id)).filter((s): s is Shape => !!s);
   const selBounds = unionBounds(selectedShapes);
-  const handleSize = 9 / view.zoom;
+  const handleSize = (isTouch ? 16 : 9) / view.zoom;
   const gridStep = 24 * view.zoom;
   const cursorClass =
     dragKind === 'pan' ? 'is-panning' : tool === 'hand' || spaceDown ? 'is-hand' : tool !== 'select' && !readOnly ? 'is-crosshair' : '';
@@ -611,7 +687,7 @@ export function DesignCanvas({ board, onApi, onZoom }: Props) {
         {showGrid && <rect width="100%" height="100%" fill={`url(#grid-${boardId})`} />}
         <g transform={`translate(${view.x} ${view.y}) scale(${view.zoom})`}>
           {shapes.map((s) => (
-            <ShapeView key={s.id} shape={s} zoom={view.zoom} hideText={editingId === s.id} />
+            <ShapeView key={s.id} shape={s} zoom={view.zoom} hit={isTouch ? 28 : 12} hideText={editingId === s.id} />
           ))}
 
           {/* 다른 사람의 선택 영역 */}

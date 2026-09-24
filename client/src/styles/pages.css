@@ -93,7 +93,7 @@
 }
 @media (max-width: 860px) {
   .onboarding {
-    grid-template-columns: 1fr;
+    grid-template-columns: minmax(0, 1fr);
   }
   .onboarding-hero {
     padding: 32px 20px 8px;
@@ -137,7 +137,7 @@
 }
 @media (max-width: 1080px) {
   .dash-grid {
-    grid-template-columns: 1fr;
+    grid-template-columns: minmax(0, 1fr);
   }
 }
 .dash-toolbar {
@@ -313,7 +313,7 @@
 }
 @media (max-width: 640px) {
   .create-row {
-    grid-template-columns: 1fr;
+    grid-template-columns: minmax(0, 1fr);
   }
 }
 .create-names {
@@ -340,7 +340,7 @@
 }
 @media (max-width: 640px) {
   .feature-picker {
-    grid-template-columns: 1fr;
+    grid-template-columns: minmax(0, 1fr);
   }
 }
 .feature-card {
@@ -529,7 +529,7 @@
 }
 @media (max-width: 1000px) {
   .timeline-layout {
-    grid-template-columns: 1fr;
+    grid-template-columns: minmax(0, 1fr);
   }
 }
 .timeline-list {

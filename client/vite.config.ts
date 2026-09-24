@@ -13,6 +13,8 @@ export default defineConfig({
   },
   server: {
     port: 5173,
+    // 같은 Wi‑Fi의 휴대폰에서도 접속할 수 있도록 모든 네트워크 인터페이스에서 대기
+    host: true,
     fs: { allow: [path.resolve(__dirname, '..')] },
     proxy: {
       '/api': apiTarget,

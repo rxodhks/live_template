@@ -2,6 +2,8 @@
 
 .shell {
   display: grid;
+  /* 열 폭을 화면에 고정: 내용이 넓어도 레이아웃이 화면 밖으로 밀려나지 않게 */
+  grid-template-columns: minmax(0, 1fr);
   grid-template-rows: var(--topbar-h) minmax(0, 1fr);
   height: 100vh;
   height: 100dvh;

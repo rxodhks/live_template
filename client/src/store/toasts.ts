@@ -10,7 +10,8 @@ export interface Toast extends ToastPayload {
 }
 
 export const TOAST_FADE_MS = 320;
-const MAX_VISIBLE = 5;
+/** 동시에 보이는 토스트 수 (작은 화면에서는 본문을 가리지 않도록 2개) */
+const maxVisible = () => (typeof window !== 'undefined' && window.matchMedia('(max-width: 768px)').matches ? 2 : 5);
 
 interface ToastState {
   toasts: Toast[];
@@ -36,7 +37,7 @@ export const useToasts = create<ToastState>((set, get) => ({
       const list = [...s.toasts.filter((t) => t.id !== id), toast];
       // 너무 많이 쌓이면 가장 오래된 것부터 페이드 아웃
       const active = list.filter((t) => !t.leaving);
-      if (active.length > MAX_VISIBLE) {
+      if (active.length > maxVisible()) {
         const oldest = active[0];
         setTimeout(() => get().dismiss(oldest.id), 0);
       }

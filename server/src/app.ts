@@ -26,7 +26,9 @@ export async function startServer(port = config.port): Promise<RunningServer> {
 
   // 빌드된 클라이언트가 있으면 같은 포트에서 제공 (SPA)
   if (fs.existsSync(config.clientDist)) {
-    app.use(express.static(config.clientDist, { index: false, maxAge: '1h' }));
+    // 해시가 붙은 빌드 결과물은 오래 캐시, 나머지(sw.js, manifest, 아이콘)는 매번 확인
+    app.use('/assets', express.static(path.join(config.clientDist, 'assets'), { maxAge: '1y', immutable: true }));
+    app.use(express.static(config.clientDist, { index: false, maxAge: 0 }));
     app.get('/{*path}', (_req, res) => res.sendFile(path.join(config.clientDist, 'index.html')));
   }
 

@@ -16,6 +16,10 @@ import {
   Wifi,
   WifiOff,
   Keyboard,
+  Menu as MenuIcon,
+  X,
+  Download,
+  Check,
 } from 'lucide-react';
 import { FEATURE_INFO } from '@shared/presets';
 import { useOptionalWorkspace, viewPath } from '../workspace/context';
@@ -53,6 +57,15 @@ export function TopBar() {
   return (
     <header className="topbar">
       <div className="topbar-left">
+        <button
+          className="icon-btn nav-toggle"
+          aria-label={ui.navOpen ? '메뉴 닫기' : '메뉴 열기'}
+          aria-expanded={ui.navOpen}
+          aria-controls="app-nav"
+          onClick={() => ui.setNavOpen(!ui.navOpen)}
+        >
+          {ui.navOpen ? <X size={20} /> : <MenuIcon size={20} />}
+        </button>
         <Link to="/" className="brand" aria-label="LiveTemplate 홈">
           <span className="brand-mark">
             <svg viewBox="0 0 32 32" width="22" height="22" aria-hidden>
@@ -66,7 +79,7 @@ export function TopBar() {
 
         {ws && (
           <>
-            <IconButton label={ws.panelOpen ? '탐색 패널 닫기' : '탐색 패널 열기'} onClick={() => ws.setPanelOpen(!ws.panelOpen)} active={ws.panelOpen}>
+            <IconButton className="panel-toggle" label={ws.panelOpen ? '탐색 패널 닫기' : '탐색 패널 열기'} onClick={() => ws.setPanelOpen(!ws.panelOpen)} active={ws.panelOpen}>
               <PanelLeft size={17} />
             </IconButton>
             <span className="crumb-sep">/</span>
@@ -126,7 +139,7 @@ export function TopBar() {
             {ws.unread > 0 && <span className="badge-count">{ws.unread > 99 ? '99+' : ws.unread}</span>}
           </span>
         )}
-        <IconButton label={`${THEME_LABEL[theme]} (클릭하여 전환)`} onClick={() => setTheme(THEME_NEXT[theme])}>
+        <IconButton className="theme-toggle" label={`${THEME_LABEL[theme]} (클릭하여 전환)`} onClick={() => setTheme(THEME_NEXT[theme])}>
           <ThemeIcon size={17} />
         </IconButton>
         {user && (
@@ -144,6 +157,24 @@ export function TopBar() {
             }
             items={[
               { label: '프로필 수정', icon: <UserRound size={15} />, onSelect: () => ui.setProfileOpen(true) },
+              ...(['system', 'light', 'dark'] as ThemePref[]).map((t) => {
+                const Icon = THEME_ICON[t];
+                return { label: THEME_LABEL[t], icon: <Icon size={15} />, checked: theme === t, hint: theme === t ? <Check size={14} /> : undefined, onSelect: () => setTheme(t) };
+              }),
+              ...(ui.installPrompt
+                ? [
+                    {
+                      label: '앱으로 설치 (홈 화면에 추가)',
+                      icon: <Download size={15} />,
+                      onSelect: async () => {
+                        const p = ui.installPrompt!;
+                        ui.setInstallPrompt(null);
+                        await p.prompt();
+                      },
+                    },
+                  ]
+                : []),
+              { divider: true, label: '' },
               { label: '키보드 단축키', icon: <Keyboard size={15} />, onSelect: () => ui.setShortcutsOpen(true) },
               { divider: true, label: '' },
               {

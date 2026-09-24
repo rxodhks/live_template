@@ -341,7 +341,7 @@ export function Workspace() {
 
   return (
     <WorkspaceContext.Provider value={value}>
-      <AppShell panel={panelOpen ? <Explorer /> : null} drawer={chatOpen ? <ChatPanel /> : null}>
+      <AppShell panel={<Explorer />} panelOpen={panelOpen} drawer={chatOpen ? <ChatPanel /> : null}>
         {follow && followed && <FollowBanner presence={followed} onStop={() => setFollow(null)} />}
         {featureOff ? (
           <EmptyState title="이 템플릿에서 사용하지 않는 기능입니다" action={<Button onClick={() => go('settings')}>설정에서 기능 켜기</Button>}>
