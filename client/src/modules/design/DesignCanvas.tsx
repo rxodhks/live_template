@@ -4,7 +4,7 @@ import { SHAPE_LABEL, type Shape, type YItem } from '@shared/schema';
 import type { Viewport } from '@shared/types';
 import { useWorkspace } from '../../workspace/context';
 import { useSession } from '../../store/session';
-import { usePresence } from '../../store/presence';
+import { useUserPresence } from '../../store/presence';
 import { useYField } from '../../hooks/useY';
 import { RemoteCursor, useViewers, ACTION_BUBBLE_MS } from '../../components/Cursors';
 import { isTypingTarget, newId, throttle } from '../../lib/util';
@@ -171,7 +171,7 @@ export function DesignCanvas({ board, onApi, onZoom }: Props) {
   );
 
   /* ── 따라가기: 상대의 화면 중심/배율에 맞춘다 ── */
-  const followed = usePresence((s) => (ws.follow ? s.others[ws.follow] : undefined));
+  const followed = useUserPresence(ws.follow);
   useEffect(() => {
     const vp = followed?.viewport;
     if (!vp || followed.view.module !== 'design' || followed.view.itemId !== boardId) return;

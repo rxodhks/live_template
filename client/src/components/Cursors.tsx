@@ -128,7 +128,7 @@ export function CursorLayer({ anchorRef, scrollRef, hostRef, xMode = 'fraction' 
 }
 
 /** 스크롤되는 일반 페이지 + 커서 레이어 */
-export function CursorPage({ children, className, wide }: { children: ReactNode; className?: string; wide?: boolean }) {
+export function CursorPage({ children, className, wide, cursors = true }: { children: ReactNode; className?: string; wide?: boolean; cursors?: boolean }) {
   const host = useRef<HTMLDivElement>(null);
   const scroll = useRef<HTMLDivElement>(null);
   const anchor = useRef<HTMLDivElement>(null);
@@ -139,7 +139,7 @@ export function CursorPage({ children, className, wide }: { children: ReactNode;
           {children}
         </div>
       </div>
-      <CursorLayer hostRef={host} scrollRef={scroll} anchorRef={anchor} />
+      {cursors && <CursorLayer hostRef={host} scrollRef={scroll} anchorRef={anchor} />}
     </div>
   );
 }

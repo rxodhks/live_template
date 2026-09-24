@@ -16,7 +16,7 @@ export function formatDate(ts: number): string {
 }
 
 export function formatTime(ts: number): string {
-  return new Date(ts).toLocaleTimeString('ko-KR', { hour: '2-digit', minute: '2-digit' });
+  return new Date(ts).toLocaleTimeString('ko-KR', { hour: '2-digit', minute: '2-digit', hourCycle: 'h23' });
 }
 
 export function dayKey(ts: number): string {

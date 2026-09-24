@@ -18,7 +18,7 @@ export async function boardToSvg(shapes: Shape[], background: string): Promise<{
       shapes.map((s) => createElement(ShapeView, { key: s.id, shape: s, exporting: true })),
     ),
   );
-  const bg = background || '#ffffff';
+  const bg = /^#[0-9a-fA-F]{3,8}$/.test(background) ? background : '#ffffff';
   const svg = `<svg xmlns="http://www.w3.org/2000/svg" width="${width}" height="${height}" viewBox="0 0 ${width} ${height}"><rect width="100%" height="100%" fill="${bg}"/>${body}</svg>`;
   return { svg, width, height };
 }

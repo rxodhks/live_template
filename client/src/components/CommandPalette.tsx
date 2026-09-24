@@ -142,7 +142,7 @@ function Palette_() {
           label: `${p.user.name} 따라가기`,
           icon: <Eye size={16} />,
           keywords: 'follow',
-          run: () => ws.setFollow(p.socketId),
+          run: () => ws.setFollow(p.user.id),
         });
 
       const nav: [string, string, ReactNode, Parameters<typeof viewPath>[1]][] = [

@@ -29,7 +29,9 @@ import { SaveIndicator } from './SaveIndicator';
 import { modKey } from '../lib/util';
 import { setToken } from '../lib/api';
 import { resetSocket } from '../lib/socket';
-import { viewLabel } from '../workspace/viewLabel';
+import { MODULE_NAMES, viewLabel } from '../workspace/viewLabel';
+import { itemsMap } from '../workspace/actions';
+import { useYField } from '../hooks/useY';
 
 const THEME_ICON: Record<ThemePref, typeof Sun> = { light: Sun, dark: Moon, system: Monitor };
 const THEME_NEXT: Record<ThemePref, ThemePref> = { system: 'light', light: 'dark', dark: 'system' };
@@ -91,7 +93,7 @@ export function TopBar() {
               )}
             />
             <span className="crumb-sep">/</span>
-            <span className="crumb-view">{viewLabel(ws)}</span>
+            <CurrentViewLabel />
           </>
         )}
       </div>
@@ -203,9 +205,9 @@ function PresenceAvatars() {
           }
           items={[
             {
-              label: ws.follow === p.socketId ? '따라가기 중지' : '따라가기',
+              label: ws.follow === p.user.id ? '따라가기 중지' : '따라가기',
               icon: <Eye size={15} />,
-              onSelect: () => ws.setFollow(ws.follow === p.socketId ? null : p.socketId),
+              onSelect: () => ws.setFollow(ws.follow === p.user.id ? null : p.user.id),
             },
             {
               label: '이 사람의 위치로 이동',
@@ -216,7 +218,7 @@ function PresenceAvatars() {
           trigger={({ toggle, ref }) => (
             <button
               ref={ref}
-              className={`presence-avatar ${ws.follow === p.socketId ? 'is-following' : ''}`}
+              className={`presence-avatar ${ws.follow === p.user.id ? 'is-following' : ''}`}
               onClick={toggle}
               style={{ ['--user-color' as string]: p.user.color }}
               aria-label={`${p.user.name} 메뉴`}
@@ -229,4 +231,16 @@ function PresenceAvatars() {
       {users.length > shown.length && <span className="avatar avatar-more">+{users.length - shown.length}</span>}
     </div>
   );
+}
+
+/** 현재 위치 라벨 (항목 이름이 바뀌면 바로 반영) */
+function CurrentViewLabel() {
+  const ws = useOptionalWorkspace()!;
+  const { module, itemId } = ws.view;
+  const isItem = module === 'code' || module === 'docs' || module === 'design';
+  const item = isItem && itemId ? itemsMap(ws.doc, module).get(itemId) : undefined;
+  const name = useYField<string>(item, module === 'docs' ? 'title' : 'name');
+  const noteTitle = module === 'notes' && itemId ? ws.notes.find((n) => n.id === itemId)?.title : undefined;
+  const label = name ?? noteTitle;
+  return <span className="crumb-view">{label ? `${MODULE_NAMES[module]} › ${label}` : MODULE_NAMES[module]}</span>;
 }

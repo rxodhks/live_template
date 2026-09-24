@@ -173,10 +173,11 @@ function DocStats({ editor }: { editor: Editor | null }) {
 function DocStatsInner({ editor }: { editor: Editor }) {
   const stats = useEditorState({
     editor,
-    selector: ({ editor: e }) => ({
-      chars: e.storage.characterCount.characters() as number,
-      words: e.storage.characterCount.words() as number,
-    }),
+    selector: ({ editor: e }) => {
+      // 에디터가 교체/파기되는 순간에는 storage가 비어 있을 수 있다
+      const cc = e && !e.isDestroyed ? e.storage.characterCount : undefined;
+      return { chars: cc ? (cc.characters() as number) : 0, words: cc ? (cc.words() as number) : 0 };
+    },
   });
   const minutes = Math.max(1, Math.round(stats.chars / 500));
   return (

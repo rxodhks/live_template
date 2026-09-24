@@ -33,8 +33,9 @@ export interface WorkspaceValue {
   action(label: string): void;
   publishCursor(cursor: CursorPoint | null): void;
   updatePresence(patch: Partial<Pick<PresenceState, 'viewport' | 'selection' | 'idle'>>): void;
+  /** 따라가는 사용자 ID */
   follow: string | null;
-  setFollow(socketId: string | null): void;
+  setFollow(userId: string | null): void;
   tickets: Record<string, UnlockResult>;
   setTicket(noteId: string, ticket: UnlockResult | null): void;
   go(module: ViewModule, itemId?: string | null): void;

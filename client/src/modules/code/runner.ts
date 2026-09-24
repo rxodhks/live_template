@@ -39,37 +39,65 @@ self.onerror = (msg) => { send('error', [String(msg)]); return true; };
 self.onunhandledrejection = (e) => send('error', ['Unhandled Promise rejection: ' + fmt(e.reason)]);
 `;
 
-/**
- * JavaScript를 Web Worker에서 격리 실행한다.
- * DOM에는 접근할 수 없고, 5초가 지나면 강제 종료된다.
- */
 const PRELUDE_LINES = WORKER_PRELUDE.split('\n').length + 1;
 
+/* 격리용 iframe: origin이 없는(opaque) 샌드박스라 이 앱의 IndexedDB/localStorage/토큰에 접근할 수 없다 */
+const SANDBOX_HTML = `<!doctype html><script>
+window.addEventListener('message', function (e) {
+  if (!e.data || typeof e.data.source !== 'string') return;
+  try {
+    var url = URL.createObjectURL(new Blob([e.data.source], { type: 'text/javascript' }));
+    var w = new Worker(url);
+    w.onmessage = function (m) { parent.postMessage({ __ltRun: true, data: m.data }, '*'); };
+    w.onerror = function (err) { err.preventDefault(); parent.postMessage({ __ltRun: true, error: { message: err.message, lineno: err.lineno } }, '*'); };
+  } catch (err) { parent.postMessage({ __ltRun: true, error: { message: String(err) } }, '*'); }
+});
+parent.postMessage({ __ltRun: true, ready: true }, '*');
+<\/script>`;
+
+/**
+ * 팀원이 작성한 JavaScript를 안전하게 실행한다.
+ *  - 샌드박스 iframe(allow-scripts만 허용) 안의 Web Worker에서 실행 → 이 앱의 저장소/DOM 접근 불가
+ *  - 무한 루프도 화면을 멈추지 않으며, 5초가 지나면 iframe째 제거해 강제 종료한다.
+ */
 export function runJavaScript(code: string, onLine: (l: OutputLine) => void, timeoutMs = 5000): () => void {
   const source = `${WORKER_PRELUDE}\n;(async () => {\n${code}\n})().then(() => postMessage({ done: true }), (e) => { send('error', [e]); postMessage({ done: true }); });`;
-  const url = URL.createObjectURL(new Blob([source], { type: 'text/javascript' }));
-  const worker = new Worker(url);
+  const iframe = document.createElement('iframe');
+  iframe.setAttribute('sandbox', 'allow-scripts');
+  iframe.setAttribute('aria-hidden', 'true');
+  iframe.style.display = 'none';
+  iframe.srcdoc = SANDBOX_HTML;
   const started = performance.now();
   let finished = false;
+
   const finish = (msg: string, level: OutputLine['level'] = 'system') => {
     if (finished) return;
     finished = true;
     clearTimeout(timer);
-    worker.terminate();
-    URL.revokeObjectURL(url);
+    window.removeEventListener('message', onMessage);
+    iframe.remove();
     onLine(line(level, msg));
   };
+
+  const onMessage = (e: MessageEvent) => {
+    if (e.source !== iframe.contentWindow || !e.data?.__ltRun) return;
+    const d = e.data as {
+      ready?: boolean;
+      error?: { message: string; lineno?: number };
+      data?: { level?: OutputLine['level']; text?: string; done?: boolean };
+    };
+    if (d.ready) iframe.contentWindow?.postMessage({ source }, '*');
+    else if (d.error) {
+      const userLine = d.error.lineno ? d.error.lineno - PRELUDE_LINES : 0;
+      onLine(line('error', `${d.error.message}${userLine > 0 ? ` (줄 ${userLine})` : ''}`));
+      finish('✗ 오류로 종료되었습니다.');
+    } else if (d.data?.done) finish(`✓ 실행 완료 (${Math.round(performance.now() - started)}ms)`);
+    else if (d.data?.level) onLine(line(d.data.level, d.data.text ?? ''));
+  };
+
   const timer = setTimeout(() => finish(`⏱ ${timeoutMs / 1000}초 제한을 넘어 실행을 중단했습니다.`, 'warn'), timeoutMs);
-  worker.onmessage = (e: MessageEvent<{ level?: OutputLine['level']; text?: string; done?: boolean }>) => {
-    if (e.data.done) finish(`✓ 실행 완료 (${Math.round(performance.now() - started)}ms)`);
-    else if (e.data.level) onLine(line(e.data.level, e.data.text ?? ''));
-  };
-  worker.onerror = (e) => {
-    e.preventDefault();
-    const userLine = e.lineno ? e.lineno - PRELUDE_LINES : 0;
-    onLine(line('error', `${e.message}${userLine > 0 ? ` (줄 ${userLine})` : ''}`));
-    finish('✗ 오류로 종료되었습니다.');
-  };
+  window.addEventListener('message', onMessage);
+  document.body.appendChild(iframe);
   return () => finish('■ 실행을 중지했습니다.');
 }
 

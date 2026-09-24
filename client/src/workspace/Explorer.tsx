@@ -298,7 +298,7 @@ function Person({ p, onGo }: { p: RemotePresence; onGo: () => void }) {
   const ws = useWorkspace();
   const where = itemName(ws.doc, ws.notes, p.view.module, p.view.itemId);
   const recentAction = p.actionLabel && p.actionAt && Date.now() - p.actionAt < ACTION_BUBBLE_MS * 3 ? p.actionLabel : null;
-  const following = ws.follow === p.socketId;
+  const following = ws.follow === p.user.id;
   return (
     <div className={cx('ex-person', following && 'is-following')} style={{ ['--user-color' as string]: p.user.color }}>
       <button className="ex-person-main" onClick={onGo} data-tip="이 사람의 위치로 이동" data-tip-side="right">
@@ -313,7 +313,7 @@ function Person({ p, onGo }: { p: RemotePresence; onGo: () => void }) {
           {recentAction && <span className="ex-person-action">{recentAction}</span>}
         </div>
       </button>
-      <IconButton label={following ? '따라가기 중지' : '따라가기'} size="sm" active={following} onClick={() => ws.setFollow(following ? null : p.socketId)} tipSide="right">
+      <IconButton label={following ? '따라가기 중지' : '따라가기'} size="sm" active={following} onClick={() => ws.setFollow(following ? null : p.user.id)} tipSide="right">
         {following ? <EyeOff size={14} /> : <Eye size={14} />}
       </IconButton>
     </div>

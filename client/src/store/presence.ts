@@ -52,6 +52,19 @@ export const usePresence = create<PresenceStore>((set) => ({
   clear: () => set({ others: {}, mySocketId: null }),
 }));
 
+/** 특정 사용자의 프레즌스 (탭이 여러 개면 자리 비움이 아닌 최근 탭 우선) */
+export function pickUserPresence(others: Record<string, RemotePresence>, userId: string | null): RemotePresence | undefined {
+  if (!userId) return undefined;
+  let found: RemotePresence | undefined;
+  for (const p of Object.values(others)) {
+    if (p.user.id !== userId) continue;
+    if (!found || (found.idle && !p.idle) || !p.idle) found = p;
+  }
+  return found;
+}
+
+export const useUserPresence = (userId: string | null) => usePresence((s) => pickUserPresence(s.others, userId));
+
 /** 같은 사용자의 여러 탭을 하나로 묶은 온라인 사용자 목록 */
 export function uniqueUsers(others: Record<string, RemotePresence>): RemotePresence[] {
   const byUser = new Map<string, RemotePresence>();

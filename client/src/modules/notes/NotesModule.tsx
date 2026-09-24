@@ -220,7 +220,7 @@ function LockScreen({ note }: { note: SecretNoteMeta }) {
   };
 
   return (
-    <CursorPage className="lock-page">
+    <CursorPage className="lock-page" cursors={false}>
       <div className="lock-card" key={shake} data-shake={shake > 0}>
         <div className="lock-icon">
           <Lock size={30} />

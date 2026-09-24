@@ -130,7 +130,7 @@ function CodeWorkspace({ file }: { file: YItem }) {
     if (lang.id === 'javascript') {
       running?.();
       setPanel('output');
-      setOutput([line('system', `▶ ${name} 실행 (Web Worker · 5초 제한)`)]);
+      setOutput([line('system', `▶ ${name} 실행 (격리된 샌드박스 · 5초 제한)`)]);
       const code = (file.get('content') as Y.Text).toString();
       const stop = runJavaScript(code, (l) => {
         setOutput((o) => [...o.slice(-500), l]);
@@ -202,7 +202,7 @@ function CodeWorkspace({ file }: { file: YItem }) {
             중지
           </Button>
         ) : (
-          <Button size="sm" variant="primary" icon={lang.id === 'javascript' ? <Play size={13} /> : <Eye size={13} />} onClick={run} data-tip="Ctrl/⌘ + Enter">
+          <Button size="sm" variant="primary" icon={lang.id !== 'javascript' && (['html', 'css'].includes(lang.id) || htmlAvailable) ? <Eye size={13} /> : <Play size={13} />} onClick={run} data-tip="Ctrl/⌘ + Enter">
             {lang.id === 'javascript' ? '실행' : htmlAvailable ? '미리보기' : '실행'}
           </Button>
         )}

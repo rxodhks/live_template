@@ -15,7 +15,7 @@ import type {
 import { getSocket, request } from '../lib/socket';
 import { SocketYProvider } from '../lib/yprovider';
 import { throttle } from '../lib/util';
-import { usePresence } from '../store/presence';
+import { usePresence, useUserPresence } from '../store/presence';
 import { useTemplates } from '../store/templates';
 import { toast } from '../store/toasts';
 import { useSession } from '../store/session';
@@ -117,7 +117,6 @@ export function Workspace() {
     const onPresenceUpdate = (p: PresenceState) => usePresence.getState().upsert(p);
     const onPresenceLeave = ({ socketId }: { socketId: string }) => {
       usePresence.getState().remove(socketId);
-      setFollow((f) => (f === socketId ? null : f));
     };
     const onCursor = ({ socketId, cursor }: { socketId: string; cursor: CursorPoint | null }) =>
       usePresence.getState().setCursor(socketId, cursor);
@@ -196,17 +195,30 @@ export function Workspace() {
   }, [tid]);
 
   /* ── 따라가기: 상대가 보는 화면으로 이동 ── */
-  const followed = usePresence((s) => (follow ? s.others[follow] : undefined));
+  // 소켓이 아니라 사용자를 따라가므로 상대가 새로고침/재접속해도 계속 따라간다
+  const followed = useUserPresence(follow);
   useEffect(() => {
     if (!follow) return;
     if (!followed) {
-      setFollow(null);
-      return;
+      const t = setTimeout(() => {
+        setFollow(null);
+        toast.info('따라가기를 중지했습니다', '따라가던 사용자가 템플릿을 떠났습니다.');
+      }, 6000);
+      return () => clearTimeout(t);
     }
     if (!sameView(followed.view, viewRef.current)) {
       navigate(viewPath(tid, followed.view.module, followed.view.itemId));
     }
   }, [follow, followed?.view.module, followed?.view.itemId]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  useEffect(() => {
+    if (!follow) return;
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') setFollow(null);
+    };
+    window.addEventListener('keydown', onKey);
+    return () => window.removeEventListener('keydown', onKey);
+  }, [follow]);
 
   /* ── 컨텍스트 함수들 ── */
   const lastReport = useRef(new Map<string, number>());

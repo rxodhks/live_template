@@ -103,7 +103,7 @@ function Collaborators() {
                   <Button size="sm" variant="ghost" onClick={() => navigate(viewPath(ws.template.id, p.view.module, p.view.itemId))}>
                     이동
                   </Button>
-                  <Button size="sm" icon={<Eye size={14} />} onClick={() => ws.setFollow(p.socketId)}>
+                  <Button size="sm" icon={<Eye size={14} />} onClick={() => ws.setFollow(p.user.id)}>
                     따라가기
                   </Button>
                 </div>

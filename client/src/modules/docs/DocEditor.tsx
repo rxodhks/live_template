@@ -65,7 +65,8 @@ export function DocEditor({ fragment, awareness, user, readOnly, placeholder, do
     {
       editable: !readOnly,
       extensions: [
-        StarterKit.configure({ undoRedo: false, link: { openOnClick: false, autolink: true } }),
+        // trailingNode는 문서를 열기만 해도 빈 문단을 추가해 동시 편집 시 문단이 늘어나므로 끈다
+        StarterKit.configure({ undoRedo: false, trailingNode: false, link: { openOnClick: false, autolink: true } }),
         Collaboration.configure({ fragment }),
         CollaborationCaret.configure({
           provider: { awareness },
@@ -81,8 +82,9 @@ export function DocEditor({ fragment, awareness, user, readOnly, placeholder, do
           placeholder: ({ node }) => (node.type.name === 'heading' ? '제목' : placeholder ?? "내용을 입력하세요. '/' 대신 마크다운 단축키(#, -, [ ])를 쓸 수 있어요."),
         }),
       ],
-      onUpdate: ({ transaction }) => {
-        if (!isChangeOrigin(transaction)) cb.current.onLocalEdit?.();
+      onUpdate: ({ editor, transaction }) => {
+        // 원격 변경·초기 렌더링은 제외하고, 내가 직접 편집한 경우만 활동으로 본다
+        if (!isChangeOrigin(transaction) && editor.isFocused && editor.isEditable) cb.current.onLocalEdit?.();
       },
       onSelectionUpdate: ({ editor }) => {
         if (!editor.state.selection.empty) cb.current.onSelectText?.();
@@ -143,6 +145,26 @@ function T({ label, active, onClick, children, disabled }: { label: string; acti
   );
 }
 
+const EMPTY_STATE = {
+  level: 0 as 0 | 1 | 2 | 3,
+  bold: false,
+  italic: false,
+  underline: false,
+  strike: false,
+  code: false,
+  highlight: false,
+  bullet: false,
+  ordered: false,
+  task: false,
+  quote: false,
+  codeBlock: false,
+  link: false,
+  table: false,
+  align: 'left' as 'left' | 'center' | 'right',
+  canUndo: false,
+  canRedo: false,
+};
+
 const BLOCK_TYPES = [
   { label: '본문', level: 0 },
   { label: '제목 1', level: 1 },
@@ -153,7 +175,7 @@ const BLOCK_TYPES = [
 function DocToolbar({ editor }: { editor: Editor }) {
   const s = useEditorState({
     editor,
-    selector: ({ editor: e }) => ({
+    selector: ({ editor: e }) => e.isDestroyed ? EMPTY_STATE : ({
       level: ([1, 2, 3] as const).find((l) => e.isActive('heading', { level: l })) ?? 0,
       bold: e.isActive('bold'),
       italic: e.isActive('italic'),
