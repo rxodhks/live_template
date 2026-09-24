@@ -9,6 +9,7 @@ import { dispatchTimelineEvent, useTemplates } from './store/templates';
 import { toast } from './store/toasts';
 import { useUI } from './store/ui';
 import { ToastViewport } from './components/Toasts';
+import { TooltipHost } from './components/Tooltip';
 import { ConfirmHost, PromptHost, Spinner } from './components/ui';
 import { Onboarding } from './pages/Onboarding';
 import { Dashboard } from './pages/Dashboard';
@@ -47,6 +48,7 @@ export function App() {
     <BrowserRouter>
       {user ? <AuthedApp /> : <Onboarding />}
       <ToastViewport />
+      <TooltipHost />
       <ConfirmHost />
       <PromptHost />
     </BrowserRouter>

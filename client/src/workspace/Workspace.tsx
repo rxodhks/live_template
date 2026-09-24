@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { Suspense, lazy, useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useLocation, useNavigate, useParams } from 'react-router-dom';
 import * as Y from 'yjs';
 import { IndexeddbPersistence } from 'y-indexeddb';
@@ -28,10 +28,12 @@ import { Overview } from './Overview';
 import { TemplateTimeline } from './TemplateTimeline';
 import { Members } from './Members';
 import { Settings } from './Settings';
-import { CodeModule } from '../modules/code/CodeModule';
-import { DocsModule } from '../modules/docs/DocsModule';
-import { DesignModule } from '../modules/design/DesignModule';
-import { NotesModule } from '../modules/notes/NotesModule';
+
+// 에디터 모듈은 필요할 때 불러온다 (초기 로딩 경량화)
+const CodeModule = lazy(() => import('../modules/code/CodeModule').then((m) => ({ default: m.CodeModule })));
+const DocsModule = lazy(() => import('../modules/docs/DocsModule').then((m) => ({ default: m.DocsModule })));
+const DesignModule = lazy(() => import('../modules/design/DesignModule').then((m) => ({ default: m.DesignModule })));
+const NotesModule = lazy(() => import('../modules/notes/NotesModule').then((m) => ({ default: m.NotesModule })));
 import { EmptyState, Spinner, Button } from '../components/ui';
 import { ShieldAlert } from 'lucide-react';
 
@@ -334,7 +336,15 @@ export function Workspace() {
             템플릿 설정에서 기능을 추가하면 바로 사용할 수 있습니다.
           </EmptyState>
         ) : (
-          <ModuleView module={view.module} key={`${view.module}`} />
+          <Suspense
+            fallback={
+              <div className="center-fill">
+                <Spinner size={24} />
+              </div>
+            }
+          >
+            <ModuleView module={view.module} key={`${view.module}`} />
+          </Suspense>
         )}
       </AppShell>
       <MeWatermark name={me.name} />

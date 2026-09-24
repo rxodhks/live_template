@@ -1,0 +1,323 @@
+/* ───────────────────────── 디자인 토큰 ───────────────────────── */
+
+:root {
+  --bg: #f5f6f8;
+  --surface: #ffffff;
+  --surface-2: #f3f4f6;
+  --surface-3: #e9ebef;
+  --surface-hover: #f0f1f4;
+  --border: #e4e6eb;
+  --border-strong: #d1d5dc;
+  --text: #16181d;
+  --text-2: #4a5060;
+  --text-3: #868c99;
+  --accent: #5b5bd6;
+  --accent-hover: #4b4bc5;
+  --accent-soft: #eeeefd;
+  --accent-text: #4545c0;
+  --on-accent: #ffffff;
+  --danger: #d93f45;
+  --danger-soft: #fdeded;
+  --success: #248a5a;
+  --success-soft: #e5f5ed;
+  --warning: #c26a07;
+  --warning-soft: #fdf1df;
+  --info: #0b6bcb;
+  --info-soft: #e6f0fb;
+  --feature-design: #c93a92;
+  --feature-code: #0a7fdc;
+  --feature-docs: #248a5a;
+  --feature-notes: #8e4ec6;
+  --canvas-bg: #f3f4f7;
+  --grid-dot: #c5cad3;
+  --code-active-line: #f5f6fa;
+  --overlay: rgb(15 17 22 / 0.42);
+  --shadow-sm: 0 1px 2px rgb(16 24 40 / 0.06);
+  --shadow-md: 0 4px 14px rgb(16 24 40 / 0.08), 0 1px 3px rgb(16 24 40 / 0.06);
+  --shadow-lg: 0 18px 44px rgb(16 24 40 / 0.16), 0 4px 12px rgb(16 24 40 / 0.08);
+  --radius-sm: 6px;
+  --radius: 10px;
+  --radius-lg: 14px;
+  --topbar-h: 52px;
+  --rail-w: 64px;
+  --panel-w: 268px;
+  --drawer-w: 340px;
+  --font: 'Pretendard Variable', Pretendard, -apple-system, BlinkMacSystemFont, system-ui, 'Apple SD Gothic Neo', 'Malgun Gothic', sans-serif;
+  --mono: 'JetBrains Mono', 'SFMono-Regular', ui-monospace, Menlo, Consolas, monospace;
+  color-scheme: light;
+}
+
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme='light']) {
+    --bg: #0e1014;
+    --surface: #16181d;
+    --surface-2: #1c1f25;
+    --surface-3: #252932;
+    --surface-hover: #20242b;
+    --border: #2a2e37;
+    --border-strong: #3a3f4a;
+    --text: #eceef2;
+    --text-2: #aab0bc;
+    --text-3: #717886;
+    --accent: #7c7cf2;
+    --accent-hover: #8f8ff6;
+    --accent-soft: #24244a;
+    --accent-text: #a5a5ff;
+    --on-accent: #ffffff;
+    --danger: #f1676b;
+    --danger-soft: #3a1d20;
+    --success: #4cc38a;
+    --success-soft: #16301f;
+    --warning: #f5a524;
+    --warning-soft: #37290f;
+    --info: #5aa9f2;
+    --info-soft: #132a40;
+    --feature-design: #ec6cbc;
+    --feature-code: #4aa8f5;
+    --feature-docs: #4cc38a;
+    --feature-notes: #b28af0;
+    --canvas-bg: #121419;
+    --grid-dot: #343945;
+    --code-active-line: #1d2027;
+    --overlay: rgb(0 0 0 / 0.6);
+    --shadow-sm: 0 1px 2px rgb(0 0 0 / 0.4);
+    --shadow-md: 0 4px 14px rgb(0 0 0 / 0.45);
+    --shadow-lg: 0 18px 44px rgb(0 0 0 / 0.6);
+    color-scheme: dark;
+  }
+}
+
+:root[data-theme='dark'] {
+  --bg: #0e1014;
+  --surface: #16181d;
+  --surface-2: #1c1f25;
+  --surface-3: #252932;
+  --surface-hover: #20242b;
+  --border: #2a2e37;
+  --border-strong: #3a3f4a;
+  --text: #eceef2;
+  --text-2: #aab0bc;
+  --text-3: #717886;
+  --accent: #7c7cf2;
+  --accent-hover: #8f8ff6;
+  --accent-soft: #24244a;
+  --accent-text: #a5a5ff;
+  --on-accent: #ffffff;
+  --danger: #f1676b;
+  --danger-soft: #3a1d20;
+  --success: #4cc38a;
+  --success-soft: #16301f;
+  --warning: #f5a524;
+  --warning-soft: #37290f;
+  --info: #5aa9f2;
+  --info-soft: #132a40;
+  --feature-design: #ec6cbc;
+  --feature-code: #4aa8f5;
+  --feature-docs: #4cc38a;
+  --feature-notes: #b28af0;
+  --canvas-bg: #121419;
+  --grid-dot: #343945;
+  --code-active-line: #1d2027;
+  --overlay: rgb(0 0 0 / 0.6);
+  --shadow-sm: 0 1px 2px rgb(0 0 0 / 0.4);
+  --shadow-md: 0 4px 14px rgb(0 0 0 / 0.45);
+  --shadow-lg: 0 18px 44px rgb(0 0 0 / 0.6);
+  color-scheme: dark;
+}
+
+/* ───────────────────────── 리셋 ───────────────────────── */
+
+*,
+*::before,
+*::after {
+  box-sizing: border-box;
+}
+
+html,
+body,
+#root {
+  height: 100%;
+  margin: 0;
+}
+
+body {
+  background: var(--bg);
+  color: var(--text);
+  font-family: var(--font);
+  font-size: 14px;
+  line-height: 1.5;
+  -webkit-font-smoothing: antialiased;
+  word-break: keep-all;
+  overflow-wrap: anywhere;
+}
+
+h1,
+h2,
+h3,
+h4,
+p {
+  margin: 0;
+}
+
+h1 {
+  font-size: 24px;
+  font-weight: 700;
+  letter-spacing: -0.02em;
+}
+h2 {
+  font-size: 17px;
+  font-weight: 650;
+  letter-spacing: -0.01em;
+}
+h3 {
+  font-size: 15px;
+  font-weight: 650;
+}
+h4 {
+  font-size: 13px;
+  font-weight: 650;
+}
+
+button,
+input,
+select,
+textarea {
+  font: inherit;
+  color: inherit;
+}
+
+button {
+  cursor: pointer;
+  background: none;
+  border: 0;
+  padding: 0;
+}
+
+button:disabled {
+  cursor: not-allowed;
+}
+
+a {
+  color: inherit;
+  text-decoration: none;
+}
+
+:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
+}
+
+::selection {
+  background: color-mix(in srgb, var(--accent) 28%, transparent);
+}
+
+* {
+  scrollbar-width: thin;
+  scrollbar-color: var(--border-strong) transparent;
+}
+
+/* ───────────────────────── 유틸리티 ───────────────────────── */
+
+.muted {
+  color: var(--text-3);
+}
+.small {
+  font-size: 12px;
+}
+.truncate {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  min-width: 0;
+}
+.w-full {
+  width: 100%;
+}
+.pad {
+  padding: 32px;
+}
+.pad-sm {
+  padding: 8px 10px;
+}
+.center {
+  justify-content: center;
+}
+.center-fill {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex: 1;
+  min-height: 0;
+  height: 100%;
+}
+.center-fill.full {
+  height: 100vh;
+}
+.sr-only {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  overflow: hidden;
+  clip: rect(0 0 0 0);
+  white-space: nowrap;
+}
+.spin {
+  animation: spin 0.9s linear infinite;
+}
+@keyframes spin {
+  to {
+    transform: rotate(360deg);
+  }
+}
+.link {
+  color: var(--accent-text);
+  display: inline-flex;
+  align-items: center;
+  gap: 3px;
+  font-weight: 550;
+}
+.link:hover {
+  text-decoration: underline;
+}
+.link-quiet:hover {
+  color: var(--accent-text);
+  text-decoration: underline;
+}
+.live-dot {
+  display: inline-block;
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background: var(--success);
+  box-shadow: 0 0 0 0 color-mix(in srgb, var(--success) 60%, transparent);
+  animation: pulse 2s infinite;
+  vertical-align: middle;
+}
+@keyframes pulse {
+  0% {
+    box-shadow: 0 0 0 0 color-mix(in srgb, var(--success) 55%, transparent);
+  }
+  70% {
+    box-shadow: 0 0 0 6px transparent;
+  }
+  100% {
+    box-shadow: 0 0 0 0 transparent;
+  }
+}
+.hide-sm {
+  display: inline;
+}
+@media (max-width: 720px) {
+  .hide-sm {
+    display: none;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.01ms !important;
+    transition-duration: 0.01ms !important;
+  }
+}
