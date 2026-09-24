@@ -1,0 +1,5 @@
+{
+  "name": "@live-template/shared",
+  "private": true,
+  "type": "module"
+}

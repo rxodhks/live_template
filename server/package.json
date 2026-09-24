@@ -1,0 +1,26 @@
+{
+  "name": "@live-template/server",
+  "private": true,
+  "version": "0.1.0",
+  "type": "module",
+  "scripts": {
+    "dev": "tsx watch --clear-screen=false src/index.ts",
+    "start": "tsx src/index.ts",
+    "typecheck": "tsc --noEmit",
+    "test": "node --import tsx --test --test-force-exit test/*.test.ts"
+  },
+  "dependencies": {
+    "express": "^5.2.1",
+    "lib0": "^0.2.117",
+    "socket.io": "^4.8.3",
+    "tsx": "^4.23.15",
+    "y-protocols": "^1.0.7",
+    "yjs": "^13.6.33"
+  },
+  "devDependencies": {
+    "@types/express": "^5.0.6",
+    "@types/node": "^22.19.0",
+    "socket.io-client": "^4.8.3",
+    "typescript": "~5.9.3"
+  }
+}
