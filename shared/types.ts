@@ -64,12 +64,17 @@ export interface TemplateSummary {
   createdAt: number;
   updatedAt: number;
   myRole: Role;
+  /** private: 나만 보는 개인 공간(클라우드에 백업) · shared: 초대로 전환된 협업 공간 */
+  visibility: TemplateVisibility;
 }
 
+export type TemplateVisibility = 'private' | 'shared';
+
 /**
- * 템플릿이 어디에 있는지
- *  - personal: 이 브라우저에만 저장된 개인 공간 (서버 불필요)
- *  - shared  : 초대를 통해 협업 공간으로 전환된 템플릿 (클라우드플레어에 저장, 실시간 협업)
+ * 템플릿이 어디에 저장되는지
+ *  - personal: 아직 이 브라우저에만 있는 템플릿 (오프라인에서 만들어 클라우드 백업 대기 중)
+ *  - shared  : 클라우드에 저장되어 실시간으로 동기화되는 템플릿
+ *              (누가 볼 수 있는지는 visibility: private = 나만, shared = 초대한 멤버)
  */
 export type TemplateMode = 'personal' | 'shared';
 
@@ -170,6 +175,9 @@ export type ActivityType =
   | 'template.create'
   | 'template.update'
   | 'template.share'
+  | 'template.trash'
+  | 'template.restore'
+  | 'template.copy'
   | 'invite.create'
   | 'invite.revoke'
   | 'member.request'
@@ -295,4 +303,31 @@ export interface ShareUpload {
 export interface ApiError {
   error: string;
   retryAfter?: number;
+}
+
+/* ───────────── 데이터 보호 ───────────── */
+
+/** 휴지통에 있는 템플릿 (소유자만 보고 복원할 수 있다) */
+export interface TrashEntry {
+  template: TemplateSummary;
+  deletedAt: number;
+  /** 이 시각이 지나면 영구 삭제 */
+  purgeAt: number;
+  deletedBy: PublicUser | null;
+}
+
+/** 템플릿 문서의 저장된 버전 (자동 스냅샷) */
+export interface VersionInfo {
+  id: number;
+  at: number;
+  size: number;
+}
+
+/** 내가 보낸 참여 요청 (승인 대기 · 결과) */
+export interface MyJoinRequest {
+  templateId: string;
+  name: string;
+  emoji: string;
+  requestedAt: number;
+  status: JoinStatus;
 }

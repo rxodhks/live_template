@@ -17,9 +17,12 @@ export type StoreName = (typeof STORES)[number];
 let dbName: string | null = null;
 let dbPromise: Promise<IDBDatabase> | null = null;
 
+/** 계정별 개인 공간 저장소 이름 */
+export const appDbName = (userId: string) => `${LEGACY_DB}:${userId}`;
+
 /** 로그인한 계정의 저장소를 쓴다 (로그인 직후 한 번) */
 export function setIdbUser(userId: string): void {
-  const name = `${LEGACY_DB}:${userId}`;
+  const name = appDbName(userId);
   if (name === dbName) return;
   void dbPromise?.then((db) => db.close()).catch(() => {});
   dbName = name;

@@ -174,6 +174,45 @@ class Client {
   }
 }
 
+/** 실시간 연결이 거절되는지 (환영 메시지 없이 닫힘) */
+function wsRejected(id: string, token: string): Promise<boolean> {
+  return new Promise((resolve) => {
+    const ws = new WebSocket(`${base.replace('http', 'ws')}/api/templates/${id}/ws`, ['lt', token]);
+    const timer = setTimeout(() => {
+      ws.close();
+      resolve(false);
+    }, 5000);
+    ws.onmessage = () => {
+      clearTimeout(timer);
+      ws.close();
+      resolve(false);
+    };
+    ws.onerror = ws.onclose = () => {
+      clearTimeout(timer);
+      resolve(true);
+    };
+  });
+}
+
+/** 브라우저에서 만든 개인 템플릿을 클라우드에 백업하는 것과 같은 요청 */
+async function backup(user: { token: string }, id: string, files: Record<string, string>, name = '내 개인 템플릿') {
+  const doc = new Y.Doc();
+  for (const [k, v] of Object.entries(files)) doc.getMap('files').set(k, v);
+  return api('POST', `/templates/${id}/backup`, user.token, {
+    id,
+    name,
+    description: '',
+    emoji: '📁',
+    features: ['code'],
+    createdAt: Date.now(),
+    state: b64(Y.encodeStateAsUpdate(doc)),
+    timeline: [],
+    notes: [],
+  });
+}
+
+const newTemplateId = () => `tpl${crypto.randomBytes(7).toString('hex')}`;
+
 /** 서버 문서와 동기화된 클라이언트 Y.Doc */
 async function syncDoc(c: Client, doc = new Y.Doc()) {
   const res = await c.request<{ update: string; sv: string; readOnly: boolean }>({ t: 'sync', sv: b64(Y.encodeStateVector(doc)) });
@@ -415,9 +454,9 @@ describe('개인 공간 → 협업 공간 전환', () => {
     assert.equal(notes.data.notes[0].snapshot, undefined);
   });
 
-  it('멤버가 아니면 볼 수 없다', async () => {
-    assert.equal((await api('GET', `/templates/${templateId}`, editor.token)).status, 403);
-    assert.equal((await api('GET', `/templates/${templateId}/timeline`, editor.token)).status, 403);
+  it('멤버가 아니면 볼 수 없다 (있는지조차 알려 주지 않는다)', async () => {
+    assert.equal((await api('GET', `/templates/${templateId}`, editor.token)).status, 404);
+    assert.equal((await api('GET', `/templates/${templateId}/timeline`, editor.token)).status, 404);
   });
 });
 
@@ -569,7 +608,7 @@ describe('실시간 협업', () => {
     const req = await api('POST', `/invites/${inv.token}/accept`, guest.token);
     assert.equal(req.data.status, 'pending');
     assert.equal((await api('GET', `/templates/${templateId}/join-status`, guest.token)).data.status, 'pending');
-    assert.equal((await api('GET', `/templates/${templateId}`, guest.token)).status, 403);
+    assert.equal((await api('GET', `/templates/${templateId}`, guest.token)).status, 404, '대기 중에는 볼 수 없다');
 
     const pushed = await a.waitType('requests', (m) => m.requests.length === 1);
     assert.equal(pushed.requests[0].user.name, '정손님');
@@ -590,7 +629,7 @@ describe('실시간 협업', () => {
     await api('DELETE', `/templates/${templateId}/members/${guest.user.id}`, owner.token);
     const kicked = await g.waitType('kicked');
     assert.equal(kicked.reason, 'removed');
-    assert.equal((await api('GET', `/templates/${templateId}`, guest.token)).status, 403);
+    assert.equal((await api('GET', `/templates/${templateId}`, guest.token)).status, 404, '내보내진 뒤에는 볼 수 없다');
     a.close();
     g.close();
   });
@@ -659,8 +698,190 @@ describe('비밀 노트 (종단 간 암호화)', () => {
   });
 });
 
+describe('계정 분리 (이름이 같아도 완전히 다른 계정)', () => {
+  let a: Awaited<ReturnType<typeof newUser>>;
+  let b: Awaited<ReturnType<typeof newUser>>;
+  let c: Awaited<ReturnType<typeof newUser>>;
+  const privateId = newTemplateId();
+
+  before(async () => {
+    a = await newUser('홍길동');
+    b = await newUser('홍길동');
+    c = await newUser('홍길동');
+  });
+
+  it('같은 이름으로 가입해도 서로 다른 계정이다', async () => {
+    assert.notEqual(a.user.id, b.user.id);
+    const meA = await api('GET', '/me', a.token);
+    const meB = await api('GET', '/me', b.token);
+    assert.equal(meA.data.user.id, a.user.id);
+    assert.equal(meB.data.user.id, b.user.id);
+    assert.notEqual(meA.data.account.email, meB.data.account.email);
+  });
+
+  it('개인 공간은 클라우드에 백업돼도 나만 볼 수 있다', async () => {
+    const res = await backup(a, privateId, { 'secret.txt': 'A의 개인 메모' });
+    assert.equal(res.status, 201, JSON.stringify(res.data));
+    assert.equal(res.data.template.visibility, 'private');
+    assert.equal(res.data.template.members.length, 1);
+    assert.equal((await backup(a, privateId, { 'secret.txt': '재시도' })).status, 201, '재시도해도 안전');
+
+    assert.ok((await api('GET', '/templates', a.token)).data.templates.some((t: any) => t.id === privateId));
+    assert.ok(!(await api('GET', '/templates', b.token)).data.templates.some((t: any) => t.id === privateId));
+
+    // 이름이 같은 다른 계정은 어떤 경로로도 볼 수 없다
+    for (const [method, path] of [
+      ['GET', `/templates/${privateId}`],
+      ['GET', `/templates/${privateId}/timeline`],
+      ['GET', `/templates/${privateId}/notes`],
+      ['GET', `/templates/${privateId}/versions`],
+      ['GET', `/templates/${privateId}/invites`],
+      ['GET', `/templates/${privateId}/requests`],
+      ['PATCH', `/templates/${privateId}`],
+      ['DELETE', `/templates/${privateId}`],
+      ['POST', `/templates/${privateId}/invites`],
+    ] as const) {
+      const r = await api(method, path, b.token, method === 'GET' ? undefined : {});
+      assert.equal(r.status, 404, `${method} ${path} → ${r.status}`);
+    }
+    assert.equal((await backup(b, privateId, { 'secret.txt': '가로채기' })).status, 409, '다른 사람의 템플릿 ID는 쓸 수 없다');
+    assert.equal(await wsRejected(privateId, b.token), true, '실시간 연결도 거절');
+    const tl = await api('GET', '/timeline?limit=200', b.token);
+    assert.ok(!tl.data.events.some((e: any) => e.templateId === privateId), '전체 타임라인에도 없다');
+
+    // 본인은 그대로
+    const ws = new Client(privateId, a.token);
+    await ws.ready();
+    const { doc } = await syncDoc(ws);
+    assert.equal(doc.getMap('files').get('secret.txt'), 'A의 개인 메모');
+    ws.close();
+  });
+
+  it('초대하면 협업 공간이 되고, 초대받은 사람만 들어온다', async () => {
+    const inv = await api('POST', `/templates/${privateId}/invites`, a.token, { role: 'editor', expiresInDays: 1, maxUses: 1, requireApproval: false });
+    assert.equal(inv.status, 201);
+    assert.equal(inv.data.template.visibility, 'shared');
+    assert.equal((await api('POST', `/invites/${inv.data.invite.token}/accept`, c.token)).data.status, 'joined');
+    const shared = await api('GET', `/templates/${privateId}`, c.token);
+    assert.equal(shared.status, 200);
+    const ids = shared.data.template.members.map((m: any) => m.user.id);
+    assert.deepEqual(ids.sort(), [a.user.id, c.user.id].sort(), '같은 이름이어도 ID로 구분');
+    assert.equal((await api('GET', `/templates/${privateId}`, b.token)).status, 404, '초대받지 않은 사람은 여전히 못 본다');
+    const tl = await api('GET', `/templates/${privateId}/timeline`, a.token);
+    assert.ok(tl.data.events.some((e: any) => e.type === 'template.share'));
+  });
+
+  it('내가 보낸 참여 요청은 내 계정에서만 보인다', async () => {
+    const id = newTemplateId();
+    await backup(a, id, { 'x.txt': 'x' }, '승인 필요한 템플릿');
+    const inv = await api('POST', `/templates/${id}/invites`, a.token, { role: 'viewer', expiresInDays: 1, maxUses: null, requireApproval: true });
+    assert.equal((await api('POST', `/invites/${inv.data.invite.token}/accept`, b.token)).data.status, 'pending');
+    const mine = await api('GET', '/me/requests', b.token);
+    assert.equal(mine.data.requests[0].templateId, id);
+    assert.equal(mine.data.requests[0].status, 'pending');
+    assert.equal(mine.data.requests[0].name, '승인 필요한 템플릿');
+    assert.ok(!(await api('GET', '/me/requests', c.token)).data.requests.some((r: any) => r.templateId === id));
+  });
+});
+
+describe('데이터 보호', () => {
+  let a: Awaited<ReturnType<typeof newUser>>;
+  let m: Awaited<ReturnType<typeof newUser>>;
+  const id = newTemplateId();
+
+  before(async () => {
+    a = await newUser('보호소유');
+    m = await newUser('보호멤버');
+    await backup(a, id, { 'keep.txt': '지키고 싶은 내용' }, '중요한 템플릿');
+    const inv = await api('POST', `/templates/${id}/invites`, a.token, { role: 'editor', expiresInDays: 1, maxUses: null, requireApproval: false });
+    await api('POST', `/invites/${inv.data.invite.token}/accept`, m.token);
+  });
+
+  it('삭제하면 휴지통으로 가고, 소유자는 30일 안에 그대로 복원할 수 있다', async () => {
+    const ws = new Client(id, m.token);
+    await ws.ready();
+    assert.equal((await api('DELETE', `/templates/${id}`, m.token)).status, 403, '소유자만 삭제');
+    const del = await api('DELETE', `/templates/${id}`, a.token);
+    assert.equal(del.data.trashed, true);
+    assert.equal((await ws.waitType('kicked')).reason, 'deleted');
+    for (const u of [a, m]) {
+      assert.equal((await api('GET', `/templates/${id}`, u.token)).status, 404);
+      assert.ok(!(await api('GET', '/templates', u.token)).data.templates.some((t: any) => t.id === id));
+      assert.equal(await wsRejected(id, u.token), true);
+    }
+    const trash = await api('GET', '/trash', a.token);
+    const entry = trash.data.trash.find((t: any) => t.template.id === id);
+    assert.ok(entry);
+    assert.equal(entry.purgeAt - entry.deletedAt, 30 * 86_400_000);
+    assert.equal(trash.data.ttlDays, 30);
+    assert.ok(!(await api('GET', '/trash', m.token)).data.trash.some((t: any) => t.template.id === id), '휴지통은 소유자만');
+    assert.equal((await api('POST', `/trash/${id}/restore`, m.token)).status, 403);
+
+    const restored = await api('POST', `/trash/${id}/restore`, a.token);
+    assert.equal(restored.status, 200);
+    assert.equal(restored.data.template.members.length, 2, '멤버도 그대로');
+    const back = new Client(id, m.token);
+    await back.ready();
+    const { doc } = await syncDoc(back);
+    assert.equal(doc.getMap('files').get('keep.txt'), '지키고 싶은 내용', '내용도 그대로');
+    back.close();
+    const types = (await api('GET', `/templates/${id}/timeline`, a.token)).data.events.map((e: any) => e.type);
+    assert.ok(types.includes('template.trash') && types.includes('template.restore'));
+  });
+
+  it('버전 기록: 이전 버전으로 나만 보는 사본을 만든다 (지금 문서는 그대로)', async () => {
+    const live = new Client(id, a.token);
+    await live.ready();
+    const { doc } = await syncDoc(live);
+    const before = Y.encodeStateVector(doc);
+    doc.getMap('files').set('keep.txt', '실수로 지운 뒤');
+    const ack = await live.request({ t: 'update', u: b64(Y.encodeStateAsUpdate(doc, before)) });
+    assert.equal(ack.ok, true);
+    live.close();
+
+    const versions = await api('GET', `/templates/${id}/versions`, a.token);
+    assert.ok(versions.data.versions.length >= 1);
+    const first = versions.data.versions[versions.data.versions.length - 1];
+    assert.equal((await api('GET', `/templates/${id}/versions`, (await newUser('외부인')).token)).status, 404);
+
+    const copy = await api('POST', `/templates/${id}/versions/${first.id}/copy`, m.token, { name: '중요한 템플릿 (복원본)', label: '처음 버전' });
+    assert.equal(copy.status, 201, JSON.stringify(copy.data));
+    assert.equal(copy.data.template.visibility, 'private');
+    assert.equal(copy.data.template.ownerId, m.user.id, '복원한 사람의 개인 공간에');
+    const cw = new Client(copy.data.template.id, m.token);
+    await cw.ready();
+    const restored = (await syncDoc(cw)).doc;
+    assert.equal(restored.getMap('files').get('keep.txt'), '지키고 싶은 내용');
+    cw.close();
+    assert.equal((await api('GET', `/templates/${copy.data.template.id}`, a.token)).status, 404, '사본은 만든 사람만');
+    // 원래 문서는 바뀌지 않았다
+    const again = new Client(id, a.token);
+    await again.ready();
+    assert.equal((await syncDoc(again)).doc.getMap('files').get('keep.txt'), '실수로 지운 뒤');
+    again.close();
+  });
+
+  it('휴지통에서 영구 삭제하면 되돌릴 수 없다', async () => {
+    const gone = newTemplateId();
+    await backup(a, gone, { 'bye.txt': 'bye' });
+    await api('DELETE', `/templates/${gone}`, a.token);
+    assert.equal((await api('DELETE', `/trash/${gone}`, m.token)).status, 404, '다른 사람은 비울 수 없다');
+    assert.equal((await api('DELETE', `/trash/${gone}`, a.token)).status, 200);
+    assert.equal((await api('POST', `/trash/${gone}/restore`, a.token)).status, 404);
+    assert.ok(!(await api('GET', '/trash', a.token)).data.trash.some((t: any) => t.template.id === gone));
+  });
+});
+
 describe('영속성', () => {
   it('서버를 다시 시작해도 문서·타임라인·멤버가 남아 있다', async () => {
+    // "저장됨" 확인을 받은 변경은 바로 서버가 꺼져도 남아 있어야 한다
+    const w = new Client(templateId, owner.token);
+    await w.ready();
+    const wd = (await syncDoc(w)).doc;
+    const sv = Y.encodeStateVector(wd);
+    wd.getMap('files').set('saved-right-before-restart.txt', '확인 받은 변경');
+    assert.equal((await w.request({ t: 'update', u: b64(Y.encodeStateAsUpdate(wd, sv)) })).ok, true);
+    w.close();
     await stopWorker();
     await startWorker();
     const list = await api('GET', '/templates', editor.token);
@@ -669,11 +890,12 @@ describe('영속성', () => {
     await a.ready();
     const { doc } = await syncDoc(a);
     assert.equal(doc.getMap('files').get('style.css'), 'body{}');
+    assert.equal(doc.getMap('files').get('saved-right-before-restart.txt'), '확인 받은 변경');
     assert.equal(doc.getText('big').length, bigText.length);
     const tl = await api('GET', `/timeline?limit=200`, owner.token);
     assert.ok(tl.data.events.some((e: any) => e.type === 'notes.password'));
 
-    // 삭제하면 접속 중인 사람도 내보내지고 모든 데이터가 지워진다
+    // 삭제하면 접속 중인 사람도 내보내지고 휴지통으로 간다
     assert.equal((await api('DELETE', `/templates/${templateId}`, editor.token)).status, 403);
     assert.equal((await api('DELETE', `/templates/${templateId}`, owner.token)).status, 200);
     assert.equal((await a.waitType('kicked')).reason, 'deleted');

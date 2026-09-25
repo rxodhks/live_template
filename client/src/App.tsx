@@ -3,6 +3,7 @@ import { BrowserRouter, Navigate, Route, Routes, useLocation } from 'react-route
 import { Monitor, X } from 'lucide-react';
 import { isTypingTarget } from './lib/util';
 import { bootSession, claimLegacyAccount } from './lib/auth';
+import { backupPending } from './lib/templateOps';
 import { useSession } from './store/session';
 import { useTemplates } from './store/templates';
 import { toast } from './store/toasts';
@@ -29,10 +30,10 @@ export function App() {
     void bootSession();
   }, []);
 
-  // 로그인하면 이 계정의 템플릿 목록을 불러온다
+  // 로그인하면 이 계정의 템플릿 목록을 불러오고, 이 기기에만 있는 개인 템플릿은 클라우드에 백업한다
   useEffect(() => {
     if (status !== 'authed' || !userId) return;
-    void useTemplates.getState().load();
+    void useTemplates.getState().load().then(backupAndNotify);
     if (useSession.getState().offline) return;
     // 가입 없이 쓰던 때 참여한 협업 템플릿이 있으면 이 계정으로 옮긴다
     void claimLegacyAccount().then((merged) => {
@@ -42,12 +43,18 @@ export function App() {
 
   useEffect(() => {
     if (status !== 'authed') return;
-    const refresh = () => document.visibilityState === 'visible' && void useTemplates.getState().refreshRemote();
+    const refresh = () => {
+      if (document.visibilityState !== 'visible') return;
+      void useTemplates.getState().refreshRemote();
+      void backupAndNotify();
+    };
     const t = setInterval(refresh, REFRESH_MS);
     window.addEventListener('focus', refresh);
+    window.addEventListener('online', refresh);
     return () => {
       clearInterval(t);
       window.removeEventListener('focus', refresh);
+      window.removeEventListener('online', refresh);
     };
   }, [status]);
 
@@ -72,6 +79,11 @@ export function App() {
       <NarrowScreenNotice />
     </BrowserRouter>
   );
+}
+
+async function backupAndNotify() {
+  const n = await backupPending();
+  if (n > 0) toast.success('개인 템플릿을 클라우드에 백업했습니다', `${n}개 · 이제 다른 기기에서도 이어서 작업할 수 있습니다.`);
 }
 
 /** 로그인하지 않았으면 로그인 화면으로 (로그인 후 원래 가려던 곳으로 돌아온다) */

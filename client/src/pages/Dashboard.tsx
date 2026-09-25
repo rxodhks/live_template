@@ -5,12 +5,13 @@ import type { Feature, TemplateEntry, TemplateMode, TimelineEvent } from '@share
 import { FEATURE_INFO, FEATURE_ORDER, PRESETS } from '@shared/presets';
 import { AppShell } from '../components/AppShell';
 import { Avatar, AvatarStack, Button, EmptyState, IconButton, Menu, Spinner, confirmDialog, promptDialog } from '../components/ui';
-import { useTemplates, onTimelineEvent } from '../store/templates';
+import { isPrivate, useTemplates, onTimelineEvent } from '../store/templates';
 import { useSession } from '../store/session';
 import { useUI } from '../store/ui';
 import { toast } from '../store/toasts';
 import { errorMessage } from '../lib/api';
-import { deleteTemplate, leaveTemplate } from '../lib/templateOps';
+import { leaveTemplate } from '../lib/templateOps';
+import { TrashDialog, confirmTrash, trashTemplate } from '../components/DataProtection';
 import { queryTimeline } from '../lib/timeline';
 import { usePendingWatcher } from '../lib/pending';
 import { relativeTime } from '../lib/time';
@@ -32,6 +33,7 @@ export function Dashboard() {
   const { templates, online, requests, loaded } = useTemplates();
   const [params, setParams] = useSearchParams();
   const [creating, setCreating] = useState(params.get('new') === '1');
+  const [trashOpen, setTrashOpen] = useState(false);
   const [space, setSpace] = useState<SpaceFilter>('all');
   const [feature, setFeature] = useState<FeatureFilter>('all');
   const [q, setQ] = useState('');
@@ -48,11 +50,11 @@ export function Dashboard() {
   }, [params, setParams]);
 
   const all = Object.values(templates);
-  const counts = { all: all.length, personal: all.filter((t) => t.mode === 'personal').length, shared: all.filter((t) => t.mode === 'shared').length };
+  const counts = { all: all.length, personal: all.filter(isPrivate).length, shared: all.filter((t) => !isPrivate(t)).length };
   const list = useMemo(
     () =>
       Object.values(templates)
-        .filter((t) => space === 'all' || t.mode === space)
+        .filter((t) => space === 'all' || (space === 'personal') === isPrivate(t))
         .filter((t) => feature === 'all' || t.features.includes(feature))
         .filter((t) => !q.trim() || `${t.name} ${t.description}`.toLowerCase().includes(q.trim().toLowerCase()))
         .sort((a, b) => b.updatedAt - a.updatedAt),
@@ -97,6 +99,9 @@ export function Dashboard() {
               </p>
             </div>
             <div className="dash-actions">
+              <Button variant="ghost" icon={<Trash2 size={15} />} onClick={() => setTrashOpen(true)}>
+                휴지통
+              </Button>
               <Button icon={<LogIn size={15} />} onClick={joinByLink}>
                 초대 링크로 참여
               </Button>
@@ -169,6 +174,7 @@ export function Dashboard() {
           </div>
         </div>
       </div>
+      {trashOpen && <TrashDialog onClose={() => setTrashOpen(false)} />}
       {creating && (
         <CreateTemplateModal
           onClose={() => setCreating(false)}
@@ -210,25 +216,11 @@ function TemplateCard({ template: t, onlineIds, requestCount }: { template: Temp
   const user = useSession((s) => s.user)!;
   const setShareOpen = useUI((s) => s.setShareOpen);
   const onlineMembers = t.members.filter((m) => onlineIds.includes(m.user.id) && m.user.id !== user.id).map((m) => m.user);
-  const personal = t.mode === 'personal';
+  const personal = isPrivate(t);
+  const local = t.mode === 'personal';
 
   const remove = async () => {
-    const ok = await confirmDialog({
-      title: '템플릿을 삭제할까요?',
-      message: personal
-        ? '이 브라우저에서 디자인·코드·문서·비밀 노트·타임라인이 영구 삭제됩니다.'
-        : '모든 멤버에게서 디자인·코드·문서·비밀 노트·타임라인이 영구 삭제되고, 접속 중인 사람도 즉시 나가게 됩니다.',
-      confirmText: '영구 삭제',
-      danger: true,
-      requireText: t.name,
-    });
-    if (!ok) return;
-    try {
-      await deleteTemplate(t);
-      toast.show({ kind: 'danger', title: '템플릿을 삭제했습니다', message: t.name });
-    } catch (err) {
-      toast.error('삭제하지 못했습니다', errorMessage(err));
-    }
+    if (await confirmTrash(t)) await trashTemplate(t);
   };
 
   const leave = async () => {
@@ -249,7 +241,7 @@ function TemplateCard({ template: t, onlineIds, requestCount }: { template: Temp
 
   return (
     <article
-      className={cx('template-card', `is-${t.mode}`)}
+      className={cx('template-card', `is-${personal ? 'personal' : 'shared'}`)}
       onClick={() => navigate(`/t/${t.id}`)}
       tabIndex={0}
       onKeyDown={(e) => e.key === 'Enter' && navigate(`/t/${t.id}`)}
@@ -289,8 +281,11 @@ function TemplateCard({ template: t, onlineIds, requestCount }: { template: Temp
       <p className="template-desc">{t.description || <span className="muted">설명 없음</span>}</p>
       <div className="template-card-bottom">
         {personal ? (
-          <span className="space-chip is-personal" data-tip="이 브라우저에만 저장된 개인 공간입니다">
-            <HardDrive size={12} /> 개인
+          <span
+            className="space-chip is-personal"
+            data-tip={local ? '아직 이 기기에만 있습니다 · 인터넷에 연결되면 자동으로 백업됩니다' : '나만 볼 수 있는 개인 공간 · 클라우드에 자동 백업'}
+          >
+            <HardDrive size={12} /> 개인{local && ' · 백업 대기'}
           </span>
         ) : (
           <span className="space-chip is-shared" data-tip="클라우드에 저장되는 협업 공간입니다">
@@ -374,13 +369,13 @@ function SpacesGuide() {
         <span className="space-chip is-personal">
           <HardDrive size={12} /> 개인
         </span>
-        <span className="muted small">이 브라우저에만 저장 · 인터넷 없이도 작업 · 나만 볼 수 있음</span>
+        <span className="muted small">나만 볼 수 있음 · 클라우드에 자동 백업 · 여러 기기에서 이어서 작업</span>
       </div>
       <div className="spaces-guide-item">
         <span className="space-chip is-shared">
           <Cloud size={12} /> 협업
         </span>
-        <span className="muted small">초대하면 전환 · 클라우드 저장 · 실시간 커서·채팅·멤버 관리</span>
+        <span className="muted small">초대하면 전환 · 초대한 멤버만 · 실시간 커서·채팅·멤버 관리</span>
       </div>
     </section>
   );

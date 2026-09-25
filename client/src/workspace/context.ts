@@ -19,8 +19,10 @@ import type { NotesApi, UnlockedNote } from '../lib/notes';
 
 export interface WorkspaceValue {
   template: TemplateEntry;
-  /** personal: 이 브라우저에만 있는 개인 공간 / shared: 초대로 전환된 협업 공간 */
+  /** 저장 위치 — personal: 아직 이 기기에만 있음 (백업 대기) / shared: 클라우드에 저장 · 실시간 동기화 */
   mode: TemplateMode;
+  /** 나만 보는 개인 공간인지 (false면 초대한 멤버와 함께 쓰는 협업 공간) */
+  isPrivate: boolean;
   role: Role;
   canEdit: boolean;
   doc: Y.Doc;

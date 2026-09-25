@@ -13,7 +13,8 @@ import { docDbName } from '../lib/idb';
 import { api } from '../lib/api';
 import { throttle } from '../lib/util';
 import { usePresence, useUserPresence } from '../store/presence';
-import { dispatchTimelineEvent, useTemplates } from '../store/templates';
+import { dispatchTimelineEvent, isPrivate, useTemplates } from '../store/templates';
+import { backupPending, setOpenTemplate } from '../lib/templateOps';
 import { useConnection } from '../store/connection';
 import { useLive } from '../store/live';
 import { toast } from '../store/toasts';
@@ -67,6 +68,15 @@ export function Workspace() {
   }, [loaded, entry, lookup, tid]);
 
   useEffect(() => setLookup('idle'), [tid]);
+
+  // 열려 있는 동안은 자동 백업에서 빼고, 닫히면 이 기기에만 있던 내용을 바로 백업한다
+  useEffect(() => {
+    setOpenTemplate(tid);
+    return () => {
+      setOpenTemplate(null);
+      void backupPending();
+    };
+  }, [tid]);
 
   if (!entry) {
     return (
@@ -232,7 +242,8 @@ function WorkspaceInner({ entry }: { entry: TemplateEntry }) {
       room.on('kicked', (m) => {
         const name = entryRef.current.name;
         useTemplates.getState().remove(tid, { dropLocalCopy: true });
-        if (m.reason === 'deleted') toast.show({ kind: 'danger', title: '템플릿이 삭제되었습니다', message: `${m.by ?? '소유자'} 님이 ‘${name}’ 템플릿을 삭제했습니다.` });
+        if (m.reason === 'deleted')
+          toast.show({ kind: 'danger', title: '템플릿이 휴지통으로 이동했습니다', message: `${m.by ?? '소유자'} 님이 ‘${name}’ 템플릿을 삭제했습니다. 소유자는 30일 안에 복원할 수 있습니다.` });
         else if (m.reason === 'removed') toast.warning('템플릿에서 제외되었습니다', `‘${name}’ 템플릿에 더 이상 접근할 수 없습니다.`);
         navigate('/', { replace: true });
       }),
@@ -421,6 +432,7 @@ function WorkspaceInner({ entry }: { entry: TemplateEntry }) {
   const value: WorkspaceValue = {
     template: entry,
     mode: entry.mode,
+    isPrivate: isPrivate(entry),
     role: entry.myRole,
     canEdit: entry.myRole !== 'viewer',
     doc: conn.doc,
@@ -432,7 +444,7 @@ function WorkspaceInner({ entry }: { entry: TemplateEntry }) {
     view,
     notes,
     chat,
-    chatOpen: shared && chatOpen,
+    chatOpen: shared && !isPrivate(entry) && chatOpen,
     setChatOpen,
     unread,
     report,

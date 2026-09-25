@@ -22,8 +22,8 @@ const LOCAL_TIMELINE_LIMIT = 3000;
 
 /* ───────────── 템플릿 ───────────── */
 
-export function personalEntry(t: Omit<TemplateEntry, 'ownerId' | 'members' | 'myRole' | 'mode'>, me: PublicUser): TemplateEntry {
-  return { ...t, mode: 'personal', ownerId: me.id, members: [{ user: me, role: 'owner', joinedAt: t.createdAt }], myRole: 'owner' };
+export function personalEntry(t: Omit<TemplateEntry, 'ownerId' | 'members' | 'myRole' | 'mode' | 'visibility'>, me: PublicUser): TemplateEntry {
+  return { ...t, mode: 'personal', visibility: 'private', ownerId: me.id, members: [{ user: me, role: 'owner', joinedAt: t.createdAt }], myRole: 'owner' };
 }
 
 export async function createPersonalTemplate(
@@ -176,9 +176,14 @@ export async function buildShareUpload(entry: TemplateEntry, openDoc?: Y.Doc): P
   };
 }
 
-/** 올리기가 끝나면 로컬 기록·노트는 정리 (이제 서버가 원본). 문서 사본은 오프라인 편집용으로 유지 */
-export async function clearSharedLocalData(templateId: string): Promise<void> {
-  await idbDeleteByTemplate('timeline', templateId);
-  await idbDeleteByTemplate('notes', templateId);
-  recent.delete(templateId);
+/**
+ * 올리기가 끝나면 로컬 기록·노트는 정리 (이제 서버가 원본). 문서 사본은 오프라인 편집용으로 유지.
+ * 올린 뒤에 생기거나 바뀐 항목은 지우지 않는다 — 올라가지 않은 데이터가 사라지지 않도록.
+ */
+export async function clearSharedLocalData(upload: ShareUpload): Promise<void> {
+  const events = new Set(upload.timeline.map((e) => e.id));
+  const notes = new Map(upload.notes.map((n) => [n.id, n.updatedAt]));
+  for (const e of await idbByTemplate<TimelineEvent>('timeline', upload.id)) if (events.has(e.id)) await idbDelete('timeline', e.id);
+  for (const n of await listLocalNotes(upload.id)) if (notes.get(n.id) === n.updatedAt) await idbDelete('notes', n.id);
+  recent.delete(upload.id);
 }

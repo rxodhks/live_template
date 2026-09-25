@@ -26,6 +26,9 @@ interface TemplatesState {
   touch(templateId: string, updatedAt?: number): void;
 }
 
+/** 나만 보는 개인 공간인지 (아직 이 기기에만 있거나, 클라우드에 백업된 비공개 템플릿) */
+export const isPrivate = (t: Pick<TemplateEntry, 'mode' | 'visibility'>) => t.mode === 'personal' || t.visibility === 'private';
+
 /** 개인 템플릿의 멤버 정보는 항상 현재 프로필 기준 */
 function normalize(t: TemplateEntry): TemplateEntry {
   const me = useSession.getState().user;

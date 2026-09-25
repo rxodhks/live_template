@@ -22,7 +22,7 @@ import {
 import { FEATURE_INFO } from '@shared/presets';
 import { useOptionalWorkspace } from '../workspace/context';
 import { useSession, type ThemePref } from '../store/session';
-import { useTemplates } from '../store/templates';
+import { isPrivate, useTemplates } from '../store/templates';
 import { useUI } from '../store/ui';
 import { useConnection } from '../store/connection';
 import { Avatar, IconButton, Kbd, Menu } from './ui';
@@ -57,7 +57,7 @@ export function TopBar() {
 
   return (
     <header className="topbar">
-      <div className="topbar-left">
+      <div className={ws ? 'topbar-left has-crumbs' : 'topbar-left'}>
         <Link to="/" className="brand" aria-label={`${BRAND} 홈`}>
           <span className="brand-mark">
             <BrandMark size={22} />
@@ -79,7 +79,7 @@ export function TopBar() {
                   label: t.name,
                   icon: <span>{t.emoji}</span>,
                   checked: t.id === ws.template.id,
-                  hint: `${t.mode === 'personal' ? '개인' : '협업'} ${t.features.map((f) => FEATURE_INFO[f].emoji).join('')}`,
+                  hint: `${isPrivate(t) ? '개인' : '협업'} ${t.features.map((f) => FEATURE_INFO[f].emoji).join('')}`,
                   onSelect: () => navigate(`/t/${t.id}`),
                 })),
                 { divider: true, label: '' },
@@ -94,7 +94,6 @@ export function TopBar() {
               )}
             />
             <SpaceBadge />
-            <span className="crumb-sep">/</span>
             <CurrentViewLabel />
           </>
         )}
@@ -113,17 +112,17 @@ export function TopBar() {
             <CloudOff size={15} />
           </span>
         )}
-        {ws?.mode === 'shared' && <PresenceBar />}
+        {ws && !ws.isPrivate && <PresenceBar />}
         {ws && ws.canEdit && (
           <span className="badge-anchor">
-            <button className="btn btn-primary btn-sm" onClick={() => ui.setShareOpen(true)} data-tip={ws.mode === 'personal' ? '초대하면 협업 공간으로 전환됩니다' : '초대 링크 만들기 · 관리'}>
+            <button className="btn btn-primary btn-sm" onClick={() => ui.setShareOpen(true)} data-tip={ws.isPrivate ? '초대하면 협업 공간으로 전환됩니다' : '초대 링크 만들기 · 관리'}>
               <UserPlus size={14} />
               <span>초대</span>
             </button>
             {ws.requests.length > 0 && <span className="badge-count">{ws.requests.length}</span>}
           </span>
         )}
-        {ws?.mode === 'shared' && (
+        {ws && !ws.isPrivate && (
           <span className="badge-anchor">
             <IconButton label="채팅" active={ws.chatOpen} onClick={() => ws.setChatOpen(!ws.chatOpen)}>
               <MessageSquare size={17} />
@@ -177,11 +176,15 @@ function SpaceBadge() {
   const ws = useOptionalWorkspace()!;
   const ui = useUI();
   const status = useConnection((s) => s.status);
-  if (ws.mode === 'personal') {
+  if (ws.isPrivate) {
     return (
       <button
         className="space-chip is-personal as-button"
-        data-tip="이 브라우저에만 저장된 개인 공간입니다. 초대하면 협업 공간으로 전환됩니다."
+        data-tip={
+          ws.mode === 'personal'
+            ? '나만 볼 수 있는 개인 공간 · 아직 이 기기에만 있어 인터넷에 연결되면 자동으로 백업됩니다. 초대하면 협업 공간으로 전환됩니다.'
+            : '나만 볼 수 있는 개인 공간 · 클라우드에 자동 백업됩니다. 초대하면 협업 공간으로 전환됩니다.'
+        }
         onClick={() => ws.canEdit && ui.setShareOpen(true)}
       >
         <HardDrive size={12} /> 개인 공간
@@ -205,5 +208,12 @@ function CurrentViewLabel() {
   const name = useYField<string>(item, module === 'docs' ? 'title' : 'name');
   const noteTitle = module === 'notes' && itemId ? ws.notes.find((n) => n.id === itemId)?.title : undefined;
   const label = name ?? noteTitle;
-  return <span className="crumb-view">{label ? `${MODULE_NAMES[module]} › ${label}` : MODULE_NAMES[module]}</span>;
+  const text = label ? `${MODULE_NAMES[module]} › ${label}` : MODULE_NAMES[module];
+  // 긴 위치(항목 이름 포함)만 자리에 맞춰 줄어든다. 짧은 위치는 그대로 보이거나 통째로 숨는다
+  return (
+    <span className={`crumb-where${text.length > 8 ? ' is-long' : ''}`}>
+      <span className="crumb-sep">/</span>
+      <span className="crumb-view">{text}</span>
+    </span>
+  );
 }

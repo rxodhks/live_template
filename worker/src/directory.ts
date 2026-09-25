@@ -9,11 +9,14 @@ import type {
   JoinRequest,
   JoinStatus,
   MemberInfo,
+  MyJoinRequest,
   PublicUser,
   OAuthProvider,
   Role,
   SignupInfo,
   TemplateSummary,
+  TemplateVisibility,
+  TrashEntry,
 } from '../../shared/types';
 import type { TemplateBroadcast } from '../../shared/protocol';
 import { USER_AVATARS, USER_COLORS, isHexColor } from '../../shared/colors';
@@ -36,6 +39,8 @@ export const SESSION_TTL_MS = 30 * 86_400_000;
 const CODE_TTL_MS = 10 * 60_000;
 const CODE_RESEND_MS = 30_000;
 const CODE_MAX_ATTEMPTS = 5;
+/** 휴지통 보관 기간: 지나면 영구 삭제 */
+export const TRASH_TTL_MS = 30 * 86_400_000;
 /** 외부 로그인 왕복 · 이름 입력까지 기다리는 시간 */
 const FLOW_TTL_MS = { oauth: 10 * 60_000, signup: 30 * 60_000 } as const;
 
@@ -74,6 +79,9 @@ type TemplateRow = {
   owner_id: string;
   created_at: number;
   updated_at: number;
+  visibility: TemplateVisibility;
+  deleted_at: number | null;
+  deleted_by: string | null;
 };
 type InviteRow = {
   id: string;
@@ -149,11 +157,20 @@ export class Directory extends DurableObject<Env> {
       CREATE TABLE IF NOT EXISTS rate (key TEXT NOT NULL, bucket INTEGER NOT NULL, count INTEGER NOT NULL, expires_at INTEGER NOT NULL,
         PRIMARY KEY (key, bucket));
     `);
-    // 로그인 기능 이전에 만든 저장소에는 이메일 칸이 없다
-    try {
-      this.sql.exec('ALTER TABLE users ADD COLUMN email TEXT');
-    } catch {
-      /* 이미 있음 */
+    // 나중에 추가된 칸 (예전에 만든 저장소에는 없다)
+    for (const ddl of [
+      'ALTER TABLE users ADD COLUMN email TEXT',
+      // 개인 공간(private)도 클라우드에 백업하면서 생긴 공개 범위. 그 전의 템플릿은 모두 협업 공간
+      "ALTER TABLE templates ADD COLUMN visibility TEXT NOT NULL DEFAULT 'shared'",
+      // 휴지통: 삭제해도 30일 동안 보관
+      'ALTER TABLE templates ADD COLUMN deleted_at INTEGER',
+      'ALTER TABLE templates ADD COLUMN deleted_by TEXT',
+    ]) {
+      try {
+        this.sql.exec(ddl);
+      } catch {
+        /* 이미 있음 */
+      }
     }
     this.sql.exec('CREATE UNIQUE INDEX IF NOT EXISTS users_by_email ON users(email)');
   }
@@ -262,14 +279,14 @@ export class Directory extends DurableObject<Env> {
   }
 
   /** 이메일 인증 코드 발급 (메일 발송은 Worker가 한다) */
-  async startEmailCode(email: string, ip: string): Promise<Result<{ code: string; expiresAt: number }>> {
+  async startEmailCode(email: string, ip: string | null): Promise<Result<{ code: string; expiresAt: number }>> {
     const now = Date.now();
     const prev = this.sql.exec<{ sent_at: number }>('SELECT sent_at FROM email_codes WHERE email = ?', email).toArray()[0];
     if (prev && now - prev.sent_at < CODE_RESEND_MS) {
       const retryAfter = Math.ceil((CODE_RESEND_MS - (now - prev.sent_at)) / 1000);
       return fail(429, `${retryAfter}초 후에 다시 받을 수 있습니다.`, { retryAfter });
     }
-    const wait = this.limit(`ip:${ip}`, 20, 3_600_000) ?? this.limit(`mail:${email}`, 8, 3_600_000);
+    const wait = (ip ? this.limit(`ip:${ip}`, 20, 3_600_000) : null) ?? this.limit(`mail:${email}`, 8, 3_600_000);
     if (wait) return fail(429, '인증 코드를 너무 많이 요청했습니다. 잠시 후 다시 시도해 주세요.', { retryAfter: wait });
     const code = sixDigits();
     this.sql.exec(
@@ -452,7 +469,13 @@ export class Directory extends DurableObject<Env> {
 
   /* ───────────── 템플릿 ───────────── */
 
+  /** 사용 중인 템플릿 (휴지통에 있는 템플릿은 없는 것으로 본다 — 모든 권한 확인이 이 함수를 거친다) */
   private template(id: string): TemplateRow | null {
+    return this.sql.exec<TemplateRow>('SELECT * FROM templates WHERE id = ? AND deleted_at IS NULL', id).toArray()[0] ?? null;
+  }
+
+  /** 휴지통에 있는 것까지 포함 */
+  private templateAny(id: string): TemplateRow | null {
     return this.sql.exec<TemplateRow>('SELECT * FROM templates WHERE id = ?', id).toArray()[0] ?? null;
   }
 
@@ -482,6 +505,7 @@ export class Directory extends DurableObject<Env> {
       members: this.members(t.id),
       createdAt: t.created_at,
       updatedAt: t.updated_at,
+      visibility: t.visibility === 'private' ? 'private' : 'shared',
     };
   }
 
@@ -494,7 +518,8 @@ export class Directory extends DurableObject<Env> {
     const t = this.template(templateId);
     if (!t) return fail(404, '템플릿을 찾을 수 없습니다.');
     const role = this.roleOf(templateId, userId);
-    if (!role) return fail(403, '이 템플릿의 멤버가 아닙니다.');
+    // 멤버가 아니면 템플릿이 있는지조차 알려 주지 않는다
+    if (!role) return fail(404, '템플릿을 찾을 수 없습니다.');
     if (!hasRole(role, min)) return fail(403, '권한이 부족합니다.');
     return ok({ t, role });
   }
@@ -508,7 +533,7 @@ export class Directory extends DurableObject<Env> {
   async listTemplates(userId: string): Promise<{ templates: TemplateSummary[]; online: Record<string, string[]>; requests: Record<string, number> }> {
     const rows = this.sql
       .exec<TemplateRow>(
-        'SELECT t.* FROM templates t JOIN members m ON m.template_id = t.id WHERE m.user_id = ? ORDER BY t.updated_at DESC',
+        'SELECT t.* FROM templates t JOIN members m ON m.template_id = t.id WHERE m.user_id = ? AND t.deleted_at IS NULL ORDER BY t.updated_at DESC',
         userId,
       )
       .toArray();
@@ -526,16 +551,23 @@ export class Directory extends DurableObject<Env> {
     return { templates, online, requests };
   }
 
-  /** 개인 공간의 템플릿을 협업 공간으로 등록 (ID는 브라우저에서 만든 것을 그대로 사용) */
+  /**
+   * 브라우저에서 만든 템플릿을 클라우드에 등록 (ID는 브라우저에서 만든 것을 그대로 사용)
+   *  · private: 개인 공간 백업 — 나만 볼 수 있다
+   *  · shared : 초대하면서 바로 협업 공간으로
+   */
   async createTemplate(
     userId: string,
     input: { id?: unknown; name?: unknown; description?: unknown; emoji?: unknown; features?: unknown; createdAt?: unknown },
+    visibility: TemplateVisibility = 'shared',
   ): Promise<Result<TemplateSummary>> {
     if (!isId(input.id, 8, 40)) return fail(400, '잘못된 템플릿 ID입니다.');
-    const existing = this.template(input.id);
+    const existing = this.templateAny(input.id);
     if (existing) {
+      if (existing.owner_id !== userId) return fail(409, '이미 사용 중인 템플릿 ID입니다.');
+      if (existing.deleted_at) return fail(409, '휴지통에 있는 템플릿입니다. 휴지통에서 복원해 주세요.');
       // 같은 사람이 다시 올리는 경우(재시도)는 허용
-      return existing.owner_id === userId ? ok(this.summary(existing, userId)) : fail(409, '이미 사용 중인 템플릿 ID입니다.');
+      return ok(this.summary(existing, userId));
     }
     const name = clampText(input.name, 60);
     if (!name) return fail(400, '템플릿 이름을 입력해 주세요.');
@@ -545,7 +577,7 @@ export class Directory extends DurableObject<Env> {
     const createdAt = typeof input.createdAt === 'number' && input.createdAt > 0 && input.createdAt <= now ? input.createdAt : now;
     const emoji = typeof input.emoji === 'string' && input.emoji && input.emoji.length <= 8 ? input.emoji : '🗂️';
     this.sql.exec(
-      'INSERT INTO templates (id, name, description, emoji, features, owner_id, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?)',
+      'INSERT INTO templates (id, name, description, emoji, features, owner_id, created_at, updated_at, visibility) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)',
       input.id,
       name,
       clampText(input.description, 200),
@@ -554,6 +586,7 @@ export class Directory extends DurableObject<Env> {
       userId,
       createdAt,
       now,
+      visibility,
     );
     this.sql.exec('INSERT INTO members (template_id, user_id, role, joined_at) VALUES (?, ?, ?, ?)', input.id, userId, 'owner', now);
     return ok(this.summary(this.template(input.id)!, userId));
@@ -616,12 +649,100 @@ export class Directory extends DurableObject<Env> {
     this.sql.exec('UPDATE templates SET updated_at = ? WHERE id = ?', Date.now(), templateId);
   }
 
-  async deleteTemplate(templateId: string, userId: string): Promise<Result<{ name: string }>> {
+  /* ───────────── 휴지통 ───────────── */
+
+  /** 삭제 = 휴지통으로 이동. 30일 동안 소유자가 복원할 수 있고, 그동안 멤버 누구도 열 수 없다 */
+  async trashTemplate(templateId: string, userId: string): Promise<Result<{ name: string }>> {
     const r = this.check(templateId, userId, 'owner');
     if (!r.ok) return r;
+    const now = Date.now();
+    this.sql.exec('UPDATE templates SET deleted_at = ?, deleted_by = ? WHERE id = ?', now, userId, templateId);
+    this.sql.exec('DELETE FROM online WHERE template_id = ?', templateId);
+    await this.schedulePurge();
+    return ok({ name: r.data.t.name });
+  }
+
+  private trashed(templateId: string, userId: string): Result<TemplateRow> {
+    const t = this.templateAny(templateId);
+    // 멤버가 아니었던 사람에게는 있는지조차 알려 주지 않는다
+    if (!t || !t.deleted_at || (t.owner_id !== userId && !this.roleOf(templateId, userId))) return fail(404, '휴지통에 없는 템플릿입니다.');
+    if (t.owner_id !== userId) return fail(403, '소유자만 할 수 있습니다.');
+    return ok(t);
+  }
+
+  async listTrash(userId: string): Promise<TrashEntry[]> {
+    return this.sql
+      .exec<TemplateRow>('SELECT * FROM templates WHERE owner_id = ? AND deleted_at IS NOT NULL ORDER BY deleted_at DESC', userId)
+      .toArray()
+      .map((t) => ({
+        template: this.summary(t, userId),
+        deletedAt: t.deleted_at!,
+        purgeAt: t.deleted_at! + TRASH_TTL_MS,
+        deletedBy: t.deleted_by ? this.user(t.deleted_by) : null,
+      }));
+  }
+
+  async restoreTemplate(templateId: string, userId: string): Promise<Result<{ template: TemplateSummary; broadcast: TemplateBroadcast }>> {
+    const r = this.trashed(templateId, userId);
+    if (!r.ok) return r;
+    this.sql.exec('UPDATE templates SET deleted_at = NULL, deleted_by = NULL, updated_at = ? WHERE id = ?', Date.now(), templateId);
+    const t = this.template(templateId)!;
+    return ok({ template: this.summary(t, userId), broadcast: this.broadcastSummary(t) });
+  }
+
+  /** 휴지통에서 영구 삭제 (소유자) — 방의 저장 내용은 Worker가 지운다 */
+  async purgeFromTrash(templateId: string, userId: string): Promise<Result<{ name: string }>> {
+    const r = this.trashed(templateId, userId);
+    if (!r.ok) return r;
+    this.purgeRows(templateId);
+    return ok({ name: r.data.name });
+  }
+
+  /** 등록에 실패했을 때 방금 만든 템플릿 되돌리기 */
+  async discardTemplate(templateId: string, userId: string): Promise<void> {
+    const t = this.templateAny(templateId);
+    if (t && t.owner_id === userId) this.purgeRows(templateId);
+  }
+
+  private purgeRows(templateId: string): void {
     for (const table of ['members', 'invites', 'join_requests', 'online']) this.sql.exec(`DELETE FROM ${table} WHERE template_id = ?`, templateId);
     this.sql.exec('DELETE FROM templates WHERE id = ?', templateId);
-    return ok({ name: r.data.t.name });
+  }
+
+  /** 가장 먼저 기한이 끝나는 휴지통 항목에 맞춰 알람 */
+  private async schedulePurge(): Promise<void> {
+    const next = this.sql.exec<{ at: number | null }>('SELECT min(deleted_at) AS at FROM templates WHERE deleted_at IS NOT NULL').one().at;
+    if (next === null) return;
+    const due = next + TRASH_TTL_MS;
+    const current = await this.ctx.storage.getAlarm();
+    if (current === null || current > due) await this.ctx.storage.setAlarm(Math.max(due, Date.now() + 1000));
+  }
+
+  /** 기한이 지난 휴지통 항목 영구 삭제 */
+  async alarm(): Promise<void> {
+    const expired = this.sql
+      .exec<{ id: string }>('SELECT id FROM templates WHERE deleted_at IS NOT NULL AND deleted_at < ?', Date.now() - TRASH_TTL_MS)
+      .toArray();
+    for (const { id } of expired) {
+      await this.env.ROOM.get(this.env.ROOM.idFromName(id)).destroy('휴지통 보관 기간 만료');
+      this.purgeRows(id);
+    }
+    await this.schedulePurge();
+  }
+
+  /** 내가 보낸 참여 요청 (승인 대기 · 최근 결과) — 기기가 바뀌어도 서버 기준으로 보여 준다 */
+  async myRequests(userId: string): Promise<MyJoinRequest[]> {
+    return this.sql
+      .exec<{ template_id: string; name: string; emoji: string; created_at: number; status: RequestRow['status'] }>(
+        `SELECT r.template_id, t.name, t.emoji, r.created_at, r.status FROM join_requests r JOIN templates t ON t.id = r.template_id
+         WHERE r.user_id = ? AND t.deleted_at IS NULL AND (r.status = 'pending' OR r.created_at > ?)
+         ORDER BY r.created_at DESC LIMIT 50`,
+        userId,
+        Date.now() - 7 * 86_400_000,
+      )
+      .toArray()
+      .filter((r, i, all) => all.findIndex((x) => x.template_id === r.template_id) === i)
+      .map((r) => ({ templateId: r.template_id, name: r.name, emoji: r.emoji, requestedAt: r.created_at, status: r.status }));
   }
 
   async setOnline(templateId: string, userIds: string[]): Promise<void> {
@@ -692,7 +813,12 @@ export class Directory extends DurableObject<Env> {
     return null;
   }
 
-  async createInvite(templateId: string, actorId: string, opts: Partial<InviteOptions>): Promise<Result<InviteInfo>> {
+  /** 초대 링크 만들기. 개인 공간(private)이면 이때 협업 공간으로 바뀐다 */
+  async createInvite(
+    templateId: string,
+    actorId: string,
+    opts: Partial<InviteOptions>,
+  ): Promise<Result<{ invite: InviteInfo; becameShared: boolean; broadcast: TemplateBroadcast }>> {
     const r = this.check(templateId, actorId, 'editor');
     if (!r.ok) return r;
     const role = opts.role === 'viewer' ? 'viewer' : 'editor';
@@ -729,7 +855,9 @@ export class Directory extends DurableObject<Env> {
       row.label,
       row.created_at,
     );
-    return ok(this.inviteInfo(row));
+    const becameShared = r.data.t.visibility === 'private';
+    if (becameShared) this.sql.exec("UPDATE templates SET visibility = 'shared' WHERE id = ?", templateId);
+    return ok({ invite: this.inviteInfo(row), becameShared, broadcast: this.broadcastSummary(this.template(templateId)!) });
   }
 
   async listInvites(templateId: string, actorId: string): Promise<Result<InviteInfo[]>> {

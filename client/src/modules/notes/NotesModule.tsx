@@ -136,7 +136,7 @@ function NewNoteModal({ onClose }: { onClose: () => void }) {
       ws.setTicket(meta.id, unlocked);
       toast.success(
         '비밀 노트를 만들었습니다',
-        ws.mode === 'shared' ? `‘${meta.title}’ · 비밀번호를 팀원에게 안전하게 전달하세요.` : `‘${meta.title}’ · 비밀번호를 잊으면 누구도 열 수 없습니다.`,
+        !ws.isPrivate ? `‘${meta.title}’ · 비밀번호를 팀원에게 안전하게 전달하세요.` : `‘${meta.title}’ · 비밀번호를 잊으면 누구도 열 수 없습니다.`,
       );
       onClose();
       navigate(viewPath(ws.template.id, 'notes', meta.id));
@@ -408,7 +408,7 @@ function ChangePasswordModal({ note, doc, selfChange, onClose }: { note: SecretN
       selfChange.current = true;
       const unlocked = await ws.notesApi.changePassword(note, current, next, hint, doc);
       ws.setTicket(note.id, unlocked);
-      toast.success('비밀번호를 변경했습니다', ws.mode === 'shared' ? '내용을 새 키로 다시 암호화했습니다. 열람 중이던 다른 멤버는 새 비밀번호로 다시 열어야 합니다.' : '내용을 새 키로 다시 암호화했습니다.');
+      toast.success('비밀번호를 변경했습니다', !ws.isPrivate ? '내용을 새 키로 다시 암호화했습니다. 열람 중이던 다른 멤버는 새 비밀번호로 다시 열어야 합니다.' : '내용을 새 키로 다시 암호화했습니다.');
       onClose();
     } catch (err) {
       selfChange.current = false;
