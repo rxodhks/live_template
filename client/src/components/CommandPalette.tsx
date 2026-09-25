@@ -132,9 +132,17 @@ function Palette_() {
             ui.setNewNoteOpen(true);
           },
         });
-        list.push({ id: 'share', group: '작업', label: '팀원 초대하기', icon: <Share2 size={16} />, keywords: 'invite link 링크', run: () => ui.setShareOpen(true) });
+        list.push({
+          id: 'share',
+          group: '작업',
+          label: ws.mode === 'personal' ? '팀원 초대하기 (협업 공간으로 전환)' : '팀원 초대하기',
+          icon: <Share2 size={16} />,
+          keywords: 'invite link 링크 초대 협업',
+          run: () => ui.setShareOpen(true),
+        });
       }
-      list.push({ id: 'chat', group: '작업', label: ws.chatOpen ? '채팅 닫기' : '채팅 열기', icon: <MessageSquare size={16} />, run: () => ws.setChatOpen(!ws.chatOpen) });
+      if (ws.mode === 'shared')
+        list.push({ id: 'chat', group: '작업', label: ws.chatOpen ? '채팅 닫기' : '채팅 열기', icon: <MessageSquare size={16} />, run: () => ws.setChatOpen(!ws.chatOpen) });
       for (const p of uniqueUsers(others))
         list.push({
           id: `follow:${p.socketId}`,

@@ -359,36 +359,6 @@ textarea.input {
   height: 28px;
 }
 
-.presence-avatars {
-  display: flex;
-  align-items: center;
-  padding-right: 4px;
-}
-.presence-avatar {
-  border-radius: 50%;
-  margin-left: -6px;
-  transition: transform 0.15s;
-  display: flex;
-}
-.presence-avatar:first-child {
-  margin-left: 0;
-}
-.presence-avatar:hover {
-  transform: translateY(-2px);
-  z-index: 1;
-}
-.presence-avatar .avatar {
-  outline: 2px solid var(--surface);
-}
-.presence-avatar.is-following .avatar {
-  outline: 3px solid var(--user-color);
-}
-.presence-alone {
-  font-size: 12px;
-  color: var(--text-3);
-  padding: 0 6px;
-}
-
 /* ───────────────────────── 칩/배지 ───────────────────────── */
 
 .feature-pill {
@@ -692,6 +662,7 @@ textarea.input {
 }
 .confirm-message {
   color: var(--text-2);
+  white-space: pre-line;
   margin-bottom: 12px;
 }
 
@@ -827,7 +798,8 @@ textarea.input {
   left: 0;
   top: 0;
   pointer-events: none;
-  transition: transform 90ms linear;
+  /* 위치는 100ms마다 도착한다. 도착 간격보다 조금 길게 이어 움직여 멈칫거림 없이 미끄러지듯 보이게 한다 */
+  transition: transform 120ms linear;
   will-change: transform;
   z-index: 16;
 }

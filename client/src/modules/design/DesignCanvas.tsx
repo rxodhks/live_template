@@ -5,8 +5,11 @@ import type { Viewport } from '@shared/types';
 import { useWorkspace } from '../../workspace/context';
 import { useSession } from '../../store/session';
 import { useUserPresence } from '../../store/presence';
+import { useIsTouch } from '../../hooks/useMedia';
 import { useYField } from '../../hooks/useY';
 import { RemoteCursor, useViewers, ACTION_BUBBLE_MS } from '../../components/Cursors';
+import { useLive, type RemotePen } from '../../store/live';
+import type { LivePen } from '@shared/protocol';
 import { isTypingTarget, newId, throttle } from '../../lib/util';
 import { useDesign, type Tool } from './store';
 import { ShapeView } from './ShapeView';
@@ -18,11 +21,19 @@ type Drag =
   | { kind: 'move'; start: { x: number; y: number }; orig: Map<string, { x: number; y: number }>; moved: boolean }
   | { kind: 'resize'; id: string; handle: Handle; orig: Shape }
   | { kind: 'create'; id: string; start: { x: number; y: number }; type: Shape['type'] }
-  | { kind: 'pen'; id: string; points: number[] }
-  | { kind: 'marquee'; start: { x: number; y: number }; base: string[] };
+  | { kind: 'pen'; shape: Shape; points: number[]; sent: number; announced: boolean; timer: ReturnType<typeof setTimeout> | null }
+  | { kind: 'marquee'; start: { x: number; y: number }; base: string[] }
+  | { kind: 'pinch'; startDist: number; startMid: { x: number; y: number }; orig: Viewport };
+
+const dist = (a: { x: number; y: number }, b: { x: number; y: number }) => Math.max(1, Math.hypot(a.x - b.x, a.y - b.y));
+const mid = (a: { x: number; y: number }, b: { x: number; y: number }) => ({ x: (a.x + b.x) / 2, y: (a.y + b.y) / 2 });
 
 const TOOL_KEYS: Record<string, Tool> = { v: 'select', h: 'hand', r: 'rect', o: 'ellipse', d: 'diamond', l: 'line', a: 'arrow', p: 'pen', t: 'text', s: 'sticky' };
 const TEXT_TYPES = new Set(['rect', 'ellipse', 'diamond', 'sticky', 'text']);
+/** 그리는 중인 펜 선의 새 점을 모아 보내는 간격 */
+const PEN_LIVE_MS = 80;
+/** 받는 쪽에서 도착한 점을 드러내는 시간 (도착 간격 + 여유) */
+const PEN_REVEAL_MS = 120;
 const MIN_ZOOM = 0.1;
 const MAX_ZOOM = 5;
 
@@ -55,6 +66,11 @@ export function DesignCanvas({ board, onApi, onZoom }: Props) {
   const byId = useMemo(() => new Map(shapes.map((s) => [s.id, s])), [shapes]);
   const { tool, setTool, selection, setSelection, editingId, setEditing, showGrid, snap } = useDesign();
   const readOnly = !ws.canEdit;
+  const isTouch = useIsTouch();
+  /** 화면에 닿아 있는 손가락들 (두 손가락 확대/이동용) */
+  const touches = useRef(new Map<number, { x: number; y: number }>());
+  const lastTap = useRef<{ t: number; x: number; y: number } | null>(null);
+  const lastPointerType = useRef('mouse');
 
   const wrapRef = useRef<HTMLDivElement>(null);
   const svgRef = useRef<SVGSVGElement>(null);
@@ -74,6 +90,8 @@ export function DesignCanvas({ board, onApi, onZoom }: Props) {
   const [marquee, setMarquee] = useState<Box | null>(null);
   const drag = useRef<Drag | null>(null);
   const [dragKind, setDragKind] = useState<Drag['kind'] | null>(null);
+  /** 내가 그리고 있는 펜 선 (손을 뗄 때 한 번만 문서에 저장) */
+  const [draft, setDraft] = useState<{ points: number[]; stroke: string; strokeWidth: number; opacity: number } | null>(null);
   const [, bump] = useState(0);
 
   const undo = useMemo(() => new Y.UndoManager(map, { captureTimeout: 400 }), [map]);
@@ -201,13 +219,63 @@ export function DesignCanvas({ board, onApi, onZoom }: Props) {
       });
   };
 
+  /** 그리는 중인 펜 선: 지난번 이후 새로 생긴 점만 보낸다 */
+  const sendPen = (d: Extract<Drag, { kind: 'pen' }>, end?: LivePen['end']) => {
+    if (d.timer) clearTimeout(d.timer);
+    d.timer = null;
+    const pts = d.points.slice(d.sent).map((v) => Math.round(v * 10) / 10);
+    d.sent = d.points.length;
+    if (!pts.length && !end) return;
+    const msg: LivePen = { id: d.shape.id, board: boardId, pts, end };
+    if (!d.announced) msg.style = { stroke: d.shape.stroke, strokeWidth: d.shape.strokeWidth, opacity: d.shape.opacity };
+    d.announced = true;
+    ws.live('pen', msg);
+  };
+
   const beginDrag = (d: Drag, pointerId: number) => {
     drag.current = d;
     setDragKind(d.kind);
+    // 도형을 끄는 동안에는 다른 사람 화면에서 끊기지 않도록 더 자주 동기화
+    if (d.kind === 'move' || d.kind === 'resize' || d.kind === 'create') ws.provider.setLive?.(true);
     svgRef.current?.setPointerCapture(pointerId);
   };
 
+  /** 두 번째 손가락이 닿으면 진행 중이던 조작을 취소한다 (방금 만들던 도형은 지움) */
+  const cancelDrag = () => {
+    const d = drag.current;
+    if (d?.kind === 'create') deleteShapes(map, [d.id]);
+    if (d?.kind === 'pen') {
+      sendPen(d, 'cancel');
+      setDraft(null);
+    }
+    ws.provider.setLive?.(false);
+    drag.current = null;
+    setMarquee(null);
+    undo.stopCapturing();
+  };
+
   const onPointerDown = (e: React.PointerEvent) => {
+    lastPointerType.current = e.pointerType;
+    if (e.pointerType === 'touch') {
+      touches.current.set(e.pointerId, { x: e.clientX, y: e.clientY });
+      if (touches.current.size >= 2) {
+        const [a, b] = Array.from(touches.current.values());
+        cancelDrag();
+        stopFollow();
+        lastTap.current = null;
+        beginDrag({ kind: 'pinch', startDist: dist(a, b), startMid: mid(a, b), orig: viewRef.current }, e.pointerId);
+        return;
+      }
+      // 더블 탭 = 더블 클릭 (텍스트 편집)
+      const now = Date.now();
+      const lt = lastTap.current;
+      if (lt && now - lt.t < 320 && Math.hypot(e.clientX - lt.x, e.clientY - lt.y) < 24) {
+        lastTap.current = null;
+        openAt(e.target as Element, e.clientX, e.clientY);
+        return;
+      }
+      lastTap.current = { t: now, x: e.clientX, y: e.clientY };
+    }
     if (editingId && !(e.target as Element).closest('.canvas-textedit')) finishEditing();
     stopFollow();
     wrapRef.current?.focus({ preventScroll: true });
@@ -245,6 +313,11 @@ export function DesignCanvas({ board, onApi, onZoom }: Props) {
       }
       const base = e.shiftKey ? selection : [];
       if (!e.shiftKey) setSelection([]);
+      // 손가락으로 빈 곳을 끌면 화면 이동 (영역 선택은 마우스로)
+      if (e.pointerType === 'touch') {
+        beginDrag({ kind: 'pan', sx: e.clientX, sy: e.clientY, orig: v }, e.pointerId);
+        return;
+      }
       beginDrag({ kind: 'marquee', start: p, base }, e.pointerId);
       return;
     }
@@ -254,13 +327,11 @@ export function DesignCanvas({ board, onApi, onZoom }: Props) {
     const y = snapTo(p.y, snap);
     const shape = defaultShape(tool as Shape['type'], x, y, maxZ(map) + 1, me.id);
     if (tool === 'pen') {
-      shape.x = p.x;
-      shape.y = p.y;
-      shape.w = 1;
-      shape.h = 1;
-      shape.points = [0, 0];
-      insertShapes(map, [shape]);
-      beginDrag({ kind: 'pen', id: shape.id, points: [p.x, p.y] }, e.pointerId);
+      // 그리는 동안은 문서에 쓰지 않고 내 화면에만 그린다. 다른 사람에게는 새 점만 짧게 중계
+      const d: Drag = { kind: 'pen', shape, points: [p.x, p.y], sent: 0, announced: false, timer: null };
+      beginDrag(d, e.pointerId);
+      setDraft({ points: d.points.slice(), stroke: shape.stroke, strokeWidth: shape.strokeWidth, opacity: shape.opacity });
+      sendPen(d);
       ws.action('✏️ 펜으로 그리는 중');
       return;
     }
@@ -271,9 +342,24 @@ export function DesignCanvas({ board, onApi, onZoom }: Props) {
   };
 
   const onPointerMove = (e: React.PointerEvent) => {
-    const p = toWorld(e.clientX, e.clientY);
-    ws.publishCursor(p);
+    if (e.pointerType === 'touch' && touches.current.has(e.pointerId)) touches.current.set(e.pointerId, { x: e.clientX, y: e.clientY });
     const d = drag.current;
+    if (d?.kind === 'pinch') {
+      if (touches.current.size < 2) return;
+      const [a, b] = Array.from(touches.current.values());
+      const r = svgRef.current!.getBoundingClientRect();
+      const o = d.orig;
+      const zoom = Math.min(MAX_ZOOM, Math.max(MIN_ZOOM, (o.zoom * dist(a, b)) / d.startDist));
+      // 처음 두 손가락 가운데 있던 지점이 지금 가운데에 오도록
+      const wx = (d.startMid.x - r.left - o.x) / o.zoom;
+      const wy = (d.startMid.y - r.top - o.y) / o.zoom;
+      const m = mid(a, b);
+      setView({ zoom, x: m.x - r.left - wx * zoom, y: m.y - r.top - wy * zoom });
+      return;
+    }
+    const p = toWorld(e.clientX, e.clientY);
+    // 펜으로 그리는 중에는 선 끝이 곧 커서 위치라 따로 보내지 않는다
+    if (d?.kind !== 'pen') ws.publishCursor(p);
     if (!d) return;
     switch (d.kind) {
       case 'pan':
@@ -339,7 +425,8 @@ export function DesignCanvas({ board, onApi, onZoom }: Props) {
         const last = d.points.length - 2;
         if (Math.hypot(p.x - d.points[last], p.y - d.points[last + 1]) * viewRef.current.zoom < 2) return;
         d.points.push(p.x, p.y);
-        schedule(() => updateShapes(map, { [d.id]: penPatch(d.points) }));
+        schedule(() => setDraft((cur) => (cur ? { ...cur, points: d.points.slice() } : cur)));
+        if (!d.timer) d.timer = setTimeout(() => sendPen(d), PEN_LIVE_MS);
         return;
       }
       case 'marquee': {
@@ -353,6 +440,16 @@ export function DesignCanvas({ board, onApi, onZoom }: Props) {
   };
 
   const onPointerUp = (e: React.PointerEvent) => {
+    if (e.pointerType === 'touch') touches.current.delete(e.pointerId);
+    if (drag.current?.kind === 'pinch') {
+      svgRef.current?.releasePointerCapture?.(e.pointerId);
+      // 두 손가락을 모두 뗄 때까지 다른 조작을 시작하지 않는다
+      if (touches.current.size === 0) {
+        drag.current = null;
+        setDragKind(null);
+      }
+      return;
+    }
     const d = drag.current;
     drag.current = null;
     setDragKind(null);
@@ -364,6 +461,7 @@ export function DesignCanvas({ board, onApi, onZoom }: Props) {
       pending.current = null;
     }
     svgRef.current?.releasePointerCapture?.(e.pointerId);
+    ws.provider.setLive?.(false);
     if (!d) return;
     if (d.kind === 'create') {
       const s = map.get(d.id);
@@ -381,8 +479,12 @@ export function DesignCanvas({ board, onApi, onZoom }: Props) {
         report('design.shape.add', SHAPE_LABEL[s.type]);
       }
     } else if (d.kind === 'pen') {
-      if (d.points.length < 4) deleteShapes(map, [d.id]);
+      setDraft(null);
+      if (d.points.length < 4) sendPen(d, 'cancel');
       else {
+        // 완성된 선을 한 번에 저장 (그리는 동안 매 프레임 문서에 쓰지 않음)
+        insertShapes(map, [{ ...d.shape, ...penPatch(d.points) }]);
+        sendPen(d, 'commit');
         ws.action('✏️ 펜 드로잉 추가');
         report('design.shape.add', SHAPE_LABEL.pen);
       }
@@ -393,8 +495,15 @@ export function DesignCanvas({ board, onApi, onZoom }: Props) {
   };
 
   const onDoubleClick = (e: React.MouseEvent) => {
+    // 터치는 직접 더블 탭을 감지하므로 브라우저의 dblclick은 무시
+    if (lastPointerType.current === 'touch') return;
+    openAt(e.target as Element, e.clientX, e.clientY);
+  };
+
+  /** 도형의 글자를 편집하거나, 빈 곳이면 새 텍스트 상자를 만든다 */
+  function openAt(target: Element, clientX: number, clientY: number) {
     if (readOnly) return;
-    const shapeId = (e.target as Element).closest('[data-shape-id]')?.getAttribute('data-shape-id');
+    const shapeId = target.closest('[data-shape-id]')?.getAttribute('data-shape-id');
     const s = shapeId ? byId.get(shapeId) : undefined;
     if (s && TEXT_TYPES.has(s.type) && !s.locked) {
       setSelection([s.id]);
@@ -402,14 +511,14 @@ export function DesignCanvas({ board, onApi, onZoom }: Props) {
       return;
     }
     if (!s && tool === 'select') {
-      const p = toWorld(e.clientX, e.clientY);
+      const p = toWorld(clientX, clientY);
       const shape = { ...defaultShape('text', p.x, p.y - 17, maxZ(map) + 1, me.id), w: 220, h: 34 };
       insertShapes(map, [shape]);
       setSelection([shape.id]);
       setEditing(shape.id);
       report('design.shape.add', SHAPE_LABEL.text);
     }
-  };
+  }
 
   /* ── 휠: 이동 / Ctrl+휠: 확대 ── */
   useEffect(() => {
@@ -567,6 +676,12 @@ export function DesignCanvas({ board, onApi, onZoom }: Props) {
 
   /* ── 다른 사람들 ── */
   const viewers = useViewers(ws.view);
+  const allPens = useLive((s) => s.pens);
+  const livePens = useMemo(() => Object.values(allPens).filter((p) => p.board === boardId && !(p.committed && byId.has(p.id))), [allPens, boardId, byId]);
+  // 완성된 선이 문서에 들어오면 미리보기를 지운다
+  useEffect(() => {
+    for (const p of Object.values(allPens)) if (p.committed && byId.has(p.id)) useLive.getState().removePen(p.id);
+  }, [allPens, byId]);
   useEffect(() => {
     const latest = Math.max(0, ...viewers.map((v) => v.actionAt ?? 0));
     const left = latest + ACTION_BUBBLE_MS - Date.now();
@@ -577,7 +692,7 @@ export function DesignCanvas({ board, onApi, onZoom }: Props) {
 
   const selectedShapes = selection.map((id) => byId.get(id)).filter((s): s is Shape => !!s);
   const selBounds = unionBounds(selectedShapes);
-  const handleSize = 9 / view.zoom;
+  const handleSize = (isTouch ? 16 : 9) / view.zoom;
   const gridStep = 24 * view.zoom;
   const cursorClass =
     dragKind === 'pan' ? 'is-panning' : tool === 'hand' || spaceDown ? 'is-hand' : tool !== 'select' && !readOnly ? 'is-crosshair' : '';
@@ -611,8 +726,17 @@ export function DesignCanvas({ board, onApi, onZoom }: Props) {
         {showGrid && <rect width="100%" height="100%" fill={`url(#grid-${boardId})`} />}
         <g transform={`translate(${view.x} ${view.y}) scale(${view.zoom})`}>
           {shapes.map((s) => (
-            <ShapeView key={s.id} shape={s} zoom={view.zoom} hideText={editingId === s.id} />
+            <ShapeView key={s.id} shape={s} zoom={view.zoom} hit={isTouch ? 28 : 12} hideText={editingId === s.id} />
           ))}
+
+          {/* 다른 사람이 지금 그리고 있는 펜 선 */}
+          {livePens.map((p) => (
+            <LivePenPath key={p.id} pen={p} />
+          ))}
+          {/* 내가 그리고 있는 펜 선 */}
+          {draft && (
+            <path d={pathOf(draft.points, draft.points.length)} fill="none" stroke={draft.stroke} strokeWidth={draft.strokeWidth} opacity={draft.opacity} strokeLinecap="round" strokeLinejoin="round" />
+          )}
 
           {/* 다른 사람의 선택 영역 */}
           {viewers.map((p) => {
@@ -775,6 +899,49 @@ function TextEditOverlay({ shape, view, map, onDone, onTyping }: { shape: Shape;
         }
       }}
       onBlur={onDone}
+    />
+  );
+}
+
+function pathOf(points: number[], count: number): string {
+  let d = '';
+  for (let i = 0; i + 1 < count; i += 2) d += `${i === 0 ? 'M' : 'L'}${points[i].toFixed(1)},${points[i + 1].toFixed(1)} `;
+  return d;
+}
+
+/**
+ * 다른 사람의 펜 선을 부드럽게 이어 그린다.
+ * 점은 80ms마다 묶음으로 도착한다. 새로 도착한 점들을 120ms에 걸쳐 매 프레임 조금씩 드러내
+ * 끊김 없이 이어서 그려지는 것처럼 보이게 한다.
+ */
+function LivePenPath({ pen }: { pen: RemotePen }) {
+  const target = pen.pts.length;
+  const [shown, setShown] = useState(() => Math.min(target, 4));
+  const pos = useRef(Math.min(target, 4));
+  useEffect(() => {
+    const from = pos.current;
+    if (from >= target) return;
+    // 도착 간격보다 조금 길게(버퍼) 나눠 드러내 네트워크 도착 간격이 흔들려도 멈춤 없이 이어지게
+    const perMs = (target - from) / PEN_REVEAL_MS;
+    let last = performance.now();
+    let raf = requestAnimationFrame(function step(now) {
+      pos.current = Math.min(target, pos.current + Math.max(0, now - last) * perMs);
+      last = now;
+      setShown(Math.floor(pos.current / 2) * 2);
+      if (pos.current < target) raf = requestAnimationFrame(step);
+    });
+    return () => cancelAnimationFrame(raf);
+  }, [target]);
+  return (
+    <path
+      d={pathOf(pen.pts, shown)}
+      fill="none"
+      stroke={pen.style.stroke}
+      strokeWidth={pen.style.strokeWidth}
+      opacity={pen.style.opacity}
+      strokeLinecap="round"
+      strokeLinejoin="round"
+      pointerEvents="none"
     />
   );
 }

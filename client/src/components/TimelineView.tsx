@@ -3,7 +3,8 @@ import { useNavigate } from 'react-router-dom';
 import { Filter, History, Search, Star } from 'lucide-react';
 import type { ActivityModule, PublicUser, TimelineEvent } from '@shared/types';
 import { MODULE_LABEL } from '@shared/activity';
-import { api, errorMessage } from '../lib/api';
+import { errorMessage } from '../lib/api';
+import { queryTimeline } from '../lib/timeline';
 import { dayKey, dayLabel, formatTime, relativeTime } from '../lib/time';
 import { onTimelineEvent } from '../store/templates';
 import { useTick } from '../hooks/useInterval';
@@ -49,15 +50,7 @@ export function TimelineView({ templateId, people, showTemplate }: Props) {
   useTick(30_000);
 
   const query = useCallback(
-    (before?: number) => {
-      const params = new URLSearchParams({ limit: String(PAGE) });
-      if (templateId) params.set('templateId', templateId);
-      if (userId) params.set('userId', userId);
-      if (module) params.set('module', module);
-      if (q.trim()) params.set('q', q.trim());
-      if (before) params.set('before', String(before));
-      return api<{ events: TimelineEvent[]; hasMore: boolean }>('GET', `/timeline?${params}`);
-    },
+    (before?: number) => queryTimeline(templateId, { limit: PAGE, userId: userId || undefined, module: module || undefined, q, before }),
     [templateId, userId, module, q],
   );
 

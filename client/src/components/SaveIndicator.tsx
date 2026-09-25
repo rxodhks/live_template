@@ -1,17 +1,27 @@
-import { Cloud, CloudOff, Loader2, RefreshCw } from 'lucide-react';
+import { Cloud, CloudOff, HardDrive, Loader2, RefreshCw } from 'lucide-react';
+import type { TemplateMode } from '@shared/types';
 import { useConnection } from '../store/connection';
 import { useTick } from '../hooks/useInterval';
 import { formatTime, relativeTime } from '../lib/time';
 import { cx } from '../lib/util';
 
 /** 자동 저장 상태 표시 */
-export function SaveIndicator({ synced }: { synced: boolean }) {
+export function SaveIndicator({ synced, mode }: { synced: boolean; mode: TemplateMode }) {
   const { status, pending, lastSavedAt, offlineChanges, saveError } = useConnection();
   useTick(15_000);
 
+  if (mode === 'personal') {
+    return (
+      <span className="save-indicator is-ok" data-tip="모든 변경 사항은 입력 즉시 이 브라우저에 자동 저장됩니다." role="status">
+        <HardDrive size={15} />
+        <span className="save-text">이 기기에 자동 저장</span>
+      </span>
+    );
+  }
+
   let icon = <Cloud size={15} />;
   let text = '자동 저장됨';
-  let tip = '모든 변경 사항은 입력 즉시 서버에 자동 저장됩니다.';
+  let tip = '모든 변경 사항은 입력 즉시 클라우드에 자동 저장됩니다.';
   let tone = 'ok';
 
   if (status !== 'online') {

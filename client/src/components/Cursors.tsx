@@ -75,9 +75,12 @@ export function CursorLayer({ anchorRef, scrollRef, hostRef, xMode = 'fraction' 
     };
     const onLeave = () => publishCursor(null);
     host.addEventListener('pointermove', onMove);
+    // 터치 기기는 hover 이동이 없으므로 누른 위치도 공유한다
+    host.addEventListener('pointerdown', onMove);
     host.addEventListener('pointerleave', onLeave);
     return () => {
       host.removeEventListener('pointermove', onMove);
+      host.removeEventListener('pointerdown', onMove);
       host.removeEventListener('pointerleave', onLeave);
       publishCursor(null);
     };

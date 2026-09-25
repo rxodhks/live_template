@@ -40,7 +40,7 @@
   --radius-lg: 14px;
   --topbar-h: 52px;
   --rail-w: 64px;
-  --panel-w: 268px;
+  --panel-w: 260px;
   --drawer-w: 340px;
   --font: 'Pretendard Variable', Pretendard, -apple-system, BlinkMacSystemFont, system-ui, 'Apple SD Gothic Neo', 'Malgun Gothic', sans-serif;
   --mono: 'JetBrains Mono', 'SFMono-Regular', ui-monospace, Menlo, Consolas, monospace;
@@ -302,14 +302,6 @@ a {
   }
   100% {
     box-shadow: 0 0 0 0 transparent;
-  }
-}
-.hide-sm {
-  display: inline;
-}
-@media (max-width: 720px) {
-  .hide-sm {
-    display: none;
   }
 }
 

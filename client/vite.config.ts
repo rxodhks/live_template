@@ -2,7 +2,8 @@ import { defineConfig } from 'vite';
 import react from '@vitejs/plugin-react';
 import path from 'node:path';
 
-const apiTarget = process.env.API_URL ?? 'http://localhost:3001';
+// 개발 중에는 클라우드플레어 로컬 런타임(wrangler dev, 8787)으로 API와 실시간 연결을 넘긴다
+const apiTarget = process.env.API_URL ?? 'http://localhost:8787';
 
 export default defineConfig({
   plugins: [react()],
@@ -15,8 +16,7 @@ export default defineConfig({
     port: 5173,
     fs: { allow: [path.resolve(__dirname, '..')] },
     proxy: {
-      '/api': apiTarget,
-      '/socket.io': { target: apiTarget, ws: true },
+      '/api': { target: apiTarget, ws: true },
     },
   },
   build: {

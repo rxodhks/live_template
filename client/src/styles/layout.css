@@ -2,6 +2,8 @@
 
 .shell {
   display: grid;
+  /* 열 폭을 화면에 고정: 내용이 넓어도 레이아웃이 화면 밖으로 밀려나지 않게 */
+  grid-template-columns: minmax(0, 1fr);
   grid-template-rows: var(--topbar-h) minmax(0, 1fr);
   height: 100vh;
   height: 100dvh;
@@ -44,24 +46,32 @@
   flex-direction: column;
 }
 
-@media (max-width: 900px) {
-  .shell-panel {
-    position: absolute;
-    left: var(--rail-w);
-    top: 0;
-    bottom: 0;
-    z-index: 30;
-    box-shadow: var(--shadow-lg);
-  }
-  .shell-drawer {
-    position: absolute;
-    right: 0;
-    top: 0;
-    bottom: 0;
-    z-index: 30;
-    width: min(var(--drawer-w), 100%);
-    box-shadow: var(--shadow-lg);
-  }
+.shell-nav {
+  display: flex;
+  min-height: 0;
+  flex: none;
+}
+
+/* 탐색 패널 너비 조절 */
+.shell-panel {
+  position: relative;
+}
+.panel-resizer {
+  position: absolute;
+  top: 0;
+  right: -3px;
+  bottom: 0;
+  width: 6px;
+  cursor: col-resize;
+  z-index: 5;
+}
+.panel-resizer:hover,
+body.is-resizing .panel-resizer {
+  background: color-mix(in srgb, var(--accent) 40%, transparent);
+}
+body.is-resizing {
+  cursor: col-resize;
+  user-select: none;
 }
 
 /* ── 상단 바 ── */

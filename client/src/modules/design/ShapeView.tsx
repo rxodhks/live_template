@@ -7,6 +7,8 @@ interface Props {
   /** 내보내기용: 선택용 히트 영역을 그리지 않는다 */
   exporting?: boolean;
   zoom?: number;
+  /** 선/펜을 잡기 쉬운 두께(화면 px) */
+  hit?: number;
   /** 텍스트 편집 중에는 SVG 글자를 숨기고 입력창을 겹쳐 보여준다 */
   hideText?: boolean;
 }
@@ -58,14 +60,14 @@ function ArrowHead({ shape }: { shape: Shape }) {
 }
 
 /** 도형 하나를 SVG로 그린다 (캔버스와 SVG/PNG 내보내기가 같은 코드를 사용) */
-export const ShapeView = memo(function ShapeView({ shape, exporting, zoom = 1, hideText }: Props) {
+export const ShapeView = memo(function ShapeView({ shape, exporting, zoom = 1, hit = 12, hideText }: Props) {
   const b = boundsOf(shape);
   const common = {
     fill: none(shape.fill),
     stroke: none(shape.stroke),
     strokeWidth: shape.strokeWidth,
   };
-  const hitWidth = Math.max(shape.strokeWidth, 12 / zoom);
+  const hitWidth = Math.max(shape.strokeWidth, hit / zoom);
   const data = exporting ? {} : { 'data-shape-id': shape.id };
   let body: React.ReactNode;
 

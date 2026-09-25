@@ -23,7 +23,14 @@ export function TooltipHost() {
       current.current = null;
       setTip(null);
     };
+    // 손가락으로 누를 때 생기는 mouseover에는 툴팁을 띄우지 않는다
+    let lastPointer = 'mouse';
+    const onPointer = (e: PointerEvent) => {
+      lastPointer = e.pointerType;
+      hide();
+    };
     const onOver = (e: MouseEvent) => {
+      if (lastPointer === 'touch') return;
       const el = (e.target as HTMLElement | null)?.closest?.<HTMLElement>('[data-tip]');
       if (el === current.current) return;
       hide();
@@ -45,12 +52,12 @@ export function TooltipHost() {
       }, 380);
     };
     document.addEventListener('mouseover', onOver);
-    document.addEventListener('pointerdown', hide, true);
+    document.addEventListener('pointerdown', onPointer, true);
     window.addEventListener('scroll', hide, true);
     window.addEventListener('blur', hide);
     return () => {
       document.removeEventListener('mouseover', onOver);
-      document.removeEventListener('pointerdown', hide, true);
+      document.removeEventListener('pointerdown', onPointer, true);
       window.removeEventListener('scroll', hide, true);
       window.removeEventListener('blur', hide);
     };

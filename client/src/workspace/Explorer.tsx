@@ -4,8 +4,6 @@ import {
   ChevronRight,
   Copy,
   Download,
-  Eye,
-  EyeOff,
   Lock,
   MoreHorizontal,
   Pencil,
@@ -19,12 +17,10 @@ import { getLanguage, type YItem } from '@shared/schema';
 import { useWorkspace, viewPath } from './context';
 import { createBoard, createCodeFile, createDocument, deleteItem, duplicateItem, itemLabel, itemsMap, renameItem, type ItemModule } from './actions';
 import { useYItems } from '../hooks/useY';
-import { usePresence, uniqueUsers, type RemotePresence } from '../store/presence';
+import { usePresence } from '../store/presence';
 import { useSession } from '../store/session';
 import { useUI } from '../store/ui';
-import { Avatar, IconButton, InlineEdit, Menu } from '../components/ui';
-import { ACTION_BUBBLE_MS } from '../components/Cursors';
-import { itemName, MODULE_NAMES } from './viewLabel';
+import { IconButton, InlineEdit, Menu } from '../components/ui';
 import { cx, downloadText } from '../lib/util';
 import { DocOutline } from '../modules/docs/DocOutline';
 import { DesignLayers } from '../modules/design/DesignLayers';
@@ -77,7 +73,6 @@ export function Explorer() {
           </Section>
         )}
       </div>
-      <OnlinePeople />
     </div>
   );
 }
@@ -265,57 +260,5 @@ function NotesSection({ collapsed, onToggle }: { collapsed: boolean; onToggle: (
         );
       })}
     </Section>
-  );
-}
-
-/** 접속 중인 사람과 위치, 방금 한 행동 */
-function OnlinePeople() {
-  const ws = useWorkspace();
-  const others = usePresence((s) => s.others);
-  const people = uniqueUsers(others);
-  const navigate = useNavigate();
-  const me = useSession((s) => s.user)!;
-  return (
-    <div className="ex-online">
-      <div className="ex-online-head">
-        <span className="live-dot" /> 접속 중 <span className="ex-count">{people.length + 1}</span>
-      </div>
-      <div className="ex-person is-me">
-        <Avatar user={me} size={26} status="online" tooltip={false} />
-        <div className="ex-person-text">
-          <b>{me.name} (나)</b>
-          <span>{MODULE_NAMES[ws.view.module]}</span>
-        </div>
-      </div>
-      {people.map((p) => (
-        <Person key={p.socketId} p={p} onGo={() => navigate(viewPath(ws.template.id, p.view.module, p.view.itemId))} />
-      ))}
-    </div>
-  );
-}
-
-function Person({ p, onGo }: { p: RemotePresence; onGo: () => void }) {
-  const ws = useWorkspace();
-  const where = itemName(ws.doc, ws.notes, p.view.module, p.view.itemId);
-  const recentAction = p.actionLabel && p.actionAt && Date.now() - p.actionAt < ACTION_BUBBLE_MS * 3 ? p.actionLabel : null;
-  const following = ws.follow === p.user.id;
-  return (
-    <div className={cx('ex-person', following && 'is-following')} style={{ ['--user-color' as string]: p.user.color }}>
-      <button className="ex-person-main" onClick={onGo} data-tip="이 사람의 위치로 이동" data-tip-side="right">
-        <Avatar user={p.user} size={26} status={p.idle ? 'idle' : 'online'} tooltip={false} />
-        <div className="ex-person-text">
-          <b>{p.user.name}</b>
-          <span>
-            {p.idle ? '자리 비움 · ' : ''}
-            {MODULE_NAMES[p.view.module]}
-            {where ? ` › ${where}` : ''}
-          </span>
-          {recentAction && <span className="ex-person-action">{recentAction}</span>}
-        </div>
-      </button>
-      <IconButton label={following ? '따라가기 중지' : '따라가기'} size="sm" active={following} onClick={() => ws.setFollow(following ? null : p.user.id)} tipSide="right">
-        {following ? <EyeOff size={14} /> : <Eye size={14} />}
-      </IconButton>
-    </div>
   );
 }

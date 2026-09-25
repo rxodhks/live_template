@@ -2,16 +2,15 @@ import { useEffect, useRef, useState } from 'react';
 import * as Y from 'yjs';
 import { useNavigate } from 'react-router-dom';
 import { KeyRound, Lock, LockOpen, Plus, ShieldCheck, Trash2, Timer } from 'lucide-react';
-import type { SecretNoteMeta, UnlockResult } from '@shared/types';
+import type { SecretNoteMeta } from '@shared/types';
 import { NOTE_FRAGMENT } from '@shared/schema';
 import { useWorkspace, viewPath } from '../../workspace/context';
 import { useSession } from '../../store/session';
 import { useUI } from '../../store/ui';
 import { toast } from '../../store/toasts';
 import { useTick } from '../../hooks/useInterval';
-import { api, ApiError, errorMessage } from '../../lib/api';
-import { getSocket } from '../../lib/socket';
-import { SocketYProvider } from '../../lib/yprovider';
+import { ApiError, errorMessage } from '../../lib/api';
+import type { NoteSession, UnlockedNote as Unlocked } from '../../lib/notes';
 import { formatDate, relativeTime } from '../../lib/time';
 import { cx } from '../../lib/util';
 import { Avatar, Button, EmptyState, Field, IconButton, Modal, Spinner } from '../../components/ui';
@@ -60,7 +59,8 @@ function NotesList() {
         <div>
           <b>어떻게 보호되나요?</b>
           <span>
-            비밀번호는 저장되지 않고 scrypt로 유도한 키로 본문을 <b>AES-256-GCM</b> 암호화해 저장합니다. 서버 디스크만으로는 내용을 읽을 수 없으며, 5회 연속 틀리면 5분간 잠깁니다. 이 기기에도 사본을 남기지 않습니다.
+            비밀번호는 어디에도 저장되지 않습니다. 브라우저에서 비밀번호로 만든 키(PBKDF2 60만 회)로 본문을 <b>AES-256-GCM</b> 암호화하므로,{' '}
+            {ws.mode === 'shared' ? '클라우드에는 암호문만 저장되어 서버 운영자도 읽을 수 없습니다.' : '이 브라우저에도 암호문으로만 저장됩니다.'} 5회 연속 틀리면 5분간 잠깁니다.
           </span>
         </div>
       </div>
@@ -131,13 +131,15 @@ function NewNoteModal({ onClose }: { onClose: () => void }) {
     if (!valid) return;
     setSaving(true);
     try {
-      const res = await api<{ note: SecretNoteMeta }>('POST', `/templates/${ws.template.id}/notes`, { title, password: pw, hint });
-      // 만든 사람은 바로 열 수 있도록 잠금 해제
-      const unlock = await api<UnlockResult>('POST', `/templates/${ws.template.id}/notes/${res.note.id}/unlock`, { password: pw });
-      ws.setTicket(res.note.id, unlock);
-      toast.success('비밀 노트를 만들었습니다', `‘${res.note.title}’ · 비밀번호를 팀원에게 안전하게 전달하세요.`);
+      // 만든 사람은 바로 열 수 있도록 잠금 해제된 상태로
+      const { meta, unlocked } = await ws.notesApi.create({ title, hint, password: pw });
+      ws.setTicket(meta.id, unlocked);
+      toast.success(
+        '비밀 노트를 만들었습니다',
+        ws.mode === 'shared' ? `‘${meta.title}’ · 비밀번호를 팀원에게 안전하게 전달하세요.` : `‘${meta.title}’ · 비밀번호를 잊으면 누구도 열 수 없습니다.`,
+      );
       onClose();
-      navigate(viewPath(ws.template.id, 'notes', res.note.id));
+      navigate(viewPath(ws.template.id, 'notes', meta.id));
     } catch (err) {
       toast.error('비밀 노트를 만들지 못했습니다', errorMessage(err));
     } finally {
@@ -188,7 +190,7 @@ function NewNoteModal({ onClose }: { onClose: () => void }) {
 function NoteView({ note }: { note: SecretNoteMeta }) {
   const ws = useWorkspace();
   const ticket = ws.tickets[note.id];
-  if (ticket && ticket.expiresAt > Date.now()) return <UnlockedNote key={ticket.ticket} note={note} ticket={ticket} />;
+  if (ticket && ticket.expiresAt > Date.now()) return <UnlockedNote key={`${ticket.ticket}:${ticket.expiresAt}`} note={note} ticket={ticket} />;
   return <LockScreen note={note} />;
 }
 
@@ -206,8 +208,7 @@ function LockScreen({ note }: { note: SecretNoteMeta }) {
     if (!pw || busy || remainingLock) return;
     setBusy(true);
     try {
-      const res = await api<UnlockResult>('POST', `/templates/${ws.template.id}/notes/${note.id}/unlock`, { password: pw });
-      ws.setTicket(note.id, res);
+      ws.setTicket(note.id, await ws.notesApi.unlock(note, pw));
       toast.success('잠금을 해제했습니다', `‘${note.title}’`);
     } catch (err) {
       setPw('');
@@ -262,29 +263,31 @@ function LockScreen({ note }: { note: SecretNoteMeta }) {
   );
 }
 
-function UnlockedNote({ note, ticket }: { note: SecretNoteMeta; ticket: UnlockResult }) {
+function UnlockedNote({ note, ticket }: { note: SecretNoteMeta; ticket: Unlocked }) {
   const ws = useWorkspace();
   const me = useSession((s) => s.user)!;
-  const [state, setState] = useState<{ doc: Y.Doc; provider: SocketYProvider } | null>(null);
-  const [status, setStatus] = useState<'connecting' | 'synced' | 'offline' | 'error'>('connecting');
+  const [state, setState] = useState<{ doc: Y.Doc; session: NoteSession } | null>(null);
+  const [status, setStatus] = useState<NoteSession['status']>('loading');
   const [changePw, setChangePw] = useState(false);
   const [deleting, setDeleting] = useState(false);
   const lastEdit = useRef(Date.now());
+  /** 내가 비밀번호를 바꾸거나 지우는 중에는 "잠김" 알림을 띄우지 않는다 */
+  const selfChange = useRef(false);
   const viewers = useViewers(ws.view);
   useTick(15_000);
 
   const lock = async (reason?: string) => {
     ws.setTicket(note.id, null);
-    api('POST', `/templates/${ws.template.id}/notes/${note.id}/lock`, { ticket: ticket.ticket }).catch(() => {});
     if (reason) toast.show({ kind: 'warning', title: '비밀 노트가 잠겼습니다', message: reason });
   };
 
-  // 암호화된 노트 문서에 연결 (IndexedDB 사본은 만들지 않는다)
+  // 암호화된 노트 문서 열기 (복호화한 내용은 메모리에만 둔다)
   useEffect(() => {
     const doc = new Y.Doc();
-    const provider = new SocketYProvider(getSocket(), `note:${ws.template.id}:${note.id}`, doc, {
-      ticket: ticket.ticket,
-      onKicked: (reason) => {
+    const session = ws.notesApi.open(note, ticket, doc, {
+      canEdit: ws.canEdit,
+      onLocked: (reason) => {
+        if (selfChange.current) return;
         ws.setTicket(note.id, null);
         const msg =
           reason === 'password' ? '다른 멤버가 비밀번호를 변경했습니다. 새 비밀번호로 다시 여세요.' : reason === 'deleted' ? '노트가 삭제되었습니다.' : '잠금 해제 시간이 만료되었습니다.';
@@ -294,18 +297,19 @@ function UnlockedNote({ note, ticket }: { note: SecretNoteMeta; ticket: UnlockRe
         if (code === 401) {
           ws.setTicket(note.id, null);
           toast.warning('다시 잠금 해제가 필요합니다', message);
-        }
+        } else toast.error('노트를 열 수 없습니다', message);
       },
     });
-    const unsub = provider.subscribe(() => setStatus(provider.status));
-    setState({ doc, provider });
+    const unsub = session.subscribe(() => setStatus(session.status));
+    setStatus(session.status);
+    setState({ doc, session });
     return () => {
       unsub();
-      provider.destroy();
+      session.destroy();
       doc.destroy();
       setState(null);
     };
-  }, [note.id, ticket.ticket]); // eslint-disable-line react-hooks/exhaustive-deps
+  }, [note.id, ticket]); // eslint-disable-line react-hooks/exhaustive-deps
 
   // 편집이 없으면 자동 잠금
   useEffect(() => {
@@ -330,7 +334,7 @@ function UnlockedNote({ note, ticket }: { note: SecretNoteMeta; ticket: UnlockRe
       <div className="module-toolbar note-toolbar">
         <LockOpen size={16} className="note-open-icon" />
         <span className="toolbar-title-text">{note.title}</span>
-        <span className="note-badge" data-tip="본문은 AES-256-GCM으로 암호화되어 저장됩니다">
+        <span className="note-badge" data-tip="브라우저에서 AES-256-GCM으로 암호화한 뒤 저장합니다 (종단 간 암호화)">
           <ShieldCheck size={13} /> 암호화됨
         </span>
         {viewers.length > 0 && (
@@ -358,14 +362,14 @@ function UnlockedNote({ note, ticket }: { note: SecretNoteMeta; ticket: UnlockRe
           잠그기
         </Button>
       </div>
-      {!state || (status !== 'synced' && status !== 'offline') ? (
+      {!state || (status !== 'ready' && status !== 'offline') ? (
         <div className="center-fill">
           {status === 'error' ? <span className="muted">노트를 열 수 없습니다.</span> : <Spinner size={24} />}
         </div>
       ) : (
         <DocEditor
           fragment={state.doc.getXmlFragment(NOTE_FRAGMENT)}
-          awareness={state.provider.awareness}
+          awareness={state.session.awareness}
           user={me}
           readOnly={!ws.canEdit}
           docKey={`note:${note.id}`}
@@ -383,13 +387,13 @@ function UnlockedNote({ note, ticket }: { note: SecretNoteMeta; ticket: UnlockRe
           }
         />
       )}
-      {changePw && <ChangePasswordModal note={note} onClose={() => setChangePw(false)} />}
-      {deleting && <DeleteNoteModal note={note} onClose={() => setDeleting(false)} />}
+      {changePw && state && <ChangePasswordModal note={note} doc={state.doc} selfChange={selfChange} onClose={() => setChangePw(false)} />}
+      {deleting && <DeleteNoteModal note={note} selfChange={selfChange} onClose={() => setDeleting(false)} />}
     </div>
   );
 }
 
-function ChangePasswordModal({ note, onClose }: { note: SecretNoteMeta; onClose: () => void }) {
+function ChangePasswordModal({ note, doc, selfChange, onClose }: { note: SecretNoteMeta; doc: Y.Doc; selfChange: { current: boolean }; onClose: () => void }) {
   const ws = useWorkspace();
   const [current, setCurrent] = useState('');
   const [next, setNext] = useState('');
@@ -401,12 +405,13 @@ function ChangePasswordModal({ note, onClose }: { note: SecretNoteMeta; onClose:
     if (!valid) return;
     setSaving(true);
     try {
-      await api('POST', `/templates/${ws.template.id}/notes/${note.id}/password`, { current, next, hint });
-      const unlock = await api<UnlockResult>('POST', `/templates/${ws.template.id}/notes/${note.id}/unlock`, { password: next });
-      ws.setTicket(note.id, unlock);
-      toast.success('비밀번호를 변경했습니다', '열람 중이던 다른 멤버는 새 비밀번호로 다시 열어야 합니다.');
+      selfChange.current = true;
+      const unlocked = await ws.notesApi.changePassword(note, current, next, hint, doc);
+      ws.setTicket(note.id, unlocked);
+      toast.success('비밀번호를 변경했습니다', ws.mode === 'shared' ? '내용을 새 키로 다시 암호화했습니다. 열람 중이던 다른 멤버는 새 비밀번호로 다시 열어야 합니다.' : '내용을 새 키로 다시 암호화했습니다.');
       onClose();
     } catch (err) {
+      selfChange.current = false;
       toast.error('변경하지 못했습니다', errorMessage(err));
     } finally {
       setSaving(false);
@@ -447,7 +452,7 @@ function ChangePasswordModal({ note, onClose }: { note: SecretNoteMeta; onClose:
   );
 }
 
-function DeleteNoteModal({ note, onClose }: { note: SecretNoteMeta; onClose: () => void }) {
+function DeleteNoteModal({ note, selfChange, onClose }: { note: SecretNoteMeta; selfChange: { current: boolean }; onClose: () => void }) {
   const ws = useWorkspace();
   const navigate = useNavigate();
   const [pw, setPw] = useState('');
@@ -457,12 +462,14 @@ function DeleteNoteModal({ note, onClose }: { note: SecretNoteMeta; onClose: () 
   const submit = async () => {
     setBusy(true);
     try {
-      await api('DELETE', `/templates/${ws.template.id}/notes/${note.id}`, { password: pw, force: isOwner && force });
+      selfChange.current = true;
+      await ws.notesApi.remove(note, pw, isOwner && force);
       ws.setTicket(note.id, null);
       toast.show({ kind: 'danger', title: '비밀 노트를 삭제했습니다', message: note.title });
       onClose();
       navigate(viewPath(ws.template.id, 'notes'));
     } catch (err) {
+      selfChange.current = false;
       toast.error('삭제하지 못했습니다', errorMessage(err));
     } finally {
       setBusy(false);

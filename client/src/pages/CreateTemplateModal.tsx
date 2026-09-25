@@ -1,10 +1,11 @@
 import { useState } from 'react';
 import { Check, LayoutTemplate } from 'lucide-react';
-import type { Feature, TemplateSummary } from '@shared/types';
+import type { Feature, TemplateEntry } from '@shared/types';
 import { BLANK_CONTENT, FEATURE_INFO, FEATURE_ORDER, PRESETS, getPreset } from '@shared/presets';
-import { api, errorMessage } from '../lib/api';
+import { errorMessage } from '../lib/api';
+import { createPersonalTemplate } from '../lib/local';
 import { toast } from '../store/toasts';
-import { useTemplates } from '../store/templates';
+import { useSession } from '../store/session';
 import { Button, Field, Modal } from '../components/ui';
 import { cx } from '../lib/util';
 
@@ -15,7 +16,7 @@ const EMOJIS = ['🗂️', '🚀', '🎨', '💻', '📝', '🧭', '🌐', '🧪
  *  - 기능(디자인/코딩/문서)은 여러 개 선택 가능 → 하나의 템플릿에서 동시에 작업
  *  - 프리셋을 고르면 기능과 시작 내용이 채워진다 (기능은 다시 조정 가능)
  */
-export function CreateTemplateModal({ onClose, onCreated }: { onClose: () => void; onCreated: (t: TemplateSummary) => void }) {
+export function CreateTemplateModal({ onClose, onCreated }: { onClose: () => void; onCreated: (t: TemplateEntry) => void }) {
   const [name, setName] = useState('');
   const [description, setDescription] = useState('');
   const [emoji, setEmoji] = useState('🗂️');
@@ -52,10 +53,10 @@ export function CreateTemplateModal({ onClose, onCreated }: { onClose: () => voi
     if (!name.trim() || features.length === 0) return;
     setSaving(true);
     try {
-      const res = await api<{ template: TemplateSummary }>('POST', '/templates', { name, description, emoji, features, preset: presetId });
-      useTemplates.getState().upsert(res.template);
-      toast.success('템플릿을 만들었습니다', `${res.template.emoji} ${res.template.name}`);
-      onCreated(res.template);
+      // 새 템플릿은 개인 공간에 만들어진다 (서버 불필요). 초대하는 순간 협업 공간으로 전환된다
+      const t = await createPersonalTemplate({ name, description, emoji, features, presetId }, useSession.getState().user!);
+      toast.success('템플릿을 만들었습니다', `${t.emoji} ${t.name} · 개인 공간`);
+      onCreated(t);
     } catch (err) {
       toast.error('템플릿을 만들지 못했습니다', errorMessage(err));
     } finally {
@@ -66,7 +67,7 @@ export function CreateTemplateModal({ onClose, onCreated }: { onClose: () => voi
   return (
     <Modal
       title="새 템플릿 만들기"
-      description="사용할 기능을 고르세요. 여러 개를 함께 선택하면 한 템플릿 안에서 동시에 작업할 수 있습니다."
+      description="사용할 기능을 고르세요. 여러 개를 함께 선택하면 한 템플릿 안에서 동시에 작업할 수 있습니다. 새 템플릿은 개인 공간에 만들어지고, 팀원을 초대하면 협업 공간으로 전환됩니다."
       icon={<LayoutTemplate size={18} />}
       onClose={onClose}
       width={760}
