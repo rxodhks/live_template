@@ -1,6 +1,6 @@
 import type { Role } from '@shared/types';
 import type { ClientMessage, ServerMessage } from '@shared/protocol';
-import { ApiError, api, getToken, wsUrl } from './api';
+import { ApiError, api, wsUrl } from './api';
 
 /*
  * 협업 템플릿 하나의 실시간 연결 (클라우드플레어 Durable Object "방"과 WebSocket 하나)
@@ -132,11 +132,10 @@ export class RoomConnection {
   private connect = () => {
     if (this.closed) return;
     this.retryTimer = null;
-    const token = getToken();
-    if (!token) return this.deny('협업 계정이 없습니다.');
     this.setStatus(this.attempt === 0 ? 'connecting' : 'offline');
     let welcomed = false;
-    const ws = new WebSocket(wsUrl(`/templates/${this.templateId}/ws`), ['lt', token]);
+    // 로그인은 쿠키로 확인한다 ('lt'는 이 서버의 실시간 프로토콜 이름)
+    const ws = new WebSocket(wsUrl(`/templates/${this.templateId}/ws`), ['lt']);
     this.ws = ws;
 
     ws.onmessage = (e) => {

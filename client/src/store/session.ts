@@ -1,5 +1,5 @@
 import { create } from 'zustand';
-import type { PublicUser } from '@shared/types';
+import type { AccountInfo, PublicUser } from '@shared/types';
 
 export type ThemePref = 'system' | 'light' | 'dark';
 
@@ -25,27 +25,33 @@ export function resolvedTheme(pref: ThemePref): 'light' | 'dark' {
   return window.matchMedia?.('(prefers-color-scheme: dark)').matches ? 'dark' : 'light';
 }
 
+/** loading: 로그인 확인 중 · authed: 로그인됨 · anon: 로그인 필요 */
+export type AuthStatus = 'loading' | 'authed' | 'anon';
+
 interface SessionState {
-  /** 이 브라우저의 프로필. 협업을 시작하면 서버 계정과 같은 ID가 된다 */
+  /** 로그인한 사용자 (사이트에서 표시되는 이름 · 커서 색상 · 아바타) */
   user: PublicUser | null;
-  /** 협업 서버 계정이 있는지 (처음 초대하거나 초대를 받을 때 자동으로 만들어진다) */
-  hasAccount: boolean;
-  ready: boolean;
+  /** 로그인 이메일과 연결된 외부 계정 (본인에게만 보인다) */
+  account: AccountInfo | null;
+  status: AuthStatus;
+  /** 서버에 연결할 수 없어 이 기기에 저장된 로그인 정보로 시작했는지 */
+  offline: boolean;
   theme: ThemePref;
-  setUser(user: PublicUser | null): void;
-  setHasAccount(v: boolean): void;
-  setReady(ready: boolean): void;
+  setAuthed(user: PublicUser, account: AccountInfo | null, offline?: boolean): void;
+  setUser(user: PublicUser): void;
+  setAnon(): void;
   setTheme(theme: ThemePref): void;
 }
 
 export const useSession = create<SessionState>((set) => ({
   user: null,
-  hasAccount: false,
-  ready: false,
+  account: null,
+  status: 'loading',
+  offline: false,
   theme: readTheme(),
+  setAuthed: (user, account, offline = false) => set({ user, account, status: 'authed', offline }),
   setUser: (user) => set({ user }),
-  setHasAccount: (hasAccount) => set({ hasAccount }),
-  setReady: (ready) => set({ ready }),
+  setAnon: () => set({ user: null, account: null, status: 'anon', offline: false }),
   setTheme: (theme) => {
     try {
       if (theme === 'system') localStorage.removeItem(THEME_KEY);

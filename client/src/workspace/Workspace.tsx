@@ -54,19 +54,17 @@ export function Workspace() {
   const { tid = '' } = useParams();
   const entry = useTemplates((s) => s.templates[tid]);
   const loaded = useTemplates((s) => s.loaded);
-  const hasAccount = useSession((s) => s.hasAccount);
   const [lookup, setLookup] = useState<'idle' | 'loading' | 'missing'>('idle');
   const navigate = useNavigate();
 
   // 목록에 없는 협업 템플릿 링크로 바로 들어온 경우 (다른 기기에서 참여한 템플릿 등)
   useEffect(() => {
     if (!loaded || entry || lookup !== 'idle') return;
-    if (!hasAccount) return setLookup('missing');
     setLookup('loading');
     api<{ template: TemplateSummary }>('GET', `/templates/${tid}`)
       .then((r) => useTemplates.getState().upsertShared(r.template))
       .catch(() => setLookup('missing'));
-  }, [loaded, entry, lookup, hasAccount, tid]);
+  }, [loaded, entry, lookup, tid]);
 
   useEffect(() => setLookup('idle'), [tid]);
 

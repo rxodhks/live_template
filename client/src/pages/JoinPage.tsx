@@ -1,13 +1,11 @@
 import { useEffect, useState } from 'react';
 import { useNavigate, useParams } from 'react-router-dom';
-import { Clock, Hourglass, ShieldCheck, Users, XCircle } from 'lucide-react';
+import { Clock, Hourglass, LogIn, ShieldCheck, Users, XCircle } from 'lucide-react';
 import type { InvitePreview, JoinRequest, JoinStatus, TemplateSummary } from '@shared/types';
 import { FEATURE_INFO } from '@shared/presets';
 import { AppShell } from '../components/AppShell';
 import { Avatar, Button, EmptyState, Spinner } from '../components/ui';
-import { ProfileForm, useProfileDraft } from '../components/ProfileForm';
 import { api, errorMessage } from '../lib/api';
-import { createLocalProfile, ensureAccount } from '../lib/profile';
 import { expiryText } from '../lib/invites';
 import { addPending, checkPending, usePendingJoins } from '../lib/pending';
 import { useSession } from '../store/session';
@@ -18,11 +16,12 @@ type Preview = InvitePreview & { alreadyMember: boolean };
 
 /**
  * 초대 링크로 들어온 화면.
- * 가입 절차 없이 이름·색상만 정하면 바로 참여하고, 승인이 필요한 링크면 승인될 때까지 기다린다.
+ * 초대장은 로그인하지 않아도 볼 수 있고, 참여하려면 로그인(처음이면 가입)한다.
+ * 승인이 필요한 링크면 승인될 때까지 기다린다.
  */
 export function JoinPage() {
-  // 처음 방문한 사람은 앱 틀 없이 초대장만 보여 준다 (참여 중에 프로필이 생겨도 화면 구조는 유지)
-  const [standalone] = useState(() => !useSession.getState().user);
+  // 로그인하지 않은 사람은 앱 틀 없이 초대장만 보여 준다
+  const [standalone] = useState(() => useSession.getState().status !== 'authed');
   return standalone ? (
     <div className="join-standalone">
       <JoinCard />
@@ -43,7 +42,6 @@ function JoinCard() {
   const [joining, setJoining] = useState(false);
   const [pending, setPending] = useState<{ templateId: string } | null>(null);
   const [denied, setDenied] = useState(false);
-  const [draft, setDraft] = useProfileDraft();
   const pendingJoins = usePendingJoins();
 
   useEffect(() => {
@@ -78,11 +76,12 @@ function JoinCard() {
 
   const join = async () => {
     if (!preview?.template) return;
-    if (!user && !draft.name.trim()) return;
+    if (!user) {
+      navigate(`/login?next=${encodeURIComponent(`/join/${code}`)}`);
+      return;
+    }
     setJoining(true);
     try {
-      if (!user) createLocalProfile(draft);
-      await ensureAccount();
       const res = await api<{ status: JoinStatus; templateId: string; template: TemplateSummary | null; request: JoinRequest | null }>(
         'POST',
         `/invites/${encodeURIComponent(code)}/accept`,
@@ -180,14 +179,9 @@ function JoinCard() {
           </Button>
         ) : (
           <>
-            {!user && (
-              <div className="join-profile">
-                <p className="muted small">가입은 필요 없습니다. 함께 작업할 때 표시될 이름과 커서 색상만 정해 주세요.</p>
-                <ProfileForm draft={draft} onChange={setDraft} onSubmit={join} />
-              </div>
-            )}
-            <Button variant="primary" size="lg" onClick={join} loading={joining} disabled={!user && !draft.name.trim()}>
-              {preview.requireApproval ? '참여 요청 보내기' : user ? '참여하기' : '프로필 만들고 참여하기'}
+            {!user && <p className="muted join-login-hint">로그인하면 이 템플릿에 참여할 수 있습니다. 처음이라면 인증 후 이름만 정하면 가입이 끝납니다.</p>}
+            <Button variant="primary" size="lg" onClick={join} loading={joining} icon={user ? undefined : <LogIn size={16} />}>
+              {!user ? '로그인하고 참여하기' : preview.requireApproval ? '참여 요청 보내기' : '참여하기'}
             </Button>
             {preview.requireApproval && <p className="muted small">이 링크는 멤버의 승인이 필요합니다.</p>}
           </>

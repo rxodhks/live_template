@@ -1,24 +1,32 @@
-import type { InviteOptions, PublicUser, Role } from '../../shared/types';
-import { Directory, hasRole } from './directory';
+import type { AuthConfig, InviteOptions, OAuthProvider, PublicUser, Role } from '../../shared/types';
+import { type AuthOutcome, Directory, SESSION_TTL_MS, hasRole } from './directory';
 import { TemplateRoom } from './room';
 import type { Env } from './env';
-import { HttpError, isId, json, unwrap } from './util';
+import {
+  COOKIE,
+  OAUTH_PROVIDERS,
+  authorizeUrl,
+  clearCookie,
+  cookie,
+  fetchProfile,
+  normalizeEmail,
+  providerEnabled,
+  readCookie,
+  redirect,
+  safeNext,
+  withCookies,
+} from './auth';
+import { sendLoginCode } from './mail';
+import { HttpError, isId, json, safeEqual, unwrap } from './util';
 
 export { Directory, TemplateRoom };
 
 /*
  * 클라우드플레어 Worker 진입점.
- *  · /api/*    : 협업 서버 API (계정, 협업 템플릿, 초대 링크, 비밀 노트, 실시간 연결)
+ *  · /api/*    : 협업 서버 API (로그인, 협업 템플릿, 초대 링크, 비밀 노트, 실시간 연결)
  *  · /join/*   : 초대 링크 — 앱 화면을 그대로 주되, 메신저 미리보기 카드에 템플릿 이름이 보이도록 메타 태그를 채운다
  *  · 그 밖의 경로는 정적 파일(client/dist)이 Worker를 거치지 않고 바로 응답한다 (무료 사용량 절약)
  */
-
-const CORS: Record<string, string> = {
-  'access-control-allow-origin': '*',
-  'access-control-allow-methods': 'GET, POST, PATCH, DELETE, OPTIONS',
-  'access-control-allow-headers': 'authorization, content-type',
-  'access-control-max-age': '86400',
-};
 
 const MAX_BODY = 2 * 1024 * 1024;
 const MAX_UPLOAD = 24 * 1024 * 1024;
@@ -36,16 +44,51 @@ const room = (env: Env, templateId: string) => env.ROOM.get(env.ROOM.idFromName(
 
 /* ───────────── 요청 도우미 ───────────── */
 
+const SESSION_TTL_S = SESSION_TTL_MS / 1000;
+
+/**
+ * 세션 토큰: 브라우저는 로그인 쿠키(HttpOnly)로, 앱 · 테스트 같은 다른 클라이언트는 Authorization 헤더나
+ * WebSocket 하위 프로토콜(['lt', token])로 보낸다.
+ */
 function tokenOf(req: Request): string | null {
   const auth = req.headers.get('authorization');
   if (auth?.startsWith('Bearer ')) return auth.slice(7).trim();
-  // 브라우저 WebSocket은 헤더를 못 붙이므로 하위 프로토콜 목록에 토큰을 실어 보낸다: ['lt', token]
   const proto = req.headers.get('sec-websocket-protocol');
   if (proto) {
     const [name, token] = proto.split(',').map((s) => s.trim());
     if (name === 'lt' && token) return token;
   }
-  return null;
+  return readCookie(req, COOKIE.session);
+}
+
+const clientIp = (req: Request) => req.headers.get('cf-connecting-ip') ?? 'local';
+const agentOf = (req: Request) => req.headers.get('user-agent') ?? '';
+
+/**
+ * 내 컴퓨터의 개발 서버(wrangler dev)로 들어온 요청.
+ * 배포된 곳에서는 클라우드플레어가 실제 접속 IP를 채우므로(바꿀 수 없음) 루프백 주소가 오지 않는다.
+ * (개발 서버는 요청 주소를 배포 주소 madang.party로 바꿔 전달하므로 주소로는 구분할 수 없다)
+ */
+const isLocal = (req: Request) => ['127.0.0.1', '::1'].includes(req.headers.get('cf-connecting-ip') ?? '');
+
+/** 로컬 개발 모드: 메일 대신 응답으로 인증 코드를 준다. 배포된 곳에서는 설정이 있어도 켜지지 않는다 */
+const devMode = (c: Ctx) => c.env.AUTH_DEV_MODE === '1' && isLocal(c.req);
+
+/** 다른 사이트에서 로그인 쿠키를 싣고 보낸 요청 차단 (SameSite=Lax 쿠키와 함께 이중으로 막는다) */
+function crossSite(req: Request): boolean {
+  // 최신 브라우저는 요청을 보낸 곳을 알려 준다
+  const site = req.headers.get('sec-fetch-site');
+  if (site) return site !== 'same-origin' && site !== 'none';
+  const origin = req.headers.get('origin');
+  if (!origin) return false;
+  try {
+    const from = new URL(origin);
+    if (from.host === req.headers.get('host')) return false;
+    // 개발 서버: Vite(localhost:5173)를 거쳐 온 요청
+    return !(isLocal(req) && ['localhost', '127.0.0.1', '[::1]'].includes(from.hostname));
+  } catch {
+    return true;
+  }
 }
 
 async function currentUser(c: Ctx): Promise<PublicUser | null> {
@@ -54,7 +97,8 @@ async function currentUser(c: Ctx): Promise<PublicUser | null> {
 
 async function requireUser(c: Ctx): Promise<PublicUser> {
   const user = await currentUser(c);
-  if (!user) throw new HttpError(401, '로그인이 필요합니다.');
+  // reason: 비밀 노트 비밀번호 오류 같은 다른 401과 구분해서, 화면이 로그인 화면으로 보내도록
+  if (!user) throw new HttpError(401, '로그인이 필요합니다.', { reason: 'login_required' });
   return user;
 }
 
@@ -104,14 +148,137 @@ function route(method: string, path: string, handler: Handler) {
 
 route('GET', '/api/health', async () => json({ ok: true, at: Date.now() }));
 
-/* 계정: 처음 협업을 시작할 때(초대하거나 초대를 받을 때) 개인 공간의 프로필로 만든다 */
-route('POST', '/api/users', async (c) => {
-  const input = await body<Partial<PublicUser>>(c.req);
-  const ip = c.req.headers.get('cf-connecting-ip') ?? 'local';
-  return json(unwrap(await directory(c.env).createUser(input, ip)), 201);
+/* ───────────── 로그인 ───────────── */
+
+route('GET', '/api/auth/config', async (c) =>
+  json({
+    email: Boolean(c.env.RESEND_API_KEY) || devMode(c),
+    providers: Object.fromEntries(OAUTH_PROVIDERS.map((p) => [p, providerEnabled(c.env, p)])) as AuthConfig['providers'],
+    devMode: devMode(c),
+  } satisfies AuthConfig),
+);
+
+/** 로그인 성공 → 세션 쿠키, 처음이면 → 이름 입력 단계로 (가입 티켓 쿠키) */
+function signedIn(outcome: AuthOutcome): Response {
+  if (outcome.status === 'signed_in') {
+    return withCookies(json({ status: 'signed_in', user: outcome.user }), [cookie(COOKIE.session, outcome.session, SESSION_TTL_S), clearCookie(COOKIE.signup)]);
+  }
+  return withCookies(json({ status: 'needs_name' }), [cookie(COOKIE.signup, outcome.ticket, 1800)]);
+}
+
+/* 이메일: 6자리 인증 코드 (가입과 로그인이 같은 흐름) */
+route('POST', '/api/auth/email/start', async (c) => {
+  const { email } = await body<{ email?: unknown }>(c.req);
+  const addr = normalizeEmail(email);
+  if (!addr) throw new HttpError(400, '올바른 이메일 주소를 입력해 주세요.');
+  const dev = devMode(c);
+  if (!c.env.RESEND_API_KEY && !dev) throw new HttpError(503, '이메일 로그인이 아직 준비되지 않았습니다. 다른 로그인 방법을 이용해 주세요.');
+  const dir = directory(c.env);
+  const { code, expiresAt } = unwrap(await dir.startEmailCode(addr, clientIp(c.req)));
+  if (c.env.RESEND_API_KEY) {
+    try {
+      await sendLoginCode(c.env, addr, code);
+    } catch (err) {
+      await dir.dropEmailCode(addr);
+      console.error('인증 메일 발송 실패', err);
+      throw new HttpError(502, '인증 메일을 보내지 못했습니다. 잠시 후 다시 시도해 주세요.');
+    }
+  } else {
+    console.log(`[개발 모드] ${addr} 로그인 코드: ${code}`);
+  }
+  return json({ ok: true, email: addr, expiresAt, resendAfter: 30, ...(dev ? { devCode: code } : {}) });
 });
 
-route('GET', '/api/me', async (c) => json({ user: await requireUser(c) }));
+route('POST', '/api/auth/email/verify', async (c) => {
+  const { email, code } = await body<{ email?: unknown; code?: unknown }>(c.req);
+  const addr = normalizeEmail(email);
+  const digits = typeof code === 'string' ? code.replace(/\D/g, '') : '';
+  if (!addr || digits.length !== 6) throw new HttpError(400, '6자리 인증 코드를 입력해 주세요.');
+  return signedIn(unwrap(await directory(c.env).verifyEmailCode(addr, digits, agentOf(c.req))));
+});
+
+/* 외부 계정: 구글 · 깃허브 · 애플 */
+const redirectUri = (c: Ctx, p: OAuthProvider) => `${c.url.origin}/api/auth/callback/${p}`;
+const loginError = (reason: string, cookies: string[] = []) => redirect(`/login?error=${reason}`, cookies);
+
+route('GET', '/api/auth/oauth/:provider', async (c) => {
+  const p = c.params.provider as OAuthProvider;
+  if (!OAUTH_PROVIDERS.includes(p) || !providerEnabled(c.env, p)) return loginError('unavailable');
+  const flow = await directory(c.env).startOAuth(p, safeNext(c.url.searchParams.get('next')));
+  return redirect(await authorizeUrl(c.env, p, redirectUri(c, p), flow), [cookie(COOKIE.oauth, flow.state, 600, 'None')]);
+});
+
+async function oauthCallback(c: Ctx): Promise<Response> {
+  const p = c.params.provider as OAuthProvider;
+  const cleared = [clearCookie(COOKIE.oauth, 'None')];
+  if (!OAUTH_PROVIDERS.includes(p) || !providerEnabled(c.env, p)) return loginError('unavailable', cleared);
+  // 애플은 form_post(POST), 구글 · 깃허브는 쿼리로 돌아온다
+  const params = c.req.method === 'POST' ? await c.req.formData() : c.url.searchParams;
+  const param = (k: string) => {
+    const v = params.get(k);
+    return typeof v === 'string' && v ? v : null;
+  };
+  const error = param('error');
+  if (error) return loginError(error === 'access_denied' || error === 'user_cancelled_authorize' ? 'cancelled' : 'failed', cleared);
+  const state = param('state');
+  const code = param('code');
+  const bound = readCookie(c.req, COOKIE.oauth);
+  // 이 브라우저에서 시작한 로그인인지 확인 (다른 사람의 로그인 결과를 심는 공격 방지)
+  if (!state || !code || !bound || !safeEqual(state, bound)) return loginError('expired', cleared);
+  const dir = directory(c.env);
+  const flow = await dir.consumeOAuth(state, p);
+  if (!flow.ok) return loginError('expired', cleared);
+  let outcome: AuthOutcome;
+  try {
+    const profile = await fetchProfile(c.env, p, redirectUri(c, p), code, flow.data, param('user'));
+    outcome = await dir.oauthSignIn({ provider: p, ...profile }, agentOf(c.req));
+  } catch (err) {
+    console.error('외부 로그인 실패', p, err);
+    return loginError('failed', cleared);
+  }
+  const next = flow.data.next;
+  if (outcome.status === 'signed_in') {
+    return redirect(next, [...cleared, cookie(COOKIE.session, outcome.session, SESSION_TTL_S), clearCookie(COOKIE.signup)]);
+  }
+  return redirect(`/signup${next === '/' ? '' : `?next=${encodeURIComponent(next)}`}`, [...cleared, cookie(COOKIE.signup, outcome.ticket, 1800)]);
+}
+route('GET', '/api/auth/callback/:provider', oauthCallback);
+route('POST', '/api/auth/callback/:provider', oauthCallback);
+
+/* 가입 마무리: 사이트에서 표시될 이름 정하기 */
+route('GET', '/api/auth/signup', async (c) => {
+  const info = await directory(c.env).signupInfo(readCookie(c.req, COOKIE.signup));
+  if (!info) throw new HttpError(404, '진행 중인 가입이 없습니다. 다시 로그인해 주세요.');
+  return json(info);
+});
+
+route('POST', '/api/auth/signup', async (c) => {
+  const input = await body<Partial<PublicUser>>(c.req);
+  const r = unwrap(await directory(c.env).completeSignup(readCookie(c.req, COOKIE.signup), input, agentOf(c.req)));
+  return withCookies(json({ user: r.user }, 201), [cookie(COOKIE.session, r.session, SESSION_TTL_S), clearCookie(COOKIE.signup)]);
+});
+
+route('POST', '/api/auth/logout', async (c) => {
+  await directory(c.env).logout(tokenOf(c.req));
+  return withCookies(json({ ok: true }), [clearCookie(COOKIE.session), clearCookie(COOKIE.signup)]);
+});
+
+/** 로그인 이전(가입 없이 쓰던 때)에 이 브라우저로 참여한 협업 템플릿을 로그인한 계정으로 옮긴다 */
+route('POST', '/api/auth/claim', async (c) => {
+  const user = await requireUser(c);
+  const { token } = await body<{ token?: unknown }>(c.req);
+  const r = await directory(c.env).claimLegacy(token, user.id);
+  c.exec.waitUntil(Promise.allSettled(r.broadcasts.map((b) => room(c.env, b.id).templateChanged(b))));
+  return json({ merged: r.merged, templates: r.broadcasts.length });
+});
+
+route('GET', '/api/me', async (c) => {
+  const user = await requireUser(c);
+  const res = json({ user, account: await directory(c.env).account(user.id) });
+  // 쓰는 동안은 로그인 쿠키도 계속 연장
+  const session = readCookie(c.req, COOKIE.session);
+  return session ? withCookies(res, [cookie(COOKIE.session, session, SESSION_TTL_S)]) : res;
+});
 
 route('PATCH', '/api/me', async (c) => {
   const me = await requireUser(c);
@@ -175,6 +342,7 @@ route('GET', '/api/templates/:id/ws', async (c) => {
   headers.set('x-lt-role', role);
   headers.set('x-lt-template', templateId);
   headers.delete('authorization');
+  headers.delete('cookie');
   return room(c.env, templateId).fetch(new Request(c.req.url, { method: 'GET', headers }));
 });
 
@@ -384,13 +552,13 @@ export default {
     if (join && req.method === 'GET') return invitePage(req, env, decodeURIComponent(join[1]));
     if (!url.pathname.startsWith('/api/')) return env.ASSETS.fetch(req);
 
-    if (req.method === 'OPTIONS') return new Response(null, { status: 204, headers: CORS });
-    const res = await handleApi(req, env, url, exec);
-    // WebSocket 응답(101)은 헤더를 바꿀 수 없으므로 그대로 돌려준다
-    if (res.status === 101) return res;
-    const headers = new Headers(res.headers);
-    for (const [k, v] of Object.entries(CORS)) headers.set(k, v);
-    return new Response(res.body, { status: res.status, headers });
+    // 쓰기 요청과 실시간 연결은 이 사이트에서 보낸 것만 받는다 (애플 로그인은 appleid.apple.com에서 POST로 돌아온다)
+    const writes = req.method !== 'GET' && req.method !== 'HEAD';
+    const upgrade = req.headers.get('upgrade')?.toLowerCase() === 'websocket';
+    if ((writes || upgrade) && url.pathname !== '/api/auth/callback/apple' && crossSite(req)) {
+      return json({ error: '다른 사이트에서 보낸 요청은 받을 수 없습니다.', dbg: Object.fromEntries(req.headers) }, 403);
+    }
+    return handleApi(req, env, url, exec);
   },
 } satisfies ExportedHandler<Env>;
 

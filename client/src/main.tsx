@@ -7,6 +7,7 @@ import './styles/components.css';
 import './styles/pages.css';
 import './styles/modules.css';
 import './styles/spaces.css';
+import './styles/auth.css';
 
 applyTheme(useSession.getState().theme);
 

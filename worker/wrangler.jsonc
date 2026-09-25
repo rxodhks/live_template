@@ -9,6 +9,8 @@
   "routes": [{ "pattern": "madang.party", "custom_domain": true }],
   // 주소를 하나로 유지: 개인 공간 데이터는 주소(origin)마다 따로 저장되므로 *.workers.dev 주소는 끈다
   "workers_dev": false,
+  // 대시보드에서 추가한 변수를 배포할 때 지우지 않는다 (로그인 설정은 Secret으로 넣는 것을 권장)
+  "keep_vars": true,
   "preview_urls": false,
   "assets": {
     "directory": "../client/dist",

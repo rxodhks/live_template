@@ -5,7 +5,6 @@ import { useSession } from '../store/session';
 import { useTemplates } from '../store/templates';
 import { api } from './api';
 import { buildShareUpload, clearSharedLocalData, deleteLocalTemplate, recordLocal } from './local';
-import { ensureAccount } from './profile';
 
 /*
  * 템플릿 단위 작업 — 개인 공간이면 브라우저에서, 협업 공간이면 서버에서 처리한다.
@@ -66,7 +65,6 @@ export async function leaveTemplate(t: TemplateEntry): Promise<void> {
  */
 export async function shareTemplate(t: TemplateEntry, openDoc?: Y.Doc): Promise<TemplateEntry> {
   if (t.mode === 'shared') return t;
-  await ensureAccount();
   const upload = await buildShareUpload(t, openDoc);
   const res = await api<{ template: TemplateSummary }>('POST', `/templates/${t.id}/share`, upload);
   const shared = useTemplates.getState().upsertShared(res.template);
