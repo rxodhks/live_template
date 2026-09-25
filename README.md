@@ -66,8 +66,11 @@ npm run dev -w worker          # Worker가 화면 + API를 한 주소(8787)에�
 ### 처음 한 번 설정
 
 1. [dash.cloudflare.com](https://dash.cloudflare.com) 무료 계정을 만듭니다. (카드 등록 없이 Workers Free 요금제로 사용 가능)
-2. **계정 ID** 확인: 대시보드 → Workers & Pages → 오른쪽의 *Account ID* 복사
-3. **API 토큰** 만들기: 오른쪽 위 프로필 → *My Profile* → *API Tokens* → *Create Token* → **"Edit Cloudflare Workers"** 템플릿 → 계정 선택 → 생성 후 복사
+2. **계정 ID** 확인: 도메인 `madang.party`의 *Overview* 페이지 아래쪽 **API** 영역에서 *Account ID* 복사 (또는 대시보드 검색창에 `Copy account ID`)
+3. **API 토큰** 만들기: [Account API tokens](https://dash.cloudflare.com/?to=/:account/api-tokens) → *Create Token* → *Permission policies*의 **Custom** 목록에서 **Edit Cloudflare Workers** 선택
+   - 이름: 예) `madang-github-deploy`
+   - *Account resources*: 내 계정 · *Zone resources*: **Specific zone → `madang.party`**
+   - *Create Token*을 누르면 토큰이 **한 번만** 표시되니 바로 복사
 4. GitHub 저장소 → **Settings → Secrets and variables → Actions → New repository secret**
    - `CLOUDFLARE_API_TOKEN` = 3번 토큰
    - `CLOUDFLARE_ACCOUNT_ID` = 2번 계정 ID
