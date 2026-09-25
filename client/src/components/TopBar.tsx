@@ -8,6 +8,8 @@ import {
   Keyboard,
   LayoutGrid,
   LogOut,
+  ScrollText,
+  ShieldCheck,
   MessageSquare,
   Monitor,
   Moon,
@@ -153,6 +155,8 @@ export function TopBar() {
               }),
               { divider: true, label: '' },
               { label: '키보드 단축키', icon: <Keyboard size={15} />, onSelect: () => ui.setShortcutsOpen(true) },
+              { label: '이용약관', icon: <ScrollText size={15} />, onSelect: () => navigate('/terms') },
+              { label: '개인정보처리방침', icon: <ShieldCheck size={15} />, onSelect: () => navigate('/privacy') },
               { divider: true, label: '' },
               { label: '로그아웃', icon: <LogOut size={15} />, onSelect: () => void logout() },
             ]}

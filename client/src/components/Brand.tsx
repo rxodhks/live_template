@@ -13,3 +13,6 @@ export function BrandMark({ size = 22 }: { size?: number }) {
 }
 
 export const BRAND = 'Madang';
+/** 개인정보처리방침 · 이용약관에 표시되는 운영자와 공개 문의처 */
+export const OPERATOR = 'Madang 운영팀';
+export const CONTACT_EMAIL = 'madang.contact@gmail.com';
