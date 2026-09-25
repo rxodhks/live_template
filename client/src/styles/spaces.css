@@ -720,3 +720,17 @@
   align-items: center;
   gap: 4px;
 }
+
+/* 브랜드 */
+.brand-ko {
+  font-size: 0.62em;
+  font-weight: 600;
+  color: var(--text-3);
+  margin-left: 4px;
+}
+.onboarding-tagline {
+  font-size: 15px !important;
+  font-weight: 650;
+  color: var(--accent-text) !important;
+  margin-top: -10px;
+}

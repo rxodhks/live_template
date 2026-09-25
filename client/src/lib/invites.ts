@@ -46,7 +46,7 @@ export function inviteSummary(i: InviteInfo): string {
 export function inviteMessage(templateName: string, i: InviteInfo, inviter: string): string {
   const role = i.role === 'viewer' ? '뷰어(읽기 전용)' : '편집자';
   const until = i.expiresAt ? ` (${expiryText(i.expiresAt)})` : '';
-  return `${inviter} 님이 LiveTemplate ‘${templateName}’에 ${role}로 초대했습니다${until}.\n${inviteLink(i.token)}`;
+  return `${inviter} 님이 Madang의 ‘${templateName}’ 템플릿에 ${role}로 초대했습니다${until}.\n${inviteLink(i.token)}`;
 }
 
 export function useInvites(templateId: string, enabled: boolean) {

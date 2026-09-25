@@ -287,7 +287,7 @@ describe('초대 링크', () => {
     const html = await res.text();
     assert.equal(res.status, 200);
     assert.match(html, /<div id="root">/);
-    assert.match(html, /og:title" content="🚀 우리 팀 랜딩 — 초대장"/);
+    assert.match(html, /og:title" content="🚀 우리 팀 랜딩 — Madang 초대장"/);
   });
 
   it('사용 횟수 제한과 취소', async () => {

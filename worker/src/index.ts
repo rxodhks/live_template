@@ -344,12 +344,12 @@ const escapeHtml = (s: string) => s.replace(/[&<>"']/g, (ch) => `&#${ch.charCode
 
 async function invitePage(req: Request, env: Env, token: string): Promise<Response> {
   const page = await env.ASSETS.fetch(new Request(new URL('/', req.url), { headers: { accept: 'text/html' } }));
-  let title = 'LiveTemplate 초대';
-  let description = '디자인 · 코딩 · 문서를 한 화면에서 함께 만드는 실시간 협업 템플릿';
+  let title = 'Madang 초대장';
+  let description = '디자인 · 코딩 · 문서를 한 마당에서 함께 만드는 실시간 협업 템플릿';
   try {
     const p = await directory(env).previewInvite(token, null);
     if (p.valid && p.template) {
-      title = `${p.template.emoji} ${p.template.name} — 초대장`;
+      title = `${p.template.emoji} ${p.template.name} — Madang 초대장`;
       description = `${p.inviter?.name ?? '멤버'} 님이 ${p.role === 'viewer' ? '뷰어' : '편집자'}로 초대했습니다.${p.template.description ? ` ${p.template.description}` : ''}`;
     }
   } catch {
@@ -357,7 +357,7 @@ async function invitePage(req: Request, env: Env, token: string): Promise<Respon
   }
   const meta = [
     ['og:type', 'website'],
-    ['og:site_name', 'LiveTemplate'],
+    ['og:site_name', 'Madang'],
     ['og:title', title],
     ['og:description', description],
   ]

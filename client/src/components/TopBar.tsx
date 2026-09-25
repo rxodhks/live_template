@@ -24,6 +24,7 @@ import { useUI } from '../store/ui';
 import { useConnection } from '../store/connection';
 import { Avatar, IconButton, Kbd, Menu } from './ui';
 import { SaveIndicator } from './SaveIndicator';
+import { BRAND, BrandMark } from './Brand';
 import { PresenceBar } from './PresenceBar';
 import { modKey } from '../lib/util';
 import { MODULE_NAMES } from '../workspace/viewLabel';
@@ -51,15 +52,11 @@ export function TopBar() {
   return (
     <header className="topbar">
       <div className="topbar-left">
-        <Link to="/" className="brand" aria-label="LiveTemplate 홈">
+        <Link to="/" className="brand" aria-label={`${BRAND} 홈`}>
           <span className="brand-mark">
-            <svg viewBox="0 0 32 32" width="22" height="22" aria-hidden>
-              <rect width="32" height="32" rx="8" fill="var(--accent)" />
-              <path d="M9 8v13a3 3 0 0 0 3 3h11" fill="none" stroke="#fff" strokeWidth="3" strokeLinecap="round" />
-              <circle cx="21" cy="11" r="3.5" fill="#ffd166" />
-            </svg>
+            <BrandMark size={22} />
           </span>
-          <span className="brand-name">LiveTemplate</span>
+          <span className="brand-name">{BRAND}</span>
         </Link>
 
         {ws && (

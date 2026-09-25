@@ -2,6 +2,7 @@ import { Code2, FileText, HardDrive, Lock, MousePointer2, Palette, Sparkles, Use
 import { createLocalProfile } from '../lib/profile';
 import { toast } from '../store/toasts';
 import { Button } from '../components/ui';
+import { BRAND, BrandMark } from '../components/Brand';
 import { ProfileForm, useProfileDraft } from '../components/ProfileForm';
 
 const FEATURES = [
@@ -31,13 +32,12 @@ export function Onboarding() {
     <div className="onboarding">
       <section className="onboarding-hero">
         <div className="onboarding-brand">
-          <svg viewBox="0 0 32 32" width="36" height="36" aria-hidden>
-            <rect width="32" height="32" rx="8" fill="var(--accent)" />
-            <path d="M9 8v13a3 3 0 0 0 3 3h11" fill="none" stroke="#fff" strokeWidth="3" strokeLinecap="round" />
-            <circle cx="21" cy="11" r="3.5" fill="#ffd166" />
-          </svg>
-          <span>LiveTemplate</span>
+          <BrandMark size={36} />
+          <span>
+            {BRAND} <small className="brand-ko">마당</small>
+          </span>
         </div>
+        <p className="onboarding-tagline">내 방에서 시작해, 마당에서 함께.</p>
         <h1>
           디자인 · 코딩 · 문서를
           <br />한 화면에서 <em>함께</em>.

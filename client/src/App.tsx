@@ -116,7 +116,7 @@ function NarrowScreenNotice() {
     <div className="narrow-notice" role="status">
       <Monitor size={16} />
       <span>
-        LiveTemplate은 <b>데스크톱 화면</b>에 맞춰져 있습니다. 창을 넓히면 모든 기능을 편하게 쓸 수 있어요. 모바일은 전용 앱으로 준비 중입니다.
+        Madang은 <b>데스크톱 화면</b>에 맞춰져 있습니다. 창을 넓히면 모든 기능을 편하게 쓸 수 있어요. 모바일은 전용 앱으로 준비 중입니다.
       </span>
       <button
         className="icon-btn"
