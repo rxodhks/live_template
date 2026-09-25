@@ -1,0 +1,59 @@
+name: Site check
+
+# https://madang.party 가 정상 응답하는지, www 주소가 본 주소로 넘어가는지 확인한다.
+#  · Actions 탭의 Run workflow로 언제든 실행할 수 있다
+#  · 이 파일을 고칠 때도 한 번 실행된다
+# 배포하지 않고 외부에서 접속만 해 보므로 Secrets가 필요 없다.
+on:
+  workflow_dispatch:
+  push:
+    paths: ['.github/workflows/site-check.yml']
+
+jobs:
+  check:
+    runs-on: ubuntu-latest
+    steps:
+      - name: 접속 확인
+        run: |
+          fail=0
+          row() { echo "| $1 | $2 | $3 |" >> "$GITHUB_STEP_SUMMARY"; echo "[$1] $2 → $3"; }
+          echo "| 결과 | 확인 | 응답 |" >> "$GITHUB_STEP_SUMMARY"
+          echo "|---|---|---|" >> "$GITHUB_STEP_SUMMARY"
+
+          # 한 번만 요청해서 상태 코드와 이동할 주소를 본다
+          hop() { curl -sS -o /dev/null --max-time 15 --retry 2 --retry-all-errors -w '%{http_code} %{redirect_url}' "$1" || echo "000 -"; }
+          # 끝까지 따라가서 도착한 주소와 상태 코드를 본다
+          follow() { curl -sS -L -o /dev/null --max-time 20 --retry 2 --retry-all-errors -w '%{http_code} %{url_effective} %{num_redirects}' "$1" || echo "000 - 0"; }
+
+          # 1) 본 주소
+          body=$(curl -sS --max-time 15 --retry 2 --retry-all-errors https://madang.party/api/health || true)
+          if echo "$body" | grep -q '"ok":true'; then row "✅" "https://madang.party/api/health" "$body"; else row "❌" "https://madang.party/api/health" "${body:-응답 없음}"; fail=1; fi
+          read -r code loc <<< "$(hop https://madang.party/)"
+          if [ "$code" = "200" ]; then row "✅" "https://madang.party/" "HTTP $code"; else row "❌" "https://madang.party/" "HTTP $code ${loc}"; fail=1; fi
+
+          # 2) www → 본 주소 (경로와 쿼리 유지, 한 번에 이동)
+          for path in "/" "/join/test?x=1" "/t/abc/design?y=2"; do
+            want="https://madang.party${path}"
+            read -r code loc <<< "$(hop "https://www.madang.party${path}")"
+            if [ "$loc" = "$want" ] && { [ "$code" = "301" ] || [ "$code" = "308" ]; }; then
+              row "✅" "https://www.madang.party${path}" "$code → $loc"
+            elif [ "$loc" = "$want" ]; then
+              row "⚠️" "https://www.madang.party${path}" "$code → $loc (임시 이동 코드 · 301 권장)"
+            else
+              row "❌" "https://www.madang.party${path}" "$code → ${loc:-이동 없음} (기대: $want)"; fail=1
+            fi
+          done
+
+          # 3) http://www 도 최종적으로 https 본 주소에 도착하는지
+          read -r code url hops <<< "$(follow 'http://www.madang.party/join/test?x=1')"
+          if [ "$url" = "https://madang.party/join/test?x=1" ] && [ "$code" = "200" ]; then
+            row "✅" "http://www.madang.party/join/test?x=1" "이동 ${hops}번 → $url (HTTP $code)"
+          else
+            row "❌" "http://www.madang.party/join/test?x=1" "이동 ${hops}번 → $url (HTTP $code)"; fail=1
+          fi
+
+          # 참고: http://madang.party 가 https로 넘어가는지 (Always Use HTTPS 설정)
+          read -r code url hops <<< "$(follow 'http://madang.party/')"
+          if [ "$url" = "https://madang.party/" ]; then row "✅" "http://madang.party/ (참고)" "https로 이동 (HTTP $code)"; else row "ℹ️" "http://madang.party/ (참고)" "$url (HTTP $code) · SSL/TLS → Edge Certificates → Always Use HTTPS를 켜면 https로 넘어갑니다"; fi
+
+          exit $fail
