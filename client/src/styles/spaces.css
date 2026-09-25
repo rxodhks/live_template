@@ -546,8 +546,8 @@
 
 /* 상단 바: 템플릿 이름이 먼저, 위치 표시는 남는 폭에서 줄어든다 */
 .topbar .crumb-template {
-  flex: 0 1 auto;
-  min-width: 90px;
+  flex: 0 0 auto;
+  min-width: 0;
   max-width: 220px;
 }
 .topbar .space-chip {
@@ -558,6 +558,11 @@
   min-width: 0;
 }
 .topbar .search-trigger {
-  flex: 0 1 320px;
-  min-width: 180px;
+  flex: 0 1 300px;
+  min-width: 120px;
+}
+.topbar .search-trigger span {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
