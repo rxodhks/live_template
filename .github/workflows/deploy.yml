@@ -1,12 +1,12 @@
 name: Deploy to Cloudflare
 
 # 클라우드플레어 Workers에 배포한다 (https://madang.party).
-#  · main에 합쳐질 때, 그리고 main 병합 전까지는 작업 브랜치에 푸시할 때도 배포한다
+#  · main에 합쳐질 때 배포한다 (Actions 탭의 Run workflow로 수동 배포도 가능)
 #  · 배포 전에 타입 검사와 통합 테스트를 통과해야 한다
 # 필요한 저장소 Secrets: CLOUDFLARE_API_TOKEN, CLOUDFLARE_ACCOUNT_ID (없으면 배포 단계를 건너뜀)
 on:
   push:
-    branches: [main, claude/realtime-collab-project-74x1da]
+    branches: [main]
   workflow_dispatch:
 
 concurrency:
