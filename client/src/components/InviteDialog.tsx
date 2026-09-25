@@ -38,13 +38,15 @@ function InviteDialog_({ ws }: { ws: WorkspaceValue }) {
   const setOpen = useUI((s) => s.setShareOpen);
   const me = useSession((s) => s.user)!;
   const t = ws.template;
-  const personal = ws.mode === 'personal';
+  // 개인 공간이면 첫 초대와 함께 협업 공간으로 바뀐다. 아직 이 기기에만 있는 템플릿은 그때 클라우드로 올린다
+  const personal = ws.isPrivate;
+  const local = ws.mode === 'personal';
   const [opts, setOpts] = useState<InviteOptions>(DEFAULT_INVITE);
   const busy = useUI((s) => s.inviteBusy);
   const setBusy = useUI((s) => s.setInviteBusy);
   const created = useUI((s) => s.createdInvite);
   const setCreated = useUI((s) => s.setCreatedInvite);
-  const { invites, revoke, setInvites } = useInvites(t.id, !personal);
+  const { invites, revoke, setInvites } = useInvites(t.id, !local);
   const set = (patch: Partial<InviteOptions>) => setOpts((o) => ({ ...o, ...patch }));
 
   // 전환 중에 목록을 먼저 불러왔다면 방금 만든 링크를 끼워 넣는다
@@ -56,13 +58,14 @@ function InviteDialog_({ ws }: { ws: WorkspaceValue }) {
     setBusy(true);
     try {
       let templateId = t.id;
-      if (personal) {
-        // 첫 초대: 개인 공간을 협업 공간으로 전환 (같은 ID · 같은 주소로 이어서 작업)
+      if (local) {
+        // 아직 이 기기에만 있는 템플릿: 협업 공간으로 클라우드에 올린다 (같은 ID · 같은 주소로 이어서 작업)
         const shared = await shareTemplate(t, ws.doc);
         templateId = shared.id;
-        toast.success('협업 공간으로 전환했습니다', '이제 초대한 사람과 실시간으로 함께 작업할 수 있습니다.');
       }
+      // 클라우드에 있는 개인 템플릿은 첫 초대 링크를 만들 때 서버가 협업 공간으로 바꾼다
       const invite = await createInvite(templateId, { ...opts, label: opts.label?.trim() });
+      if (personal) toast.success('협업 공간으로 전환했습니다', '이제 초대한 사람과 실시간으로 함께 작업할 수 있습니다.');
       setCreated(invite);
       setInvites((prev) => [invite, ...(prev ?? []).filter((i) => i.id !== invite.id)]);
       if (await copyText(inviteLink(invite.token))) toast.success('초대 링크를 만들고 복사했습니다', inviteSummary(invite));
@@ -105,8 +108,8 @@ function InviteDialog_({ ws }: { ws: WorkspaceValue }) {
             <div>
               <b>초대하면 협업 공간으로 전환됩니다</b>
               <span>
-                지금까지의 내용 · 타임라인 · 비밀 노트(암호화된 그대로)가 클라우드로 옮겨지고, 실시간 커서 · 채팅 · 멤버 관리가 켜집니다. 주소와 작업
-                내용은 그대로 이어집니다.
+                지금은 나만 볼 수 있는 템플릿입니다. 초대 링크로 들어온 멤버도 내용 · 타임라인 · 비밀 노트(비밀번호를 아는 사람만)를 볼 수 있게 되고, 실시간
+                커서 · 채팅 · 멤버 관리가 켜집니다. 주소와 작업 내용은 그대로 이어집니다.
               </span>
             </div>
           </div>

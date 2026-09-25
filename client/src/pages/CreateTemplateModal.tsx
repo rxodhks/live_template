@@ -4,6 +4,7 @@ import type { Feature, TemplateEntry } from '@shared/types';
 import { BLANK_CONTENT, FEATURE_INFO, FEATURE_ORDER, PRESETS, getPreset } from '@shared/presets';
 import { errorMessage } from '../lib/api';
 import { createPersonalTemplate } from '../lib/local';
+import { backupTemplate } from '../lib/templateOps';
 import { toast } from '../store/toasts';
 import { useSession } from '../store/session';
 import { Button, Field, Modal } from '../components/ui';
@@ -53,9 +54,11 @@ export function CreateTemplateModal({ onClose, onCreated }: { onClose: () => voi
     if (!name.trim() || features.length === 0) return;
     setSaving(true);
     try {
-      // 새 템플릿은 개인 공간에 만들어진다 (서버 불필요). 초대하는 순간 협업 공간으로 전환된다
-      const t = await createPersonalTemplate({ name, description, emoji, features, presetId }, useSession.getState().user!);
-      toast.success('템플릿을 만들었습니다', `${t.emoji} ${t.name} · 개인 공간`);
+      // 새 템플릿은 나만 보는 개인 공간에 만들어지고 곧바로 클라우드에 백업된다 (오프라인이면 연결되는 대로).
+      // 초대하는 순간 협업 공간으로 전환된다
+      const local = await createPersonalTemplate({ name, description, emoji, features, presetId }, useSession.getState().user!);
+      const t = await backupTemplate(local).catch(() => local);
+      toast.success('템플릿을 만들었습니다', `${t.emoji} ${t.name} · 개인 공간${t.mode === 'personal' ? ' (인터넷에 연결되면 백업)' : ''}`);
       onCreated(t);
     } catch (err) {
       toast.error('템플릿을 만들지 못했습니다', errorMessage(err));

@@ -11,10 +11,15 @@ export function SaveIndicator({ synced, mode }: { synced: boolean; mode: Templat
   useTick(15_000);
 
   if (mode === 'personal') {
+    // 아직 클라우드에 올라가지 않은 템플릿 (오프라인에서 만든 경우) — 연결되면 자동으로 백업된다
     return (
-      <span className="save-indicator is-ok" data-tip="모든 변경 사항은 입력 즉시 이 브라우저에 자동 저장됩니다." role="status">
+      <span
+        className="save-indicator is-warn"
+        data-tip="이 기기에 자동 저장되어 있습니다. 인터넷에 연결되면 클라우드에 자동으로 백업됩니다."
+        role="status"
+      >
         <HardDrive size={15} />
-        <span className="save-text">이 기기에 자동 저장</span>
+        <span className="save-text">이 기기에 저장 · 백업 대기</span>
       </span>
     );
   }

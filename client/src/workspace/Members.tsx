@@ -22,7 +22,7 @@ const ROLE_INFO: Record<Role, { label: string; desc: string }> = {
 
 export function Members() {
   const ws = useWorkspace();
-  return ws.mode === 'personal' ? <PersonalMembers /> : <SharedMembers />;
+  return ws.isPrivate ? <PersonalMembers /> : <SharedMembers />;
 }
 
 function PersonalMembers() {
@@ -42,7 +42,7 @@ function PersonalMembers() {
             <b>
               {me.name} <span className="muted">(나)</span>
             </b>
-            <span className="muted small">이 브라우저의 개인 공간</span>
+            <span className="muted small">나만 볼 수 있는 개인 공간</span>
           </div>
           <span className="role-chip role-owner">소유자</span>
         </li>

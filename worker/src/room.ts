@@ -15,8 +15,10 @@ import type {
   SecretNoteMeta,
   ShareUpload,
   TemplateSummary,
+  TemplateVisibility,
   TimelineEvent,
   UnlockResult,
+  VersionInfo,
   ViewModule,
   Viewport,
 } from '../../shared/types';
@@ -45,6 +47,10 @@ const NOTE_LOCKOUT_MS = 5 * 60 * 1000;
 const MAX_BLOB_CHARS = 1_500_000;
 /** SQLite 값 하나는 2MB까지라서 큰 문서 상태는 나눠 저장한다 */
 const CHUNK_BYTES = 1_000_000;
+/** 버전 기록: 변경이 있으면 1시간마다 문서 전체를 저장, 48시간 이내는 모두 · 그 뒤로는 하루 하나씩 30일까지 보관 */
+const VERSION_INTERVAL_MS = 60 * 60 * 1000;
+const VERSION_KEEP_ALL_MS = 48 * 60 * 60 * 1000;
+const VERSION_KEEP_DAILY_MS = 30 * 86_400_000;
 
 const VIEW_MODULES: ReadonlySet<ViewModule> = new Set(['overview', 'design', 'code', 'docs', 'notes', 'timeline', 'members', 'settings']);
 
@@ -111,6 +117,8 @@ export class TemplateRoom extends DurableObject<Env> {
   private sql: SqlStorage;
   private doc: Y.Doc | null = null;
   private pending: Uint8Array[] = [];
+  /** 아직 저장 전인 변경의 확인(ack) — 저장소에 기록된 뒤에만 "저장됨"을 보낸다 */
+  private waitingAcks: { sid: string; id: number }[] = [];
   private flushScheduled = false;
   private cursors = new Map<string, CursorPoint | null>();
   private actions = new Map<string, { label: string; at: number }>();
@@ -133,6 +141,8 @@ export class TemplateRoom extends DurableObject<Env> {
       CREATE INDEX IF NOT EXISTS note_updates_by_note ON note_updates(note_id, uid);
       CREATE TABLE IF NOT EXISTS note_attempts (k TEXT PRIMARY KEY, fails INTEGER NOT NULL, locked_until INTEGER NOT NULL);
       CREATE TABLE IF NOT EXISTS note_tickets (ticket TEXT PRIMARY KEY, note_id TEXT NOT NULL, user_id TEXT NOT NULL, expires_at INTEGER NOT NULL);
+      CREATE TABLE IF NOT EXISTS versions (id INTEGER PRIMARY KEY AUTOINCREMENT, at INTEGER NOT NULL, size INTEGER NOT NULL);
+      CREATE TABLE IF NOT EXISTS version_parts (version_id INTEGER NOT NULL, seq INTEGER NOT NULL, data BLOB NOT NULL, PRIMARY KEY (version_id, seq));
     `);
     // "ping"에는 깨어나지 않고 자동으로 "pong" 응답 (연결 유지 비용 0)
     ctx.setWebSocketAutoResponse(new WebSocketRequestResponsePair('ping', 'pong'));
@@ -330,9 +340,10 @@ export class TemplateRoom extends DurableObject<Env> {
         const aw = typeof msg.aw === 'string' && msg.aw.length < 20_000 ? msg.aw : undefined;
         if (aw) this.trackAwareness(ws, a, aw);
         this.pending.push(update);
+        // 다른 사람에게는 바로 보여 주고, 보낸 사람의 "저장됨" 확인은 저장소에 기록한 뒤에 보낸다 (flush)
+        this.waitingAcks.push({ sid: a.sid, id: msg.id });
         await this.scheduleFlush();
         this.broadcast(aw ? { t: 'update', u: msg.u, aw } : { t: 'update', u: msg.u }, { exceptSid: a.sid, filter: (o) => o.synced });
-        ack(msg.id, { ok: true });
         this.touchDirectory();
         return;
       }
@@ -530,18 +541,92 @@ export class TemplateRoom extends DurableObject<Env> {
 
   private async flush(): Promise<void> {
     this.flushScheduled = false;
-    if (this.pending.length === 0) return;
-    const merged = Y.mergeUpdates(this.pending);
-    this.pending = [];
-    this.appendUpdate(merged);
-    const count = this.sql.exec<{ c: number }>('SELECT count(DISTINCT grp) AS c FROM doc_updates').one().c;
-    if (count > COMPACT_AFTER && this.doc) {
-      const state = Y.encodeStateAsUpdate(this.doc);
-      this.ctx.storage.transactionSync(() => {
-        this.sql.exec('DELETE FROM doc_updates');
-        this.appendUpdate(state);
-      });
+    const acks = this.waitingAcks;
+    this.waitingAcks = [];
+    if (this.pending.length) {
+      const merged = Y.mergeUpdates(this.pending);
+      this.pending = [];
+      this.appendUpdate(merged);
+      const count = this.sql.exec<{ c: number }>('SELECT count(DISTINCT grp) AS c FROM doc_updates').one().c;
+      if (count > COMPACT_AFTER && this.doc) {
+        const state = Y.encodeStateAsUpdate(this.doc);
+        this.ctx.storage.transactionSync(() => {
+          this.sql.exec('DELETE FROM doc_updates');
+          this.appendUpdate(state);
+        });
+      }
+      this.maybeSaveVersion();
     }
+    // 기록이 끝난 뒤에 확인을 보낸다. Durable Object는 저장이 디스크에 확정될 때까지 밖으로 나가는 메시지를 붙잡아 둔다
+    // (출력 게이트) — 그래서 "저장됨"을 받은 변경은 서버가 재시작되어도 남아 있다
+    if (acks.length) {
+      const bySid = new Map(this.sockets().map((s) => [s.a.sid, s.ws]));
+      for (const { sid, id } of acks) {
+        const ws = bySid.get(sid);
+        if (ws) this.send(ws, { t: 'ack', id, ok: true });
+      }
+    }
+  }
+
+  /* ───────────── 버전 기록 ───────────── */
+
+  private saveVersion(state: Uint8Array): void {
+    const at = Date.now();
+    this.ctx.storage.transactionSync(() => {
+      this.sql.exec('INSERT INTO versions (at, size) VALUES (?, ?)', at, state.length);
+      const id = this.sql.exec<{ id: number }>('SELECT last_insert_rowid() AS id').one().id;
+      for (let i = 0, seq = 0; i === 0 || i < state.length; i += CHUNK_BYTES, seq++) {
+        this.sql.exec('INSERT INTO version_parts (version_id, seq, data) VALUES (?, ?, ?)', id, seq, state.slice(i, i + CHUNK_BYTES).buffer);
+      }
+      this.setMetaValue('lastVersionAt', String(at));
+    });
+    this.pruneVersions(at);
+  }
+
+  /** 변경이 저장될 때 마지막 버전에서 1시간이 지났으면 새 버전을 남긴다 */
+  private maybeSaveVersion(): void {
+    if (!this.doc) return;
+    if (Date.now() - Number(this.meta('lastVersionAt') ?? 0) < VERSION_INTERVAL_MS) return;
+    this.saveVersion(Y.encodeStateAsUpdate(this.doc));
+  }
+
+  /** 48시간 이내는 모두, 그 뒤로는 날짜마다 마지막 버전 하나씩 30일까지 */
+  private pruneVersions(now: number): void {
+    const rows = this.sql.exec<{ id: number; at: number }>('SELECT id, at FROM versions ORDER BY at DESC').toArray();
+    const days = new Set<number>();
+    const drop: number[] = [];
+    for (const r of rows) {
+      const age = now - r.at;
+      if (age <= VERSION_KEEP_ALL_MS) continue;
+      const day = Math.floor((r.at + 9 * 3_600_000) / 86_400_000); // 한국 시간 기준 날짜
+      if (age > VERSION_KEEP_DAILY_MS || days.has(day)) drop.push(r.id);
+      else days.add(day);
+    }
+    for (const id of drop) {
+      this.sql.exec('DELETE FROM version_parts WHERE version_id = ?', id);
+      this.sql.exec('DELETE FROM versions WHERE id = ?', id);
+    }
+  }
+
+  async listVersions(): Promise<VersionInfo[]> {
+    return this.sql.exec<{ id: number; at: number; size: number }>('SELECT id, at, size FROM versions ORDER BY at DESC').toArray();
+  }
+
+  /** 저장된 버전의 문서 전체 (base64) */
+  async readVersion(id: number): Promise<Result<{ at: number; state: string }>> {
+    const v = this.sql.exec<{ at: number }>('SELECT at FROM versions WHERE id = ?', id).toArray()[0];
+    if (!v) return fail(404, '버전을 찾을 수 없습니다.');
+    const parts = this.sql
+      .exec<{ data: ArrayBuffer }>('SELECT data FROM version_parts WHERE version_id = ? ORDER BY seq', id)
+      .toArray()
+      .map((r) => new Uint8Array(r.data));
+    const out = new Uint8Array(parts.reduce((n, p) => n + p.length, 0));
+    let offset = 0;
+    for (const p of parts) {
+      out.set(p, offset);
+      offset += p.length;
+    }
+    return ok({ at: v.at, state: toB64(out) });
   }
 
   private touchDirectory(): void {
@@ -828,8 +913,11 @@ export class TemplateRoom extends DurableObject<Env> {
 
   /* ───────────── Worker가 호출하는 관리 기능 ───────────── */
 
-  /** 개인 공간에서 올린 템플릿 등록 (Directory에 등록한 뒤 방 초기화) */
-  async share(user: PublicUser, templateId: string, text: string): Promise<Result<TemplateSummary>> {
+  /**
+   * 브라우저에서 만든 템플릿을 클라우드에 등록 (Directory에 등록한 뒤 방 초기화)
+   *  · private: 개인 공간 백업 (나만) · shared: 초대하면서 협업 공간으로
+   */
+  async share(user: PublicUser, templateId: string, text: string, visibility: TemplateVisibility = 'shared'): Promise<Result<TemplateSummary>> {
     let input: Partial<ShareUpload>;
     try {
       input = JSON.parse(text) as Partial<ShareUpload>;
@@ -838,7 +926,7 @@ export class TemplateRoom extends DurableObject<Env> {
     }
     if (!input || input.id !== templateId) return fail(400, '템플릿 ID가 일치하지 않습니다.');
     if (typeof input.state !== 'string') return fail(400, '문서 데이터가 없습니다.');
-    const created = await this.directory.createTemplate(user.id, input);
+    const created = await this.directory.createTemplate(user.id, input, visibility);
     if (!created.ok) return created;
     const template = created.data;
     const init = await this.init({
@@ -848,16 +936,25 @@ export class TemplateRoom extends DurableObject<Env> {
       state: input.state,
       timeline: Array.isArray(input.timeline) ? input.timeline : [],
       notes: Array.isArray(input.notes) ? input.notes : [],
+      shared: visibility === 'shared',
     });
     if (!init.ok) {
-      await this.directory.deleteTemplate(templateId, user.id);
+      await this.directory.discardTemplate(templateId, user.id);
       return init;
     }
     return ok(template);
   }
 
   /** 개인 공간에서 올라온 템플릿으로 방을 초기화 */
-  async init(input: { templateId: string; name: string; user: PublicUser; state: string; timeline: TimelineEvent[]; notes: Partial<EncryptedNote>[] }): Promise<Result<{ notes: number }>> {
+  async init(input: {
+    templateId: string;
+    name: string;
+    user: PublicUser;
+    state: string;
+    timeline: TimelineEvent[];
+    notes: Partial<EncryptedNote>[];
+    shared: boolean;
+  }): Promise<Result<{ notes: number }>> {
     if (this.meta('initialized')) return ok({ notes: this.noteList().length });
     let state: Uint8Array;
     try {
@@ -887,7 +984,9 @@ export class TemplateRoom extends DurableObject<Env> {
       this.setMetaValue('initialized', String(Date.now()));
     });
     this.doc = null;
-    this.record(input.user, { type: 'template.share' });
+    // 처음 올라온 내용을 첫 버전으로 남긴다
+    this.saveVersion(state);
+    if (input.shared) this.record(input.user, { type: 'template.share' });
     return ok({ notes: notes.length });
   }
 
@@ -933,7 +1032,20 @@ export class TemplateRoom extends DurableObject<Env> {
     }
   }
 
-  /** 템플릿 삭제: 모두 내보내고 저장된 내용을 지운다 */
+  /** 휴지통으로 옮겨질 때: 접속한 사람을 모두 내보낸다 (저장된 내용은 그대로 — 복원할 수 있다) */
+  async evict(byName: string): Promise<void> {
+    await this.flush();
+    for (const ws of this.ctx.getWebSockets()) {
+      this.send(ws, { t: 'kicked', reason: 'deleted', by: byName });
+      try {
+        ws.close(4002, 'deleted');
+      } catch {
+        /* 무시 */
+      }
+    }
+  }
+
+  /** 영구 삭제 (휴지통에서 비우거나 보관 기간이 끝났을 때): 저장된 내용을 모두 지운다 */
   async destroy(byName: string): Promise<void> {
     for (const ws of this.ctx.getWebSockets()) {
       this.send(ws, { t: 'kicked', reason: 'deleted', by: byName });
@@ -944,6 +1056,7 @@ export class TemplateRoom extends DurableObject<Env> {
       }
     }
     this.doc = null;
+    this.waitingAcks = [];
     this.pending = [];
     await this.ctx.storage.deleteAlarm();
     await this.ctx.storage.deleteAll();

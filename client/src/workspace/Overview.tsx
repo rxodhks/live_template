@@ -47,7 +47,7 @@ export function Overview() {
         </div>
       </header>
 
-      {ws.mode === 'shared' ? <Collaborators /> : <PersonalBanner />}
+      {ws.isPrivate ? <PersonalBanner /> : <Collaborators />}
 
       <div className="overview-grid">
         {t.features.map((f) => (
@@ -72,8 +72,8 @@ function PersonalBanner() {
       <div className="personal-banner-text">
         <b>개인 공간</b>
         <span>
-          이 템플릿은 이 브라우저에만 저장되어 있어 인터넷 없이도 작업할 수 있습니다. 팀원을 초대하면 <b>협업 공간</b>으로 전환되어 클라우드에 안전하게
-          저장되고, 아래 기능이 켜집니다.
+          나만 볼 수 있는 템플릿입니다. 클라우드에 자동으로 백업되어 브라우저 데이터를 지우거나 다른 기기에서 로그인해도 그대로 이어서 작업할 수
+          있습니다. 팀원을 초대하면 <b>협업 공간</b>으로 전환되고 아래 기능이 켜집니다.
         </span>
         <ul className="personal-banner-list">
           <li>
@@ -86,7 +86,7 @@ function PersonalBanner() {
             <Users size={14} /> 멤버 · 권한 관리
           </li>
           <li>
-            <Cloud size={14} /> 여러 기기에서 이어서 작업
+            <Cloud size={14} /> 멤버와 실시간 동기화
           </li>
         </ul>
       </div>

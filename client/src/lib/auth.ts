@@ -3,6 +3,11 @@ import { useSession } from '../store/session';
 import { toast } from '../store/toasts';
 import { api, clearLegacy, legacyToken, setUnauthorizedHandler } from './api';
 import { setIdbUser } from './idb';
+import { runDeviceClear, scheduleDeviceClear } from './device';
+import { backupPending } from './templateOps';
+import { useTemplates } from '../store/templates';
+import { useConnection } from '../store/connection';
+import { confirmDialog } from '../components/ui';
 
 /*
  * 로그인
@@ -42,6 +47,8 @@ function enter(user: PublicUser, account: AccountInfo | null, offline = false): 
 
 /** 앱 시작: 로그인 상태 확인 */
 export async function bootSession(): Promise<void> {
+  // 로그아웃하면서 예약해 둔 이 기기 데이터 정리 (저장소를 열기 전에)
+  await runDeviceClear();
   try {
     const me = await api<{ user: PublicUser; account: AccountInfo }>('GET', '/me');
     enter(me.user, me.account);
@@ -81,10 +88,35 @@ export async function claimLegacyAccount(): Promise<boolean> {
   }
 }
 
+const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
+
+/**
+ * 로그아웃: 클라우드에 모두 저장된 것을 확인한 뒤 이 기기에서 계정 데이터를 지운다.
+ * 아직 올라가지 않은 데이터가 있으면 알리고, 그 데이터는 이 기기에 남겨 둔다 (다음 로그인 때 자동 백업).
+ */
 export async function logout(): Promise<void> {
+  const me = useSession.getState().user;
+  // 이 기기에만 있는 개인 템플릿을 먼저 백업하고, 저장 중인 변경이 서버에 닿을 때까지 잠깐 기다린다
+  await backupPending().catch(() => 0);
+  for (let i = 0; i < 24 && useConnection.getState().pending > 0; i++) await sleep(250);
+  const templates = Object.values(useTemplates.getState().templates);
+  const local = templates.filter((t) => t.mode === 'personal');
+  const unsaved = useConnection.getState().pending > 0;
+  if (local.length || unsaved) {
+    const ok = await confirmDialog({
+      title: '아직 클라우드에 저장되지 않은 내용이 있습니다',
+      message: `${local.length ? `개인 템플릿 ${local.length}개가 아직 이 기기에만 있습니다. ` : ''}${
+        unsaved ? '방금 고친 내용이 아직 저장 중입니다. ' : ''
+      }로그아웃해도 이 내용은 이 기기에 남겨 두었다가, 다음에 로그인하면 자동으로 저장합니다.`,
+      confirmText: '로그아웃',
+    });
+    if (!ok) return;
+  }
   await api('POST', '/auth/logout').catch(() => {});
   writeCache(null);
-  // 열려 있는 실시간 연결 · 문서를 모두 정리하기 위해 새로 불러온다
+  // 클라우드에 안전하게 있는 사본만 이 기기에서 지운다 (저장 중인 것이 있으면 문서 사본은 남긴다)
+  if (me) scheduleDeviceClear(me.id, unsaved ? [] : templates.filter((t) => t.mode === 'shared').map((t) => t.id), local.length > 0 || unsaved);
+  // 열려 있는 실시간 연결 · 문서를 모두 닫기 위해 새로 불러온다 (지우기는 다음 시작 때)
   window.location.assign('/login');
 }
 

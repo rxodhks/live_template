@@ -9,7 +9,8 @@ import { useWorkspace } from './context';
 import { useSession } from '../store/session';
 import { toast } from '../store/toasts';
 import { errorMessage } from '../lib/api';
-import { deleteTemplate, updateTemplate } from '../lib/templateOps';
+import { updateTemplate } from '../lib/templateOps';
+import { VersionHistory, confirmTrash, trashTemplate } from '../components/DataProtection';
 import { cx, newId } from '../lib/util';
 import { CursorPage } from '../components/Cursors';
 import { Button, Field, confirmDialog } from '../components/ui';
@@ -95,24 +96,8 @@ export function Settings() {
   };
 
   const removeTemplate = async () => {
-    const ok = await confirmDialog({
-      title: '템플릿을 영구 삭제할까요?',
-      message:
-        ws.mode === 'personal'
-          ? '이 브라우저에서 디자인·코드·문서·비밀 노트·타임라인이 삭제되며 되돌릴 수 없습니다.'
-          : '모든 멤버에게서 디자인·코드·문서·비밀 노트·채팅·타임라인이 삭제되며 되돌릴 수 없습니다.',
-      confirmText: '영구 삭제',
-      danger: true,
-      requireText: t.name,
-    });
-    if (!ok) return;
-    try {
-      await deleteTemplate(t);
-      toast.show({ kind: 'danger', title: '템플릿을 삭제했습니다', message: t.name });
-      navigate('/');
-    } catch (err) {
-      toast.error('삭제하지 못했습니다', errorMessage(err));
-    }
+    if (!(await confirmTrash(t))) return;
+    if (await trashTemplate(t)) navigate('/');
   };
 
   const readOnly = !ws.canEdit;
@@ -194,16 +179,18 @@ export function Settings() {
         </div>
       </section>
 
+      {ws.mode === 'shared' && ws.canEdit && <VersionHistory template={t} />}
+
       {t.myRole === 'owner' && (
         <section className="settings-card danger-zone">
           <h2>위험 구역</h2>
           <div className="danger-row">
             <div>
               <b>템플릿 삭제</b>
-              <span className="muted small">모든 데이터가 영구적으로 삭제됩니다.</span>
+              <span className="muted small">휴지통으로 옮겨지며 30일 안에 복원할 수 있습니다. 그 뒤 영구 삭제됩니다.</span>
             </div>
             <Button variant="danger" icon={<Trash2 size={14} />} onClick={removeTemplate}>
-              삭제
+              휴지통으로 이동
             </Button>
           </div>
         </section>

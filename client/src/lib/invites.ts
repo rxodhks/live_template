@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useState } from 'react';
-import type { InviteInfo, InviteOptions, JoinRequest } from '@shared/types';
+import type { InviteInfo, InviteOptions, JoinRequest, TemplateSummary } from '@shared/types';
+import { useTemplates } from '../store/templates';
 import { api, appUrl, errorMessage } from './api';
 
 /*
@@ -80,8 +81,11 @@ export function useInvites(templateId: string, enabled: boolean) {
   return { invites, error, reload, revoke, setInvites };
 }
 
+/** 초대 링크 만들기 — 개인 공간이었다면 서버가 협업 공간으로 바꾸고 바뀐 템플릿 정보를 함께 준다 */
 export async function createInvite(templateId: string, opts: InviteOptions): Promise<InviteInfo> {
-  return (await api<{ invite: InviteInfo }>('POST', `/templates/${templateId}/invites`, opts)).invite;
+  const res = await api<{ invite: InviteInfo; template: TemplateSummary | null }>('POST', `/templates/${templateId}/invites`, opts);
+  if (res.template) useTemplates.getState().upsertShared(res.template);
+  return res.invite;
 }
 
 export async function decideRequest(templateId: string, requestId: string, approve: boolean): Promise<JoinRequest> {

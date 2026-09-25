@@ -677,3 +677,55 @@
   color: var(--accent-text) !important;
   margin-top: -10px;
 }
+
+/* ───────────── 데이터 보호: 휴지통 · 버전 기록 ───────────── */
+
+.trash-loading {
+  min-height: 140px;
+}
+.trash-list,
+.version-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+.trash-item,
+.version-item {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 10px 12px;
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  background: var(--surface);
+}
+.trash-emoji {
+  font-size: 22px;
+  width: 32px;
+  text-align: center;
+  flex: none;
+}
+.trash-info,
+.version-item > div {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  flex: 1;
+  min-width: 0;
+}
+.trash-info b {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.trash-days {
+  color: var(--danger);
+  font-weight: 600;
+}
+.settings-card h2 svg {
+  vertical-align: -2px;
+  margin-right: 4px;
+}

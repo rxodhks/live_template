@@ -1,5 +1,5 @@
-import type { AuthConfig, InviteOptions, OAuthProvider, PublicUser, Role } from '../../shared/types';
-import { type AuthOutcome, Directory, SESSION_TTL_MS, hasRole } from './directory';
+import type { AuthConfig, InviteOptions, OAuthProvider, PublicUser, Role, ShareUpload, TemplateVisibility } from '../../shared/types';
+import { type AuthOutcome, Directory, SESSION_TTL_MS, TRASH_TTL_MS, hasRole } from './directory';
 import { TemplateRoom } from './room';
 import type { Env } from './env';
 import {
@@ -17,7 +17,7 @@ import {
   withCookies,
 } from './auth';
 import { sendLoginCode } from './mail';
-import { HttpError, isId, json, safeEqual, unwrap } from './util';
+import { HttpError, isId, json, newId, safeEqual, unwrap } from './util';
 
 export { Directory, TemplateRoom };
 
@@ -174,7 +174,8 @@ route('POST', '/api/auth/email/start', async (c) => {
   const dev = devMode(c);
   if (!c.env.RESEND_API_KEY && !dev) throw new HttpError(503, '이메일 로그인이 아직 준비되지 않았습니다. 다른 로그인 방법을 이용해 주세요.');
   const dir = directory(c.env);
-  const { code, expiresAt } = unwrap(await dir.startEmailCode(addr, clientIp(c.req)));
+  // 개발 모드(내 컴퓨터)에서는 IP 제한을 두지 않는다 — 테스트가 한 주소에서 여러 계정을 만든다
+  const { code, expiresAt } = unwrap(await dir.startEmailCode(addr, dev ? null : clientIp(c.req)));
   if (c.env.RESEND_API_KEY) {
     try {
       await sendLoginCode(c.env, addr, code);
@@ -291,15 +292,19 @@ route('GET', '/api/templates', async (c) => {
  * 개인 공간 → 협업 공간 전환: 브라우저에 있던 내용(문서·타임라인·암호화된 노트)을 그대로 올린다.
  * 무료 요금제 Worker는 요청당 CPU 10ms라서, 큰 본문은 여기서 해석하지 않고 방(Durable Object, 30초)으로 그대로 넘긴다.
  */
-route('POST', '/api/templates/:id/share', async (c) => {
+async function upload(c: Ctx, visibility: TemplateVisibility): Promise<Response> {
   const user = await requireUser(c);
   const templateId = templateParam(c);
   const length = Number(c.req.headers.get('content-length') ?? 0);
   if (length > MAX_UPLOAD) throw new HttpError(413, '템플릿이 너무 큽니다.');
   const text = await c.req.text();
   if (text.length > MAX_UPLOAD) throw new HttpError(413, '템플릿이 너무 큽니다.');
-  return json({ template: unwrap(await room(c.env, templateId).share(user, templateId, text)) }, 201);
-});
+  return json({ template: unwrap(await room(c.env, templateId).share(user, templateId, text, visibility)) }, 201);
+}
+route('POST', '/api/templates/:id/share', (c) => upload(c, 'shared'));
+
+/** 개인 공간 백업: 브라우저에서 만든 개인 템플릿을 나만 볼 수 있게 클라우드에 올린다 (이후 실시간으로 저장) */
+route('POST', '/api/templates/:id/backup', (c) => upload(c, 'private'));
 
 route('GET', '/api/templates/:id', async (c) => {
   const { template } = await access(c);
@@ -318,12 +323,76 @@ route('PATCH', '/api/templates/:id', async (c) => {
   return json({ template: r.template });
 });
 
+/** 삭제 = 휴지통으로 이동 (30일 뒤 영구 삭제, 그 전에는 소유자가 복원 가능) */
 route('DELETE', '/api/templates/:id', async (c) => {
   const user = await requireUser(c);
   const templateId = templateParam(c);
-  unwrap(await directory(c.env).deleteTemplate(templateId, user.id));
+  unwrap(await directory(c.env).trashTemplate(templateId, user.id));
+  const rm = room(c.env, templateId);
+  await rm.recordEvent(user, { type: 'template.trash' });
+  await rm.evict(user.name);
+  return json({ ok: true, trashed: true });
+});
+
+/* 휴지통 (소유자만) */
+route('GET', '/api/trash', async (c) => {
+  const user = await requireUser(c);
+  return json({ trash: await directory(c.env).listTrash(user.id), ttlDays: TRASH_TTL_MS / 86_400_000 });
+});
+
+route('POST', '/api/trash/:id/restore', async (c) => {
+  const user = await requireUser(c);
+  const templateId = templateParam(c);
+  const r = unwrap(await directory(c.env).restoreTemplate(templateId, user.id));
+  const rm = room(c.env, templateId);
+  await rm.recordEvent(user, { type: 'template.restore' });
+  await rm.templateChanged(r.broadcast);
+  return json({ template: r.template });
+});
+
+route('DELETE', '/api/trash/:id', async (c) => {
+  const user = await requireUser(c);
+  const templateId = templateParam(c);
+  unwrap(await directory(c.env).purgeFromTrash(templateId, user.id));
   await room(c.env, templateId).destroy(user.name);
   return json({ ok: true });
+});
+
+/* 버전 기록: 문서 전체를 1시간마다 저장 (48시간은 모두, 그 뒤로는 하루 하나씩 30일) */
+route('GET', '/api/templates/:id/versions', async (c) => {
+  const { templateId } = await access(c, 'editor');
+  return json({ versions: await room(c.env, templateId).listVersions() });
+});
+
+/** 이전 버전으로 되돌리기: 지금 문서를 덮어쓰지 않고, 그 버전 내용으로 나만 보는 사본을 만든다 */
+route('POST', '/api/templates/:id/versions/:versionId/copy', async (c) => {
+  const { user, templateId, template } = await access(c, 'editor');
+  const versionId = Number(c.params.versionId);
+  if (!Number.isInteger(versionId) || versionId <= 0) throw new HttpError(404, '버전을 찾을 수 없습니다.');
+  const { name, label } = await body<{ name?: unknown; label?: unknown }>(c.req);
+  const version = unwrap(await room(c.env, templateId).readVersion(versionId));
+  const copyId = newId(16);
+  const copyName = (typeof name === 'string' && name.trim() ? name.trim() : `${template.name} (복원본)`).slice(0, 60);
+  const upload: ShareUpload = {
+    id: copyId,
+    name: copyName,
+    description: template.description,
+    emoji: template.emoji,
+    features: template.features,
+    createdAt: Date.now(),
+    state: version.state,
+    timeline: [],
+    notes: [],
+  };
+  const copy = unwrap(await room(c.env, copyId).share(user, copyId, JSON.stringify(upload), 'private'));
+  await room(c.env, copyId).recordEvent(user, { type: 'template.copy', targetName: template.name, detail: typeof label === 'string' ? label.slice(0, 40) : '' });
+  return json({ template: copy }, 201);
+});
+
+/** 내가 보낸 참여 요청 (다른 기기에서도 같은 목록) */
+route('GET', '/api/me/requests', async (c) => {
+  const user = await requireUser(c);
+  return json({ requests: await directory(c.env).myRequests(user.id) });
 });
 
 /* 실시간 연결 */
@@ -385,9 +454,15 @@ function describeInvite(i: { role: string; expiresAt: number | null; maxUses: nu
 route('POST', '/api/templates/:id/invites', async (c) => {
   const user = await requireUser(c);
   const templateId = templateParam(c);
-  const invite = unwrap(await directory(c.env).createInvite(templateId, user.id, await body<Partial<InviteOptions>>(c.req)));
-  await room(c.env, templateId).recordEvent(user, { type: 'invite.create', detail: describeInvite(invite) });
-  return json({ invite }, 201);
+  const r = unwrap(await directory(c.env).createInvite(templateId, user.id, await body<Partial<InviteOptions>>(c.req)));
+  const rm = room(c.env, templateId);
+  // 개인 공간에서 처음 초대하면 협업 공간으로 바뀐다
+  if (r.becameShared) {
+    await rm.recordEvent(user, { type: 'template.share' });
+    await rm.templateChanged(r.broadcast);
+  }
+  await rm.recordEvent(user, { type: 'invite.create', detail: describeInvite(r.invite) });
+  return json({ invite: r.invite, template: r.becameShared ? { ...r.broadcast, myRole: 'owner' } : null }, 201);
 });
 
 route('DELETE', '/api/templates/:id/invites/:inviteId', async (c) => {
