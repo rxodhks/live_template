@@ -19,7 +19,10 @@ let proc: ChildProcess | null = null;
 const sockets: Client[] = [];
 
 async function startWorker() {
-  proc = spawn('npx', ['wrangler', 'dev', '--port', String(port), '--ip', '127.0.0.1', '--persist-to', persistDir, '--log-level', 'warn'], {
+  // AUTH_DEV_MODE: 메일 대신 응답으로 인증 코드를 받는다 (localhost에서만 동작)
+  // GIT_*: 깃허브 외부 로그인 시작 · 되돌아오기 검증용 가짜 설정 (실제 깃허브와는 통신이 실패한다)
+  const vars = ['AUTH_DEV_MODE:1', 'GIT_CLIENT_ID:test-client', 'GIT_CLIENT_SECRET:test-secret'].flatMap((v) => ['--var', v]);
+  proc = spawn('npx', ['wrangler', 'dev', '--port', String(port), '--ip', '127.0.0.1', '--persist-to', persistDir, '--log-level', 'warn', ...vars], {
     cwd: workerDir,
     stdio: ['ignore', 'pipe', 'pipe'],
     env: { ...process.env, WRANGLER_SEND_METRICS: 'false', CI: '1' },
@@ -69,10 +72,37 @@ async function api<T = any>(method: string, url: string, token?: string, body?: 
   return { status: res.status, data: (await res.json()) as T };
 }
 
-async function newUser(name: string) {
-  const { status, data } = await api('POST', '/users', undefined, { name, color: '#3e63dd', avatar: '🦊' });
-  assert.equal(status, 201, JSON.stringify(data));
-  return data as { user: { id: string; name: string }; token: string };
+/** 쿠키까지 다루는 요청 (브라우저와 같은 방식) */
+async function raw(method: string, url: string, opts: { cookie?: string; body?: unknown; headers?: Record<string, string> } = {}) {
+  const res = await fetch(`${base}${url}`, {
+    method,
+    redirect: 'manual',
+    headers: {
+      ...(opts.body !== undefined ? { 'content-type': 'application/json' } : {}),
+      ...(opts.cookie ? { cookie: opts.cookie } : {}),
+      ...opts.headers,
+    },
+    body: opts.body === undefined ? undefined : JSON.stringify(opts.body),
+  });
+  const setCookies = res.headers.getSetCookie();
+  const cookies = Object.fromEntries(setCookies.map((c) => c.split(';')[0].split('=')).map(([k, ...v]) => [k, v.join('=')]));
+  const data = (await res.json().catch(() => null)) as any;
+  return { status: res.status, data, cookies, setCookies, location: res.headers.get('location') };
+}
+
+const SID = '__Host-madang_sid';
+const SIGNUP = '__Host-madang_signup';
+let emailSeq = 0;
+
+/** 이메일 인증 코드로 가입하고 세션 토큰을 받는다 */
+async function newUser(name: string, email = `user${++emailSeq}.${crypto.randomBytes(3).toString('hex')}@example.com`) {
+  const start = await raw('POST', '/api/auth/email/start', { body: { email } });
+  assert.equal(start.status, 200, JSON.stringify(start.data));
+  const verify = await raw('POST', '/api/auth/email/verify', { body: { email, code: start.data.devCode } });
+  assert.equal(verify.data.status, 'needs_name', JSON.stringify(verify.data));
+  const signup = await raw('POST', '/api/auth/signup', { cookie: `${SIGNUP}=${verify.cookies[SIGNUP]}`, body: { name, color: '#3e63dd', avatar: '🦊' } });
+  assert.equal(signup.status, 201, JSON.stringify(signup.data));
+  return { user: signup.data.user as { id: string; name: string }, token: signup.cookies[SID], email };
 }
 
 /** 실제 브라우저 클라이언트와 같은 방식의 WebSocket 연결 */
@@ -171,12 +201,148 @@ after(async () => {
   fs.rmSync(persistDir, { recursive: true, force: true });
 });
 
-describe('계정', () => {
+describe('로그인', () => {
+  it('로그인 화면 설정: 설정된 방법만 켜진다', async () => {
+    const config = await raw('GET', '/api/auth/config');
+    assert.deepEqual(config.data, { email: true, providers: { google: false, github: true }, devMode: true });
+    // 설정되지 않은 외부 로그인은 로그인 화면으로 돌려보낸다
+    const google = await raw('GET', '/api/auth/oauth/google?next=/t/abc');
+    assert.equal(google.status, 302);
+    assert.equal(google.location, '/login?error=unavailable');
+  });
+
+  it('외부 로그인: 이 브라우저에서 시작한 요청만, 한 번만 받는다', async () => {
+    const start = await raw('GET', '/api/auth/oauth/github?next=%2Fjoin%2Fabc');
+    assert.equal(start.status, 302);
+    const to = new URL(start.location!);
+    assert.equal(`${to.origin}${to.pathname}`, 'https://github.com/login/oauth/authorize');
+    assert.equal(to.searchParams.get('client_id'), 'test-client');
+    assert.match(to.searchParams.get('redirect_uri')!, /\/api\/auth\/callback\/github$/);
+    assert.equal(to.searchParams.get('code_challenge_method'), 'S256');
+    const state = to.searchParams.get('state')!;
+    const bound = start.setCookies.find((c) => c.startsWith('__Host-madang_oauth='))!;
+    assert.equal(start.cookies['__Host-madang_oauth'], state);
+    assert.match(bound, /SameSite=Lax/);
+    assert.match(bound, /HttpOnly/);
+
+    const cb = (q: string, cookie?: string) => raw('GET', `/api/auth/callback/github?${q}`, { cookie });
+    // 쿠키가 없거나(다른 브라우저) state가 다르면 거절
+    assert.equal((await cb(`state=${state}&code=abc`)).location, '/login?error=expired');
+    assert.equal((await cb(`state=wrong${state}&code=abc`, `__Host-madang_oauth=wrong${state}`)).location, '/login?error=expired');
+    assert.equal((await cb('error=access_denied&state=x')).location, '/login?error=cancelled');
+    // 올바른 요청이면 깃허브에 코드를 확인하러 간다 (가짜 설정이라 실패)
+    const tried = await cb(`state=${state}&code=abc`, `__Host-madang_oauth=${state}`);
+    assert.equal(tried.location, '/login?error=failed');
+    assert.equal(tried.cookies[SID], undefined);
+    // 한 번 쓴 state는 다시 쓸 수 없다
+    assert.equal((await cb(`state=${state}&code=abc`, `__Host-madang_oauth=${state}`)).location, '/login?error=expired');
+  });
+
+  it('이메일 인증 → 이름 입력 → 가입 완료, 다음부터는 코드만으로 로그인', async () => {
+    const email = `New.User+${crypto.randomBytes(3).toString('hex')}@Example.com`;
+    const start = await raw('POST', '/api/auth/email/start', { body: { email: `  ${email} ` } });
+    assert.equal(start.status, 200);
+    assert.equal(start.data.email, email.toLowerCase(), '이메일은 소문자로 맞춘다');
+    assert.match(start.data.devCode, /^\d{6}$/);
+
+    // 30초 안에 다시 요청하면 기다리라고 한다
+    const again = await raw('POST', '/api/auth/email/start', { body: { email } });
+    assert.equal(again.status, 429);
+    assert.ok(again.data.retryAfter > 0);
+
+    const wrongCode = start.data.devCode === '000000' ? '111111' : '000000';
+    const wrong = await raw('POST', '/api/auth/email/verify', { body: { email, code: wrongCode } });
+    assert.equal(wrong.status, 400);
+    assert.equal(wrong.data.remaining, 4);
+
+    const ok = await raw('POST', '/api/auth/email/verify', { body: { email, code: start.data.devCode } });
+    assert.equal(ok.data.status, 'needs_name');
+    assert.equal(ok.cookies[SID], undefined, '이름을 정하기 전에는 로그인되지 않는다');
+    const ticket = `${SIGNUP}=${ok.cookies[SIGNUP]}`;
+    assert.ok(ok.setCookies.some((c) => c.startsWith(SIGNUP) && c.includes('HttpOnly') && c.includes('Secure')));
+
+    // 한 번 쓴 코드는 다시 쓸 수 없다
+    assert.equal((await raw('POST', '/api/auth/email/verify', { body: { email, code: start.data.devCode } })).status, 400);
+
+    const info = await raw('GET', '/api/auth/signup', { cookie: ticket });
+    assert.deepEqual(info.data, { email: email.toLowerCase(), provider: 'email', suggestedName: '' });
+    assert.equal((await raw('POST', '/api/auth/signup', { cookie: ticket, body: { name: '   ' } })).status, 400);
+
+    const signup = await raw('POST', '/api/auth/signup', { cookie: ticket, body: { name: '새 사용자', color: '#e5484d', avatar: '🐯' } });
+    assert.equal(signup.status, 201);
+    assert.equal(signup.data.user.name, '새 사용자');
+    const session = `${SID}=${signup.cookies[SID]}`;
+    const sessionCookie = signup.setCookies.find((c) => c.startsWith(SID))!;
+    assert.match(sessionCookie, /HttpOnly/);
+    assert.match(sessionCookie, /SameSite=Lax/);
+    assert.match(sessionCookie, /Max-Age=2592000/);
+    // 가입 티켓은 한 번만
+    assert.equal((await raw('POST', '/api/auth/signup', { cookie: ticket, body: { name: '두번째' } })).status, 401);
+
+    const me = await raw('GET', '/api/me', { cookie: session });
+    assert.equal(me.status, 200);
+    assert.equal(me.data.user.id, signup.data.user.id);
+    assert.deepEqual(me.data.account, { email: email.toLowerCase(), providers: [] });
+
+    // 다시 로그인: 같은 이메일이면 이름 입력 없이 같은 계정
+    await raw('POST', '/api/auth/logout', { cookie: session });
+    const retry = await raw('POST', '/api/auth/email/start', { body: { email } });
+    if (retry.status === 429) await sleep(retry.data.retryAfter * 1000 + 100);
+    const code = retry.status === 429 ? (await raw('POST', '/api/auth/email/start', { body: { email } })).data.devCode : retry.data.devCode;
+    const login = await raw('POST', '/api/auth/email/verify', { body: { email, code } });
+    assert.equal(login.data.status, 'signed_in');
+    assert.equal(login.data.user.id, signup.data.user.id);
+    assert.ok(login.cookies[SID]);
+  });
+
+  it('로그아웃하면 그 세션은 더 이상 쓸 수 없다', async () => {
+    const u = await newUser('로그아웃');
+    const session = `${SID}=${u.token}`;
+    assert.equal((await raw('GET', '/api/me', { cookie: session })).status, 200);
+    const out = await raw('POST', '/api/auth/logout', { cookie: session });
+    assert.equal(out.status, 200);
+    assert.ok(out.setCookies.some((c) => c.startsWith(`${SID}=;`) && c.includes('Max-Age=0')));
+    assert.equal((await raw('GET', '/api/me', { cookie: session })).status, 401);
+    assert.equal((await api('GET', '/me', u.token)).status, 401);
+  });
+
+  it('인증 코드를 5번 틀리면 새 코드를 받아야 한다', async () => {
+    const email = `brute${crypto.randomBytes(3).toString('hex')}@example.com`;
+    const start = await raw('POST', '/api/auth/email/start', { body: { email } });
+    const wrongCode = start.data.devCode === '999999' ? '888888' : '999999';
+    for (let i = 0; i < 4; i++) assert.equal((await raw('POST', '/api/auth/email/verify', { body: { email, code: wrongCode } })).data.reason, 'mismatch');
+    assert.equal((await raw('POST', '/api/auth/email/verify', { body: { email, code: wrongCode } })).data.reason, 'expired');
+    const late = await raw('POST', '/api/auth/email/verify', { body: { email, code: start.data.devCode } });
+    assert.equal(late.status, 400, '맞는 코드도 더는 통하지 않는다');
+  });
+
+  it('다른 사이트에서 보낸 쓰기 요청은 막는다', async () => {
+    const session = `${SID}=${owner.token}`;
+    const evil = await raw('PATCH', '/api/me', { cookie: session, body: { name: '해킹' }, headers: { origin: 'https://evil.example' } });
+    assert.equal(evil.status, 403);
+    const fetchMeta = await raw('POST', '/api/auth/logout', { cookie: session, headers: { 'sec-fetch-site': 'cross-site' } });
+    assert.equal(fetchMeta.status, 403);
+    assert.equal((await raw('GET', '/api/me', { cookie: session })).status, 200, '막힌 요청은 아무 효과가 없다');
+    const same = await raw('PATCH', '/api/me', { cookie: session, body: { name: '김소유' }, headers: { origin: base } });
+    assert.equal(same.status, 200);
+  });
+
+  it('잘못된 입력', async () => {
+    assert.equal((await raw('POST', '/api/auth/email/start', { body: { email: 'not-an-email' } })).status, 400);
+    assert.equal((await raw('POST', '/api/auth/email/verify', { body: { email: 'a@b.co', code: '12' } })).status, 400);
+    assert.equal((await raw('GET', '/api/auth/signup')).status, 404);
+    assert.equal((await raw('POST', '/api/auth/signup', { body: { name: '티켓없음' } })).status, 401);
+    const anon = await api('GET', '/me', 'x'.repeat(40));
+    assert.equal(anon.status, 401);
+    assert.equal(anon.data.reason, 'login_required', '로그인이 풀린 경우를 화면이 구분할 수 있다');
+    // 예전 방식(가입 없이 계정 만들기)은 더 이상 없다
+    assert.equal((await api('POST', '/users', undefined, { name: '익명' })).status, 404);
+  });
+
   it('토큰으로 내 정보를 확인하고 한글 이름을 바꿀 수 있다', async () => {
     const me = await api('GET', '/me', owner.token);
     assert.equal(me.status, 200);
     assert.equal(me.data.user.name, '김소유');
-    assert.equal((await api('GET', '/me', 'x'.repeat(40))).status, 401);
     const patched = await api('PATCH', '/me', editor.token, { name: '이편집자' });
     assert.equal(patched.data.user.name, '이편집자');
   });

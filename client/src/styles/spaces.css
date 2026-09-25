@@ -412,18 +412,6 @@
   align-items: center;
   gap: 4px;
 }
-.join-profile {
-  width: 100%;
-  text-align: left;
-  display: flex;
-  flex-direction: column;
-  gap: 10px;
-  padding-top: 12px;
-  border-top: 1px solid var(--border);
-}
-.join-profile > p {
-  justify-content: flex-start !important;
-}
 .join-status {
   display: flex;
   align-items: center;
@@ -449,51 +437,6 @@
   50% {
     opacity: 0.35;
   }
-}
-
-/* 온보딩 단계 */
-.onboarding-steps {
-  list-style: none;
-  margin: 0;
-  padding: 0;
-  display: flex;
-  gap: 12px;
-  max-width: 560px;
-}
-.onboarding-steps li {
-  flex: 1;
-  display: flex;
-  gap: 10px;
-  padding: 12px 14px;
-  border-radius: 12px;
-  background: var(--surface);
-  border: 1px solid var(--border);
-}
-.onboarding-steps li div {
-  display: flex;
-  flex-direction: column;
-  gap: 2px;
-}
-.onboarding-steps b {
-  display: inline-flex;
-  align-items: center;
-  gap: 5px;
-}
-.onboarding-steps span {
-  font-size: 12.5px;
-  color: var(--text-2);
-}
-.onboarding-step-num {
-  width: 22px;
-  height: 22px;
-  border-radius: 50%;
-  background: var(--accent);
-  color: #fff !important;
-  font-weight: 700;
-  font-size: 12px !important;
-  display: grid;
-  place-items: center;
-  flex: none;
 }
 
 /* 좁은 화면 안내 */

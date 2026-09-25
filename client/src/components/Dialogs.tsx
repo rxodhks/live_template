@@ -5,7 +5,7 @@ import { useSession } from '../store/session';
 import { useTemplates } from '../store/templates';
 import { toast } from '../store/toasts';
 import { errorMessage } from '../lib/api';
-import { updateProfile } from '../lib/profile';
+import { updateProfile } from '../lib/auth';
 import { modKey } from '../lib/util';
 import { Button, Kbd, Modal } from './ui';
 import { ProfileForm, useProfileDraft } from './ProfileForm';

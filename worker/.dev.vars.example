@@ -1,0 +1,6 @@
+# 로컬 개발용 설정 — worker/.dev.vars로 복사해서 쓴다 (.dev.vars는 git에 올라가지 않음)
+# 인증 코드를 메일 대신 로그인 화면과 터미널에 보여 준다 (127.0.0.1로 들어온 요청에만 적용)
+AUTH_DEV_MODE=1
+
+# 실제 메일을 보내 보려면 (resend.com)
+# RESEND_API_KEY=re_xxx

@@ -1,8 +1,8 @@
 import { useEffect, useState } from 'react';
-import { BrowserRouter, Navigate, Route, Routes } from 'react-router-dom';
+import { BrowserRouter, Navigate, Route, Routes, useLocation } from 'react-router-dom';
 import { Monitor, X } from 'lucide-react';
 import { isTypingTarget } from './lib/util';
-import { loadProfile, verifyAccount } from './lib/profile';
+import { bootSession, claimLegacyAccount } from './lib/auth';
 import { useSession } from './store/session';
 import { useTemplates } from './store/templates';
 import { toast } from './store/toasts';
@@ -10,7 +10,7 @@ import { useUI } from './store/ui';
 import { ToastViewport } from './components/Toasts';
 import { TooltipHost } from './components/Tooltip';
 import { ConfirmHost, PromptHost } from './components/ui';
-import { Onboarding } from './pages/Onboarding';
+import { BootScreen, LoginPage, SignupPage } from './pages/Auth';
 import { Dashboard } from './pages/Dashboard';
 import { JoinPage } from './pages/JoinPage';
 import { GlobalTimeline } from './pages/GlobalTimeline';
@@ -20,23 +20,27 @@ import { Workspace } from './workspace/Workspace';
 const REFRESH_MS = 60_000;
 
 export function App() {
-  const user = useSession((s) => s.user);
-  const [booted] = useState(() => {
-    // 프로필은 이 브라우저에 있다 → 서버 없이 바로 시작
-    useSession.getState().setUser(loadProfile());
-    useSession.getState().setReady(true);
-    return true;
-  });
+  const status = useSession((s) => s.status);
+  const userId = useSession((s) => s.user?.id);
 
-  // 프로필이 생기면(또는 협업 계정이 생겨 ID가 바뀌면) 템플릿 목록을 불러온다
+  // 로그인 상태 확인
   useEffect(() => {
-    if (!user) return;
-    void verifyAccount();
+    void bootSession();
+  }, []);
+
+  // 로그인하면 이 계정의 템플릿 목록을 불러온다
+  useEffect(() => {
+    if (status !== 'authed' || !userId) return;
     void useTemplates.getState().load();
-  }, [user?.id]); // eslint-disable-line react-hooks/exhaustive-deps
+    if (useSession.getState().offline) return;
+    // 가입 없이 쓰던 때 참여한 협업 템플릿이 있으면 이 계정으로 옮긴다
+    void claimLegacyAccount().then((merged) => {
+      if (merged) void useTemplates.getState().refreshRemote();
+    });
+  }, [status, userId]);
 
   useEffect(() => {
-    if (!user) return;
+    if (status !== 'authed') return;
     const refresh = () => document.visibilityState === 'visible' && void useTemplates.getState().refreshRemote();
     const t = setInterval(refresh, REFRESH_MS);
     window.addEventListener('focus', refresh);
@@ -44,16 +48,18 @@ export function App() {
       clearInterval(t);
       window.removeEventListener('focus', refresh);
     };
-  }, [user?.id]); // eslint-disable-line react-hooks/exhaustive-deps
+  }, [status]);
 
-  if (!booted) return null;
+  if (status === 'loading') return <BootScreen />;
 
   return (
     <BrowserRouter>
       <Routes>
-        {/* 초대 링크는 프로필이 없어도 바로 열린다 */}
+        <Route path="/login" element={<LoginPage />} />
+        <Route path="/signup" element={<SignupPage />} />
+        {/* 초대장은 로그인하지 않아도 볼 수 있다 (참여하려면 로그인) */}
         <Route path="/join/:code" element={<JoinPage />} />
-        <Route path="*" element={user ? <AuthedApp /> : <Onboarding />} />
+        <Route path="*" element={status === 'authed' ? <AuthedApp /> : <ToLogin />} />
       </Routes>
       <ToastViewport />
       <TooltipHost />
@@ -62,6 +68,13 @@ export function App() {
       <NarrowScreenNotice />
     </BrowserRouter>
   );
+}
+
+/** 로그인하지 않았으면 로그인 화면으로 (로그인 후 원래 가려던 곳으로 돌아온다) */
+function ToLogin() {
+  const { pathname, search } = useLocation();
+  const next = `${pathname}${search}`;
+  return <Navigate to={next === '/' ? '/login' : `/login?next=${encodeURIComponent(next)}`} replace />;
 }
 
 function AuthedApp() {

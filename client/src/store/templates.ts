@@ -49,7 +49,7 @@ export const useTemplates = create<TemplatesState>((set, get) => ({
   },
 
   refreshRemote: async () => {
-    if (!useSession.getState().hasAccount) return;
+    if (useSession.getState().status !== 'authed') return;
     try {
       const res = await api<{ templates: TemplateSummary[]; online: Record<string, string[]>; requests: Record<string, number> }>('GET', '/templates');
       const serverIds = new Set(res.templates.map((t) => t.id));

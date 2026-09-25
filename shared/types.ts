@@ -19,6 +19,34 @@ export interface PublicUser {
   avatar: string;
 }
 
+/* ───────────── 로그인 ───────────── */
+
+export type OAuthProvider = 'google' | 'github';
+export type AuthProvider = 'email' | OAuthProvider;
+
+/** 로그인 화면 구성: 서버에 설정된 로그인 방법만 보여 준다 */
+export interface AuthConfig {
+  email: boolean;
+  providers: Record<OAuthProvider, boolean>;
+  /** 로컬 개발 모드: 인증 코드를 메일 대신 응답과 서버 로그로 준다 */
+  devMode: boolean;
+}
+
+/** 로그인한 계정 정보 (본인에게만 보인다) */
+export interface AccountInfo {
+  email: string | null;
+  providers: OAuthProvider[];
+}
+
+/** 인증을 마치고 이름을 정하기 전의 가입 정보 */
+export interface SignupInfo {
+  email: string | null;
+  provider: AuthProvider;
+  suggestedName: string;
+}
+
+export type EmailVerifyResult = { status: 'signed_in'; user: PublicUser } | { status: 'needs_name' };
+
 export interface MemberInfo {
   user: PublicUser;
   role: Role;

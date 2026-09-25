@@ -32,7 +32,7 @@ export async function queryTimeline(templateId: string | undefined, q: TimelineQ
     .map((t) => t.id);
   const [local, remote] = await Promise.all([
     queryLocalTimeline(personal, q),
-    useSession.getState().hasAccount ? api<Page>('GET', `/timeline?${params(q)}`).catch(() => ({ events: [], hasMore: false })) : { events: [], hasMore: false },
+    useSession.getState().status === 'authed' ? api<Page>('GET', `/timeline?${params(q)}`).catch(() => ({ events: [], hasMore: false })) : { events: [], hasMore: false },
   ]);
   const merged = [...local.events, ...remote.events].sort((a, b) => b.at - a.at);
   return { events: merged.slice(0, limit), hasMore: local.hasMore || remote.hasMore || merged.length > limit };

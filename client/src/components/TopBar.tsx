@@ -7,6 +7,7 @@ import {
   HardDrive,
   Keyboard,
   LayoutGrid,
+  LogOut,
   MessageSquare,
   Monitor,
   Moon,
@@ -27,6 +28,7 @@ import { SaveIndicator } from './SaveIndicator';
 import { BRAND, BrandMark } from './Brand';
 import { PresenceBar } from './PresenceBar';
 import { modKey } from '../lib/util';
+import { logout } from '../lib/auth';
 import { MODULE_NAMES } from '../workspace/viewLabel';
 import { itemsMap } from '../workspace/actions';
 import { useYField } from '../hooks/useY';
@@ -34,6 +36,7 @@ import { useYField } from '../hooks/useY';
 const THEME_ICON: Record<ThemePref, typeof Sun> = { light: Sun, dark: Moon, system: Monitor };
 const THEME_NEXT: Record<ThemePref, ThemePref> = { system: 'light', light: 'dark', dark: 'system' };
 const THEME_LABEL: Record<ThemePref, string> = { system: '시스템 테마', light: '라이트 테마', dark: '다크 테마' };
+const PROVIDER_LABEL = { google: 'Google', github: 'GitHub' } as const;
 
 export function TopBar() {
   const ws = useOptionalWorkspace();
@@ -41,7 +44,8 @@ export function TopBar() {
   const theme = useSession((s) => s.theme);
   const setTheme = useSession((s) => s.setTheme);
   const templates = useTemplates((s) => s.templates);
-  const hasAccount = useSession((s) => s.hasAccount);
+  const account = useSession((s) => s.account);
+  const offline = useSession((s) => s.offline);
   const remoteError = useTemplates((s) => s.remoteError);
   const ui = useUI();
   const navigate = useNavigate();
@@ -102,7 +106,7 @@ export function TopBar() {
 
       <div className="topbar-right">
         {ws && <SaveIndicator synced={ws.synced} mode={ws.mode} />}
-        {!ws && hasAccount && remoteError && (
+        {!ws && (remoteError || offline) && (
           <span className="conn-dot is-offline" data-tip={`협업 서버에 연결할 수 없습니다 · 개인 공간은 계속 사용할 수 있습니다`}>
             <CloudOff size={15} />
           </span>
@@ -137,7 +141,7 @@ export function TopBar() {
                 <Avatar user={user} size={32} tooltip={false} />
                 <div>
                   <b>{user.name}</b>
-                  <span className="muted">{hasAccount ? '협업 계정 연결됨' : '개인 공간 · 가입 없이 사용 중'}</span>
+                  <span className="muted menu-profile-email">{account?.email ?? (account?.providers[0] ? `${PROVIDER_LABEL[account.providers[0]]} 계정으로 로그인` : '로그인됨')}</span>
                 </div>
               </div>
             }
@@ -149,6 +153,8 @@ export function TopBar() {
               }),
               { divider: true, label: '' },
               { label: '키보드 단축키', icon: <Keyboard size={15} />, onSelect: () => ui.setShortcutsOpen(true) },
+              { divider: true, label: '' },
+              { label: '로그아웃', icon: <LogOut size={15} />, onSelect: () => void logout() },
             ]}
             trigger={({ toggle, ref }) => (
               <button ref={ref} className="profile-trigger" onClick={toggle} aria-label="내 프로필">

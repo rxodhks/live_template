@@ -1,5 +1,7 @@
 import { DurableObject } from 'cloudflare:workers';
 import type {
+  AccountInfo,
+  AuthProvider,
   Feature,
   InviteInfo,
   InviteOptions,
@@ -8,13 +10,15 @@ import type {
   JoinStatus,
   MemberInfo,
   PublicUser,
+  OAuthProvider,
   Role,
+  SignupInfo,
   TemplateSummary,
 } from '../../shared/types';
 import type { TemplateBroadcast } from '../../shared/protocol';
 import { USER_AVATARS, USER_COLORS, isHexColor } from '../../shared/colors';
 import type { Env } from './env';
-import { type Result, clampText, fail, isId, newId, ok, sha256Hex } from './util';
+import { type Result, clampText, fail, isId, newId, ok, safeEqual, sha256Hex } from './util';
 
 /*
  * Directory — 계정 · 협업 템플릿 목록 · 멤버 · 초대 링크 · 참여 요청을 관리하는 단일 Durable Object.
@@ -26,8 +30,34 @@ const ROLE_RANK: Record<Role, number> = { viewer: 0, editor: 1, owner: 2 };
 const ROLE_LABEL: Record<Role, string> = { owner: '소유자', editor: '편집자', viewer: '뷰어' };
 export const hasRole = (role: Role, min: Role) => ROLE_RANK[role] >= ROLE_RANK[min];
 
-/** IP당 시간당 계정 생성 수 (무료 사용량 보호) */
-const SIGNUPS_PER_HOUR = 30;
+/** 로그인 유지 기간 (마지막으로 사용한 날부터) */
+export const SESSION_TTL_MS = 30 * 86_400_000;
+/** 이메일 인증 코드: 유효 시간 · 재발송 간격 · 틀릴 수 있는 횟수 */
+const CODE_TTL_MS = 10 * 60_000;
+const CODE_RESEND_MS = 30_000;
+const CODE_MAX_ATTEMPTS = 5;
+/** 외부 로그인 왕복 · 이름 입력까지 기다리는 시간 */
+const FLOW_TTL_MS = { oauth: 10 * 60_000, signup: 30 * 60_000 } as const;
+
+/** 인증을 마친 신원 (이메일 코드 또는 외부 계정) */
+export interface VerifiedIdentity {
+  provider: AuthProvider;
+  subject: string;
+  email: string | null;
+  emailVerified: boolean;
+  /** 외부 계정의 이름 (가입 화면에서 미리 채워 준다) */
+  name: string;
+}
+
+/** 로그인 결과: 이미 계정이 있으면 세션, 처음이면 이름을 정할 가입 티켓 */
+export type AuthOutcome = { status: 'signed_in'; user: PublicUser; session: string } | { status: 'needs_name'; ticket: string };
+
+type OAuthFlow = { provider: OAuthProvider; verifier: string; nonce: string; next: string };
+
+/** 6자리 숫자 코드 */
+function sixDigits(): string {
+  return String(crypto.getRandomValues(new Uint32Array(1))[0] % 1_000_000).padStart(6, '0');
+}
 
 type UserRow = {
   id: string;
@@ -107,49 +137,299 @@ export class Directory extends DurableObject<Env> {
         role TEXT NOT NULL, status TEXT NOT NULL, created_at INTEGER NOT NULL, decided_at INTEGER, decided_by TEXT);
       CREATE INDEX IF NOT EXISTS requests_by_template ON join_requests(template_id, status);
       CREATE TABLE IF NOT EXISTS online (template_id TEXT PRIMARY KEY, user_ids TEXT NOT NULL);
-      CREATE TABLE IF NOT EXISTS signups (ip TEXT NOT NULL, hour INTEGER NOT NULL, count INTEGER NOT NULL, PRIMARY KEY (ip, hour));
+      CREATE TABLE IF NOT EXISTS identities (provider TEXT NOT NULL, subject TEXT NOT NULL, user_id TEXT NOT NULL, email TEXT,
+        created_at INTEGER NOT NULL, PRIMARY KEY (provider, subject));
+      CREATE INDEX IF NOT EXISTS identities_by_user ON identities(user_id);
+      CREATE TABLE IF NOT EXISTS sessions (hash TEXT PRIMARY KEY, user_id TEXT NOT NULL, created_at INTEGER NOT NULL,
+        expires_at INTEGER NOT NULL, seen_at INTEGER NOT NULL, agent TEXT NOT NULL DEFAULT '');
+      CREATE INDEX IF NOT EXISTS sessions_by_user ON sessions(user_id);
+      CREATE TABLE IF NOT EXISTS email_codes (email TEXT PRIMARY KEY, hash TEXT NOT NULL, expires_at INTEGER NOT NULL,
+        attempts INTEGER NOT NULL DEFAULT 0, sent_at INTEGER NOT NULL);
+      CREATE TABLE IF NOT EXISTS auth_flows (id TEXT PRIMARY KEY, kind TEXT NOT NULL, data TEXT NOT NULL, expires_at INTEGER NOT NULL);
+      CREATE TABLE IF NOT EXISTS rate (key TEXT NOT NULL, bucket INTEGER NOT NULL, count INTEGER NOT NULL, expires_at INTEGER NOT NULL,
+        PRIMARY KEY (key, bucket));
     `);
+    // 로그인 기능 이전에 만든 저장소에는 이메일 칸이 없다
+    try {
+      this.sql.exec('ALTER TABLE users ADD COLUMN email TEXT');
+    } catch {
+      /* 이미 있음 */
+    }
+    this.sql.exec('CREATE UNIQUE INDEX IF NOT EXISTS users_by_email ON users(email)');
   }
 
   /* ───────────── 계정 ───────────── */
 
-  async createUser(input: Partial<PublicUser>, ip: string): Promise<Result<{ user: PublicUser; token: string }>> {
+  /*
+   * 로그인
+   * ──────
+   *  · 이메일: 6자리 코드를 메일로 보내고 확인하면 로그인 (비밀번호 없음)
+   *  · 외부 계정(구글 · 깃허브): 같은 외부 계정 → 같은 (확인된) 이메일의 계정 순으로 찾는다
+   *  · 처음이면 가입 티켓을 주고, 이름을 정하면 계정을 만든다
+   *  · 세션 토큰은 해시만 저장한다
+   */
+
+  /** 고정 구간 요청 제한. 넘으면 다시 시도할 수 있을 때까지 남은 초 */
+  private limit(key: string, max: number, windowMs: number): number | null {
+    const now = Date.now();
+    const bucket = Math.floor(now / windowMs);
+    const row = this.sql.exec<{ count: number }>('SELECT count FROM rate WHERE key = ? AND bucket = ?', key, bucket).toArray()[0];
+    if (row && row.count >= max) return Math.ceil(((bucket + 1) * windowMs - now) / 1000);
+    this.sql.exec(
+      'INSERT INTO rate (key, bucket, count, expires_at) VALUES (?, ?, 1, ?) ON CONFLICT(key, bucket) DO UPDATE SET count = count + 1',
+      key,
+      bucket,
+      (bucket + 1) * windowMs,
+    );
+    return null;
+  }
+
+  /** 만료된 로그인 기록 정리 (가끔만) */
+  private sweep(): void {
+    if (Math.random() > 0.05) return;
+    const now = Date.now();
+    for (const table of ['sessions', 'auth_flows', 'email_codes', 'rate']) this.sql.exec(`DELETE FROM ${table} WHERE expires_at < ?`, now);
+  }
+
+  private putFlow(id: string, kind: keyof typeof FLOW_TTL_MS, data: unknown): void {
+    this.sql.exec(
+      'INSERT OR REPLACE INTO auth_flows (id, kind, data, expires_at) VALUES (?, ?, ?, ?)',
+      id,
+      kind,
+      JSON.stringify(data),
+      Date.now() + FLOW_TTL_MS[kind],
+    );
+  }
+
+  private readFlow<T>(id: string, kind: keyof typeof FLOW_TTL_MS): T | null {
+    const row = this.sql
+      .exec<{ data: string }>('SELECT data FROM auth_flows WHERE id = ? AND kind = ? AND expires_at > ?', id, kind, Date.now())
+      .toArray()[0];
+    return row ? (JSON.parse(row.data) as T) : null;
+  }
+
+  private async createSession(userId: string, agent: string): Promise<string> {
+    const token = newId(40);
+    const now = Date.now();
+    this.sql.exec(
+      'INSERT INTO sessions (hash, user_id, created_at, expires_at, seen_at, agent) VALUES (?, ?, ?, ?, ?, ?)',
+      await sha256Hex(token),
+      userId,
+      now,
+      now + SESSION_TTL_MS,
+      now,
+      agent.slice(0, 200),
+    );
+    this.sql.exec('UPDATE users SET last_seen_at = ? WHERE id = ?', now, userId);
+    this.sweep();
+    return token;
+  }
+
+  private linkIdentity(userId: string, id: VerifiedIdentity): void {
+    if (id.provider === 'email') return;
+    this.sql.exec(
+      'INSERT OR IGNORE INTO identities (provider, subject, user_id, email, created_at) VALUES (?, ?, ?, ?, ?)',
+      id.provider,
+      id.subject,
+      userId,
+      id.email,
+      Date.now(),
+    );
+  }
+
+  /** 이미 있는 계정: 같은 외부 계정 → 같은 (확인된) 이메일. 이메일로 찾았으면 외부 계정을 연결해 둔다 */
+  private findAccount(id: VerifiedIdentity): PublicUser | null {
+    if (id.provider !== 'email') {
+      const row = this.sql
+        .exec<{ user_id: string }>('SELECT user_id FROM identities WHERE provider = ? AND subject = ?', id.provider, id.subject)
+        .toArray()[0];
+      const linked = row ? this.user(row.user_id) : null;
+      if (linked) return linked;
+    }
+    if (!id.email || !id.emailVerified) return null;
+    const row = this.sql.exec<UserRow>('SELECT id, name, color, avatar FROM users WHERE email = ?', id.email).toArray()[0];
+    if (!row) return null;
+    this.linkIdentity(row.id, id);
+    return toUser(row);
+  }
+
+  private async signIn(id: VerifiedIdentity, agent: string): Promise<AuthOutcome> {
+    const user = this.findAccount(id);
+    if (user) return { status: 'signed_in', user, session: await this.createSession(user.id, agent) };
+    const ticket = newId(40);
+    this.putFlow(await sha256Hex(ticket), 'signup', id);
+    return { status: 'needs_name', ticket };
+  }
+
+  /** 이메일 인증 코드 발급 (메일 발송은 Worker가 한다) */
+  async startEmailCode(email: string, ip: string): Promise<Result<{ code: string; expiresAt: number }>> {
+    const now = Date.now();
+    const prev = this.sql.exec<{ sent_at: number }>('SELECT sent_at FROM email_codes WHERE email = ?', email).toArray()[0];
+    if (prev && now - prev.sent_at < CODE_RESEND_MS) {
+      const retryAfter = Math.ceil((CODE_RESEND_MS - (now - prev.sent_at)) / 1000);
+      return fail(429, `${retryAfter}초 후에 다시 받을 수 있습니다.`, { retryAfter });
+    }
+    const wait = this.limit(`ip:${ip}`, 20, 3_600_000) ?? this.limit(`mail:${email}`, 8, 3_600_000);
+    if (wait) return fail(429, '인증 코드를 너무 많이 요청했습니다. 잠시 후 다시 시도해 주세요.', { retryAfter: wait });
+    const code = sixDigits();
+    this.sql.exec(
+      'INSERT OR REPLACE INTO email_codes (email, hash, expires_at, attempts, sent_at) VALUES (?, ?, ?, 0, ?)',
+      email,
+      await sha256Hex(`${email}:${code}`),
+      now + CODE_TTL_MS,
+      now,
+    );
+    this.sweep();
+    return ok({ code, expiresAt: now + CODE_TTL_MS });
+  }
+
+  /** 메일을 보내지 못했으면 코드를 지워 바로 다시 요청할 수 있게 한다 */
+  async dropEmailCode(email: string): Promise<void> {
+    this.sql.exec('DELETE FROM email_codes WHERE email = ?', email);
+  }
+
+  async verifyEmailCode(email: string, code: string, agent: string): Promise<Result<AuthOutcome>> {
+    const row = this.sql
+      .exec<{ hash: string; expires_at: number; attempts: number }>('SELECT hash, expires_at, attempts FROM email_codes WHERE email = ?', email)
+      .toArray()[0];
+    if (!row || row.expires_at < Date.now()) return fail(400, '인증 코드가 만료되었습니다. 코드를 다시 받아 주세요.', { reason: 'expired' });
+    if (!safeEqual(row.hash, await sha256Hex(`${email}:${code}`))) {
+      const attempts = row.attempts + 1;
+      if (attempts >= CODE_MAX_ATTEMPTS) {
+        this.sql.exec('DELETE FROM email_codes WHERE email = ?', email);
+        return fail(400, '인증 코드를 여러 번 잘못 입력했습니다. 코드를 다시 받아 주세요.', { reason: 'expired' });
+      }
+      this.sql.exec('UPDATE email_codes SET attempts = ? WHERE email = ?', attempts, email);
+      const remaining = CODE_MAX_ATTEMPTS - attempts;
+      return fail(400, `인증 코드가 올바르지 않습니다. (남은 시도 ${remaining}회)`, { reason: 'mismatch', remaining });
+    }
+    this.sql.exec('DELETE FROM email_codes WHERE email = ?', email);
+    return ok(await this.signIn({ provider: 'email', subject: email, email, emailVerified: true, name: '' }, agent));
+  }
+
+  /** 외부 로그인 시작: 요청 위조를 막는 state · PKCE 검증값 · nonce를 만들어 둔다 */
+  async startOAuth(provider: OAuthProvider, next: string): Promise<{ state: string; verifier: string; nonce: string }> {
+    const flow = { state: newId(32), verifier: newId(64), nonce: newId(24) };
+    this.putFlow(await sha256Hex(flow.state), 'oauth', { provider, verifier: flow.verifier, nonce: flow.nonce, next } satisfies OAuthFlow);
+    this.sweep();
+    return flow;
+  }
+
+  /** 외부 로그인에서 돌아왔을 때: 한 번만 쓸 수 있다 */
+  async consumeOAuth(state: string, provider: OAuthProvider): Promise<Result<OAuthFlow>> {
+    const id = await sha256Hex(state);
+    const flow = this.readFlow<OAuthFlow>(id, 'oauth');
+    this.sql.exec('DELETE FROM auth_flows WHERE id = ?', id);
+    if (!flow || flow.provider !== provider) return fail(400, '로그인 요청이 만료되었습니다. 다시 시도해 주세요.');
+    return ok(flow);
+  }
+
+  async oauthSignIn(id: VerifiedIdentity, agent: string): Promise<AuthOutcome> {
+    return this.signIn(id, agent);
+  }
+
+  /** 이름 입력 화면에 보여 줄 가입 정보 */
+  async signupInfo(ticket: string | null): Promise<SignupInfo | null> {
+    if (!ticket || ticket.length > 100) return null;
+    const id = this.readFlow<VerifiedIdentity>(await sha256Hex(ticket), 'signup');
+    return id ? { email: id.email, provider: id.provider, suggestedName: id.name } : null;
+  }
+
+  /** 이름(과 커서 색상 · 아바타)을 정하면 계정을 만들고 로그인한다 */
+  async completeSignup(ticket: string | null, input: Partial<PublicUser>, agent: string): Promise<Result<{ user: PublicUser; session: string }>> {
+    const hash = ticket && ticket.length <= 100 ? await sha256Hex(ticket) : null;
+    const id = hash ? this.readFlow<VerifiedIdentity>(hash, 'signup') : null;
+    if (!hash || !id) return fail(401, '가입 절차가 만료되었습니다. 처음부터 다시 로그인해 주세요.', { reason: 'expired' });
     const profile = sanitizeProfile(input);
     if (!profile) return fail(400, '이름을 입력해 주세요.');
-    const hour = Math.floor(Date.now() / 3_600_000);
-    const row = this.sql.exec<{ count: number }>('SELECT count FROM signups WHERE ip = ? AND hour = ?', ip, hour).toArray()[0];
-    if (row && row.count >= SIGNUPS_PER_HOUR) return fail(429, '잠시 후 다시 시도해 주세요.');
-    this.sql.exec(
-      'INSERT INTO signups (ip, hour, count) VALUES (?, ?, 1) ON CONFLICT(ip, hour) DO UPDATE SET count = count + 1',
-      ip,
-      hour,
-    );
-    this.sql.exec('DELETE FROM signups WHERE hour < ?', hour - 24);
-
-    const token = newId(40);
+    this.sql.exec('DELETE FROM auth_flows WHERE id = ?', hash);
+    // 그사이 같은 계정으로 가입을 마쳤다면(다른 탭 등) 그 계정으로 로그인
+    const existing = this.findAccount(id);
+    if (existing) return ok({ user: existing, session: await this.createSession(existing.id, agent) });
     const user: PublicUser = { id: newId(), ...profile };
     const now = Date.now();
     this.sql.exec(
-      'INSERT INTO users (id, name, color, avatar, token_hash, created_at, last_seen_at) VALUES (?, ?, ?, ?, ?, ?, ?)',
+      'INSERT INTO users (id, name, color, avatar, token_hash, email, created_at, last_seen_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?)',
       user.id,
       user.name,
       user.color,
       user.avatar,
-      await sha256Hex(token),
+      // 로그인 이전 방식의 토큰 칸 (고유 값만 채운다 — 이 값으로는 로그인할 수 없다)
+      `account:${user.id}`,
+      id.emailVerified ? id.email : null,
       now,
       now,
     );
-    return ok({ user, token });
+    this.linkIdentity(user.id, id);
+    return ok({ user, session: await this.createSession(user.id, agent) });
   }
 
   async authenticate(token: string | null): Promise<PublicUser | null> {
     if (!token || token.length < 20 || token.length > 100) return null;
     const hash = await sha256Hex(token);
-    const row = this.sql.exec<UserRow & { last_seen_at: number }>('SELECT * FROM users WHERE token_hash = ?', hash).toArray()[0];
+    const row = this.sql
+      .exec<UserRow & { expires_at: number; seen_at: number }>(
+        'SELECT u.id, u.name, u.color, u.avatar, s.expires_at, s.seen_at FROM sessions s JOIN users u ON u.id = s.user_id WHERE s.hash = ?',
+        hash,
+      )
+      .toArray()[0];
     if (!row) return null;
-    // 하루에 한 번만 접속 시각 갱신 (쓰기 횟수 절약)
-    if (Date.now() - row.last_seen_at > 86_400_000) this.sql.exec('UPDATE users SET last_seen_at = ? WHERE id = ?', Date.now(), row.id);
+    const now = Date.now();
+    if (row.expires_at < now) {
+      this.sql.exec('DELETE FROM sessions WHERE hash = ?', hash);
+      return null;
+    }
+    // 쓰는 동안은 로그인을 계속 유지 (쓰기 횟수를 아끼려고 하루에 한 번만 연장)
+    if (now - row.seen_at > 86_400_000) {
+      this.sql.exec('UPDATE sessions SET seen_at = ?, expires_at = ? WHERE hash = ?', now, now + SESSION_TTL_MS, hash);
+      this.sql.exec('UPDATE users SET last_seen_at = ? WHERE id = ?', now, row.id);
+    }
     return toUser(row);
+  }
+
+  async logout(token: string | null): Promise<void> {
+    if (token && token.length <= 100) this.sql.exec('DELETE FROM sessions WHERE hash = ?', await sha256Hex(token));
+  }
+
+  async account(userId: string): Promise<AccountInfo> {
+    const email = this.sql.exec<{ email: string | null }>('SELECT email FROM users WHERE id = ?', userId).toArray()[0]?.email ?? null;
+    const providers = this.sql
+      .exec<{ provider: OAuthProvider }>('SELECT provider FROM identities WHERE user_id = ? ORDER BY created_at', userId)
+      .toArray()
+      .map((r) => r.provider);
+    return { email, providers };
+  }
+
+  /**
+   * 로그인 기능 이전(가입 없이 쓰던 때)의 브라우저 계정을 로그인한 계정으로 합친다.
+   * 협업 템플릿 멤버십 · 소유권 · 초대 링크 · 참여 요청을 옮기고 예전 계정은 지운다.
+   * (예전 토큰은 해시로만 저장되어 있어 새 계정의 값과는 절대 겹치지 않는다)
+   */
+  async claimLegacy(token: unknown, intoUserId: string): Promise<{ merged: boolean; broadcasts: TemplateBroadcast[] }> {
+    if (typeof token !== 'string' || token.length < 20 || token.length > 100) return { merged: false, broadcasts: [] };
+    const legacy = this.sql.exec<{ id: string }>('SELECT id FROM users WHERE token_hash = ?', await sha256Hex(token)).toArray()[0];
+    if (!legacy || legacy.id === intoUserId) return { merged: false, broadcasts: [] };
+    const from = legacy.id;
+    const templateIds = this.templateIdsOf(from);
+    for (const templateId of templateIds) {
+      const mine = this.roleOf(templateId, intoUserId);
+      const theirs = this.roleOf(templateId, from)!;
+      if (!mine) {
+        this.sql.exec('UPDATE members SET user_id = ? WHERE template_id = ? AND user_id = ?', intoUserId, templateId, from);
+        continue;
+      }
+      if (ROLE_RANK[theirs] > ROLE_RANK[mine]) this.sql.exec('UPDATE members SET role = ? WHERE template_id = ? AND user_id = ?', theirs, templateId, intoUserId);
+      this.sql.exec('DELETE FROM members WHERE template_id = ? AND user_id = ?', templateId, from);
+    }
+    this.sql.exec('UPDATE templates SET owner_id = ? WHERE owner_id = ?', intoUserId, from);
+    this.sql.exec('UPDATE invites SET created_by = ? WHERE created_by = ?', intoUserId, from);
+    this.sql.exec('UPDATE join_requests SET user_id = ? WHERE user_id = ?', intoUserId, from);
+    this.sql.exec('DELETE FROM users WHERE id = ?', from);
+    const broadcasts = templateIds.flatMap((id) => {
+      const t = this.template(id);
+      return t ? [this.broadcastSummary(t)] : [];
+    });
+    return { merged: true, broadcasts };
   }
 
   async updateUser(userId: string, patch: Partial<PublicUser>): Promise<Result<{ user: PublicUser; templateIds: string[] }>> {
