@@ -58,27 +58,6 @@
   opacity: 0.6;
   cursor: default;
 }
-.auth-provider.is-apple {
-  background: #000;
-  border-color: #000;
-  color: #fff;
-}
-.auth-provider.is-apple:hover:not(:disabled) {
-  background: #1d1d1f;
-}
-:root[data-theme='dark'] .auth-provider.is-apple {
-  background: #fff;
-  border-color: #fff;
-  color: #000;
-}
-@media (prefers-color-scheme: dark) {
-  :root:not([data-theme='light']) .auth-provider.is-apple {
-    background: #fff;
-    border-color: #fff;
-    color: #000;
-  }
-}
-
 .auth-divider {
   display: flex;
   align-items: center;

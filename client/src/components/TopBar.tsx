@@ -36,7 +36,7 @@ import { useYField } from '../hooks/useY';
 const THEME_ICON: Record<ThemePref, typeof Sun> = { light: Sun, dark: Moon, system: Monitor };
 const THEME_NEXT: Record<ThemePref, ThemePref> = { system: 'light', light: 'dark', dark: 'system' };
 const THEME_LABEL: Record<ThemePref, string> = { system: '시스템 테마', light: '라이트 테마', dark: '다크 테마' };
-const PROVIDER_LABEL = { google: 'Google', github: 'GitHub', apple: 'Apple' } as const;
+const PROVIDER_LABEL = { google: 'Google', github: 'GitHub' } as const;
 
 export function TopBar() {
   const ws = useOptionalWorkspace();

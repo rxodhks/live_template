@@ -21,7 +21,7 @@ export interface PublicUser {
 
 /* ───────────── 로그인 ───────────── */
 
-export type OAuthProvider = 'google' | 'github' | 'apple';
+export type OAuthProvider = 'google' | 'github';
 export type AuthProvider = 'email' | OAuthProvider;
 
 /** 로그인 화면 구성: 서버에 설정된 로그인 방법만 보여 준다 */

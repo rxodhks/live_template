@@ -122,7 +122,7 @@ export const fetchSignup = () => api<SignupInfo>('GET', '/auth/signup');
 
 export const completeSignup = (draft: Omit<PublicUser, 'id'>) => api<{ user: PublicUser }>('POST', '/auth/signup', { ...draft, name: draft.name.trim() });
 
-/** 외부 계정 로그인은 페이지 이동으로 시작한다 (서버가 구글 · 깃허브 · 애플로 보낸다) */
+/** 외부 계정 로그인은 페이지 이동으로 시작한다 (서버가 구글 · 깃허브로 보낸다) */
 export function startOAuth(provider: OAuthProvider, next: string): void {
   window.location.assign(`/api/auth/oauth/${provider}${next !== '/' ? `?next=${encodeURIComponent(next)}` : ''}`);
 }

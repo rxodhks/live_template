@@ -197,7 +197,7 @@ route('POST', '/api/auth/email/verify', async (c) => {
   return signedIn(unwrap(await directory(c.env).verifyEmailCode(addr, digits, agentOf(c.req))));
 });
 
-/* 외부 계정: 구글 · 깃허브 · 애플 */
+/* 외부 계정: 구글 · 깃허브 */
 const redirectUri = (c: Ctx, p: OAuthProvider) => `${c.url.origin}/api/auth/callback/${p}`;
 const loginError = (reason: string, cookies: string[] = []) => redirect(`/login?error=${reason}`, cookies);
 
@@ -205,21 +205,16 @@ route('GET', '/api/auth/oauth/:provider', async (c) => {
   const p = c.params.provider as OAuthProvider;
   if (!OAUTH_PROVIDERS.includes(p) || !providerEnabled(c.env, p)) return loginError('unavailable');
   const flow = await directory(c.env).startOAuth(p, safeNext(c.url.searchParams.get('next')));
-  return redirect(await authorizeUrl(c.env, p, redirectUri(c, p), flow), [cookie(COOKIE.oauth, flow.state, 600, 'None')]);
+  return redirect(await authorizeUrl(c.env, p, redirectUri(c, p), flow), [cookie(COOKIE.oauth, flow.state, 600)]);
 });
 
-async function oauthCallback(c: Ctx): Promise<Response> {
+route('GET', '/api/auth/callback/:provider', async (c) => {
   const p = c.params.provider as OAuthProvider;
-  const cleared = [clearCookie(COOKIE.oauth, 'None')];
+  const cleared = [clearCookie(COOKIE.oauth)];
   if (!OAUTH_PROVIDERS.includes(p) || !providerEnabled(c.env, p)) return loginError('unavailable', cleared);
-  // 애플은 form_post(POST), 구글 · 깃허브는 쿼리로 돌아온다
-  const params = c.req.method === 'POST' ? await c.req.formData() : c.url.searchParams;
-  const param = (k: string) => {
-    const v = params.get(k);
-    return typeof v === 'string' && v ? v : null;
-  };
+  const param = (k: string) => c.url.searchParams.get(k) || null;
   const error = param('error');
-  if (error) return loginError(error === 'access_denied' || error === 'user_cancelled_authorize' ? 'cancelled' : 'failed', cleared);
+  if (error) return loginError(error === 'access_denied' ? 'cancelled' : 'failed', cleared);
   const state = param('state');
   const code = param('code');
   const bound = readCookie(c.req, COOKIE.oauth);
@@ -230,7 +225,7 @@ async function oauthCallback(c: Ctx): Promise<Response> {
   if (!flow.ok) return loginError('expired', cleared);
   let outcome: AuthOutcome;
   try {
-    const profile = await fetchProfile(c.env, p, redirectUri(c, p), code, flow.data, param('user'));
+    const profile = await fetchProfile(c.env, p, redirectUri(c, p), code, flow.data);
     outcome = await dir.oauthSignIn({ provider: p, ...profile }, agentOf(c.req));
   } catch (err) {
     console.error('외부 로그인 실패', p, err);
@@ -241,9 +236,7 @@ async function oauthCallback(c: Ctx): Promise<Response> {
     return redirect(next, [...cleared, cookie(COOKIE.session, outcome.session, SESSION_TTL_S), clearCookie(COOKIE.signup)]);
   }
   return redirect(`/signup${next === '/' ? '' : `?next=${encodeURIComponent(next)}`}`, [...cleared, cookie(COOKIE.signup, outcome.ticket, 1800)]);
-}
-route('GET', '/api/auth/callback/:provider', oauthCallback);
-route('POST', '/api/auth/callback/:provider', oauthCallback);
+});
 
 /* 가입 마무리: 사이트에서 표시될 이름 정하기 */
 route('GET', '/api/auth/signup', async (c) => {
@@ -552,10 +545,10 @@ export default {
     if (join && req.method === 'GET') return invitePage(req, env, decodeURIComponent(join[1]));
     if (!url.pathname.startsWith('/api/')) return env.ASSETS.fetch(req);
 
-    // 쓰기 요청과 실시간 연결은 이 사이트에서 보낸 것만 받는다 (애플 로그인은 appleid.apple.com에서 POST로 돌아온다)
+    // 쓰기 요청과 실시간 연결은 이 사이트에서 보낸 것만 받는다
     const writes = req.method !== 'GET' && req.method !== 'HEAD';
     const upgrade = req.headers.get('upgrade')?.toLowerCase() === 'websocket';
-    if ((writes || upgrade) && url.pathname !== '/api/auth/callback/apple' && crossSite(req)) {
+    if ((writes || upgrade) && crossSite(req)) {
       return json({ error: '다른 사이트에서 보낸 요청은 받을 수 없습니다.', dbg: Object.fromEntries(req.headers) }, 403);
     }
     return handleApi(req, env, url, exec);

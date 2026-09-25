@@ -4,6 +4,8 @@ name: Deploy to Cloudflare
 #  · main에 합쳐질 때 배포한다 (Actions 탭의 Run workflow로 수동 배포도 가능)
 #  · 배포 전에 타입 검사와 통합 테스트를 통과해야 한다
 # 필요한 저장소 Secrets: CLOUDFLARE_API_TOKEN, CLOUDFLARE_ACCOUNT_ID (없으면 배포 단계를 건너뜀)
+# 로그인 설정(GOOGLE_CLIENT_ID/SECRET, GIT_CLIENT_ID/SECRET, RESEND_API_KEY, EMAIL_FROM)은 저장소 Secrets에 넣으면
+# 배포할 때 Worker의 Secret으로 옮기고, 클라우드플레어 대시보드에 직접 넣어도 된다.
 on:
   push:
     branches: [main]
@@ -41,6 +43,55 @@ jobs:
       - name: 빌드 + 통합 테스트
         if: env.HAS_TOKEN == 'true'
         run: npm test
+      - name: 로그인 설정 옮기기 (저장소 Secrets → Worker Secret)
+        if: env.HAS_TOKEN == 'true'
+        working-directory: worker
+        env:
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+          GOOGLE_CLIENT_ID: ${{ secrets.GOOGLE_CLIENT_ID }}
+          GOOGLE_CLIENT_SECRET: ${{ secrets.GOOGLE_CLIENT_SECRET }}
+          GIT_CLIENT_ID: ${{ secrets.GIT_CLIENT_ID }}
+          GIT_CLIENT_SECRET: ${{ secrets.GIT_CLIENT_SECRET }}
+          RESEND_API_KEY: ${{ secrets.RESEND_API_KEY }}
+          EMAIL_FROM: ${{ secrets.EMAIL_FROM }}
+        # 값은 로그에 나오지 않는다 (이름만 표시). 저장소에 없는 값은 건드리지 않는다
+        run: |
+          file="$RUNNER_TEMP/login-secrets.json"
+          jq -n 'env | {GOOGLE_CLIENT_ID, GOOGLE_CLIENT_SECRET, GIT_CLIENT_ID, GIT_CLIENT_SECRET, RESEND_API_KEY, EMAIL_FROM}
+            | with_entries(select(.value != null and .value != ""))' > "$file"
+          if [ "$(jq 'length' "$file")" -gt 0 ]; then
+            echo "옮기는 설정: $(jq -r 'keys | join(", ")' "$file")"
+            npx wrangler secret bulk "$file"
+          else
+            echo "저장소 Secrets에 로그인 설정이 없습니다 (클라우드플레어에 직접 넣은 값을 그대로 씁니다)"
+          fi
+          rm -f "$file"
+      - name: 로그인 방법 확인 (하나도 없으면 배포 중단)
+        if: env.HAS_TOKEN == 'true'
+        working-directory: worker
+        env:
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+        # 로그인 방법이 없는 채로 배포하면 아무도 들어올 수 없으므로, 그때는 이전 버전을 그대로 둔다
+        run: |
+          if ! out=$(npx wrangler secret list --format json 2>&1); then
+            echo "$out" | tail -5
+            echo "::error::클라우드플레어에서 Worker 설정 목록을 읽지 못해 배포를 중단합니다."
+            exit 1
+          fi
+          names=$(printf '%s' "$out" | grep -o '"name": *"[^"]*"' | sed 's/.*"\([^"]*\)"$/\1/')
+          echo "Worker Secret 이름: $(echo $names)"
+          has() { printf '%s\n' "$names" | grep -qx "$1"; }
+          methods=""
+          has RESEND_API_KEY && methods="$methods 이메일"
+          has GOOGLE_CLIENT_ID && has GOOGLE_CLIENT_SECRET && methods="$methods Google"
+          has GIT_CLIENT_ID && has GIT_CLIENT_SECRET && methods="$methods GitHub"
+          if [ -z "$methods" ]; then
+            echo "::error::로그인 방법이 하나도 설정되지 않아 배포를 중단합니다 (지금 사이트는 이전 버전 그대로). README의 '로그인 설정'을 참고해 Secret(Type: Secret)으로 넣어 주세요."
+            exit 1
+          fi
+          echo "사용할 수 있는 로그인:$methods"
       - name: 배포 (wrangler deploy)
         if: env.HAS_TOKEN == 'true'
         working-directory: worker
@@ -57,6 +108,7 @@ jobs:
             if curl -fsS --max-time 10 https://madang.party/api/health; then
               echo
               curl -fsS --max-time 10 -o /dev/null -w "첫 화면 HTTP %{http_code}\n" https://madang.party/
+              echo "로그인 화면 설정: $(curl -fsS --max-time 10 https://madang.party/api/auth/config)"
               exit 0
             fi
             echo "아직 응답 없음 ($i/20) · 15초 후 다시 확인"

@@ -2,11 +2,11 @@ import type { OAuthProvider } from '../../shared/types';
 import type { Env } from './env';
 
 /*
- * 로그인 도우미: 쿠키 · 외부 계정(구글 · 깃허브 · 애플) OAuth
+ * 로그인 도우미: 쿠키 · 외부 계정(구글 · 깃허브) OAuth
  * 계정과 세션 저장은 Directory가 맡고, 여기서는 외부 서비스와 주고받는 부분만 다룬다.
  */
 
-export const OAUTH_PROVIDERS: OAuthProvider[] = ['google', 'github', 'apple'];
+export const OAUTH_PROVIDERS: OAuthProvider[] = ['google', 'github'];
 
 /* ───────────── 쿠키 ───────────── */
 
@@ -14,7 +14,7 @@ export const OAUTH_PROVIDERS: OAuthProvider[] = ['google', 'github', 'apple'];
  * __Host- 접두사: https에서만, 이 주소(하위 도메인 제외)에서만 쓰이는 쿠키
  *  · session : 로그인 세션 (자바스크립트에서 읽을 수 없음)
  *  · signup  : 인증을 마치고 이름을 정하기 전의 가입 티켓
- *  · oauth   : 외부 로그인 요청을 이 브라우저에 묶어 두는 값 (애플은 다른 사이트에서 POST로 돌아오므로 SameSite=None)
+ *  · oauth   : 외부 로그인 요청을 이 브라우저에 묶어 두는 값 (구글 · 깃허브에서 돌아오는 페이지 이동에는 SameSite=Lax 쿠키도 실린다)
  */
 export const COOKIE = {
   session: '__Host-madang_sid',
@@ -32,11 +32,11 @@ export function readCookie(req: Request, name: string): string | null {
   return null;
 }
 
-export function cookie(name: string, value: string, maxAgeSec: number, sameSite: 'Lax' | 'None' = 'Lax'): string {
-  return `${name}=${value}; Path=/; Max-Age=${maxAgeSec}; HttpOnly; Secure; SameSite=${sameSite}`;
+export function cookie(name: string, value: string, maxAgeSec: number): string {
+  return `${name}=${value}; Path=/; Max-Age=${maxAgeSec}; HttpOnly; Secure; SameSite=Lax`;
 }
 
-export const clearCookie = (name: string, sameSite: 'Lax' | 'None' = 'Lax') => cookie(name, '', 0, sameSite);
+export const clearCookie = (name: string) => cookie(name, '', 0);
 
 /** 응답에 쿠키 붙이기 (Set-Cookie는 여러 개를 따로 보내야 한다) */
 export function withCookies(res: Response, cookies: string[]): Response {
@@ -81,9 +81,7 @@ export function providerEnabled(env: Env, p: OAuthProvider): boolean {
     case 'google':
       return Boolean(env.GOOGLE_CLIENT_ID && env.GOOGLE_CLIENT_SECRET);
     case 'github':
-      return Boolean(env.GITHUB_CLIENT_ID && env.GITHUB_CLIENT_SECRET);
-    case 'apple':
-      return Boolean(env.APPLE_CLIENT_ID && env.APPLE_TEAM_ID && env.APPLE_KEY_ID && env.APPLE_PRIVATE_KEY);
+      return Boolean(env.GIT_CLIENT_ID && env.GIT_CLIENT_SECRET);
   }
 }
 
@@ -102,7 +100,7 @@ function fromB64url(s: string): string {
   return new TextDecoder().decode(Uint8Array.from(bin, (c) => c.charCodeAt(0)));
 }
 
-/** 공백을 %20으로 인코딩한 쿼리 (애플은 +를 받지 않는다) */
+/** 공백을 %20으로 인코딩한 쿼리 */
 const query = (params: Record<string, string>) =>
   Object.entries(params)
     .map(([k, v]) => `${encodeURIComponent(k)}=${encodeURIComponent(v)}`)
@@ -125,23 +123,12 @@ export async function authorizeUrl(env: Env, p: OAuthProvider, redirectUri: stri
       })}`;
     case 'github':
       return `https://github.com/login/oauth/authorize?${query({
-        client_id: env.GITHUB_CLIENT_ID!,
+        client_id: env.GIT_CLIENT_ID!,
         redirect_uri: redirectUri,
         scope: 'read:user user:email',
         state: flow.state,
         code_challenge: challenge,
         code_challenge_method: 'S256',
-      })}`;
-    case 'apple':
-      // 이름 · 이메일을 요청하면 애플은 결과를 form_post(POST)로만 돌려준다
-      return `https://appleid.apple.com/auth/authorize?${query({
-        client_id: env.APPLE_CLIENT_ID!,
-        redirect_uri: redirectUri,
-        response_type: 'code',
-        response_mode: 'form_post',
-        scope: 'name email',
-        state: flow.state,
-        nonce: flow.nonce,
       })}`;
   }
 }
@@ -186,26 +173,6 @@ function idTokenClaims(token: unknown, expect: { iss: string[]; aud: string; non
 const text = (v: unknown, max = 40) => (typeof v === 'string' ? v.trim().replace(/\s+/g, ' ').slice(0, max) : '');
 const verified = (v: unknown) => v === true || v === 'true';
 
-/* 애플은 클라이언트 비밀번호 대신 개인 키로 서명한 JWT를 쓴다 (최대 6개월, 여기서는 1시간짜리를 만들어 재사용) */
-let appleSecret: { value: string; exp: number; key: string } | null = null;
-
-async function appleClientSecret(env: Env): Promise<string> {
-  const now = Math.floor(Date.now() / 1000);
-  const cacheKey = `${env.APPLE_TEAM_ID}:${env.APPLE_KEY_ID}:${env.APPLE_CLIENT_ID}`;
-  if (appleSecret && appleSecret.key === cacheKey && appleSecret.exp - 300 > now) return appleSecret.value;
-  const pem = env.APPLE_PRIVATE_KEY!.replace(/\\n/g, '\n').replace(/-----[^-]+-----/g, '').replace(/\s+/g, '');
-  const der = Uint8Array.from(atob(pem), (c) => c.charCodeAt(0));
-  const key = await crypto.subtle.importKey('pkcs8', der, { name: 'ECDSA', namedCurve: 'P-256' }, false, ['sign']);
-  const exp = now + 3600;
-  const signing = `${b64url(JSON.stringify({ alg: 'ES256', kid: env.APPLE_KEY_ID }))}.${b64url(
-    JSON.stringify({ iss: env.APPLE_TEAM_ID, iat: now, exp, aud: 'https://appleid.apple.com', sub: env.APPLE_CLIENT_ID }),
-  )}`;
-  const sig = await crypto.subtle.sign({ name: 'ECDSA', hash: 'SHA-256' }, key, utf8(signing));
-  const value = `${signing}.${b64url(sig)}`;
-  appleSecret = { value, exp, key: cacheKey };
-  return value;
-}
-
 /** 돌려받은 인가 코드로 외부 계정 정보를 확인한다 */
 export async function fetchProfile(
   env: Env,
@@ -213,7 +180,6 @@ export async function fetchProfile(
   redirectUri: string,
   code: string,
   flow: { verifier: string; nonce: string },
-  appleUser: string | null,
 ): Promise<OAuthProfile> {
   if (p === 'google') {
     const tokens = await postForm('https://oauth2.googleapis.com/token', {
@@ -228,42 +194,22 @@ export async function fetchProfile(
     return { subject: String(c.sub), email: text(c.email, 254).toLowerCase() || null, emailVerified: verified(c.email_verified), name: text(c.name) };
   }
 
-  if (p === 'github') {
-    const tokens = await postForm('https://github.com/login/oauth/access_token', {
-      client_id: env.GITHUB_CLIENT_ID!,
-      client_secret: env.GITHUB_CLIENT_SECRET!,
-      code,
-      redirect_uri: redirectUri,
-      code_verifier: flow.verifier,
-    });
-    if (typeof tokens.access_token !== 'string') throw new OAuthError('깃허브 토큰이 없습니다.');
-    const headers = {
-      authorization: `Bearer ${tokens.access_token}`,
-      accept: 'application/vnd.github+json',
-      'user-agent': 'Madang',
-      'x-github-api-version': '2022-11-28',
-    };
-    const user = await getJson<{ id: number; login: string; name: string | null }>('https://api.github.com/user', headers);
-    const emails = await getJson<{ email: string; primary: boolean; verified: boolean }[]>('https://api.github.com/user/emails', headers).catch(() => []);
-    const best = emails.find((e) => e.primary && e.verified) ?? emails.find((e) => e.verified);
-    return { subject: String(user.id), email: best ? best.email.toLowerCase() : null, emailVerified: Boolean(best), name: text(user.name) || text(user.login) };
-  }
-
-  const tokens = await postForm('https://appleid.apple.com/auth/token', {
-    client_id: env.APPLE_CLIENT_ID!,
-    client_secret: await appleClientSecret(env),
+  const tokens = await postForm('https://github.com/login/oauth/access_token', {
+    client_id: env.GIT_CLIENT_ID!,
+    client_secret: env.GIT_CLIENT_SECRET!,
     code,
-    grant_type: 'authorization_code',
     redirect_uri: redirectUri,
+    code_verifier: flow.verifier,
   });
-  const c = idTokenClaims(tokens.id_token, { iss: ['https://appleid.apple.com'], aud: env.APPLE_CLIENT_ID!, nonce: flow.nonce });
-  // 애플은 이름을 처음 동의할 때 한 번만, 폼 값으로 준다
-  let name = '';
-  try {
-    const u = JSON.parse(appleUser ?? '') as { name?: { firstName?: string; lastName?: string } };
-    name = text(`${u.name?.firstName ?? ''} ${u.name?.lastName ?? ''}`);
-  } catch {
-    /* 두 번째 로그인부터는 없다 */
-  }
-  return { subject: String(c.sub), email: text(c.email, 254).toLowerCase() || null, emailVerified: verified(c.email_verified), name };
+  if (typeof tokens.access_token !== 'string') throw new OAuthError('깃허브 토큰이 없습니다.');
+  const headers = {
+    authorization: `Bearer ${tokens.access_token}`,
+    accept: 'application/vnd.github+json',
+    'user-agent': 'Madang',
+    'x-github-api-version': '2022-11-28',
+  };
+  const user = await getJson<{ id: number; login: string; name: string | null }>('https://api.github.com/user', headers);
+  const emails = await getJson<{ email: string; primary: boolean; verified: boolean }[]>('https://api.github.com/user/emails', headers).catch(() => []);
+  const best = emails.find((e) => e.primary && e.verified) ?? emails.find((e) => e.verified);
+  return { subject: String(user.id), email: best ? best.email.toLowerCase() : null, emailVerified: Boolean(best), name: text(user.name) || text(user.login) };
 }

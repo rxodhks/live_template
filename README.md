@@ -3,7 +3,7 @@
 > 내 방에서 시작해, 마당에서 함께. — **https://madang.party**
 
 **디자인 · 코딩 · 문서**를 한 화면에서 만드는 템플릿 워크스페이스입니다.
-**구글 · 깃허브 · 애플 계정이나 이메일 인증**으로 로그인해 **개인 공간**에서 바로 시작하고, 팀원을 **초대하는 순간 그 템플릿만 협업 공간으로 전환**되어 여러 사람이 실시간으로 함께 작업합니다. 서로의 커서와 행동이 보이고, 모든 변경은 자동 저장됩니다.
+**구글 · 깃허브 계정이나 이메일 인증**으로 로그인해 **개인 공간**에서 바로 시작하고, 팀원을 **초대하는 순간 그 템플릿만 협업 공간으로 전환**되어 여러 사람이 실시간으로 함께 작업합니다. 서로의 커서와 행동이 보이고, 모든 변경은 자동 저장됩니다.
 
 - **데스크톱 우선** 웹앱입니다. 모바일은 별도 앱으로 출시할 예정이라 휴대폰 레이아웃은 만들지 않았습니다. (창이 좁으면 안내가 표시됩니다)
 - 서버는 **클라우드플레어 Workers + Durable Objects** 하나로 운영합니다. 화면(정적 파일)과 협업 서버가 같은 주소(`madang.party`)에서 제공됩니다.
@@ -46,7 +46,7 @@ npm run dev -w worker          # Worker가 화면 + API를 한 주소(8787)에�
 
 | 단계 | 내용 |
 | --- | --- |
-| 1. 본인 확인 | **Google · GitHub · Apple로 계속하기** 또는 **이메일로 계속하기**(6자리 인증 코드). 비밀번호는 없습니다 |
+| 1. 본인 확인 | **Google · GitHub로 계속하기** 또는 **이메일로 계속하기**(6자리 인증 코드). 비밀번호는 없습니다 |
 | 2. 이름 정하기 | 처음이면 사이트에서 표시될 **이름**(과 커서 색상 · 아바타)을 정합니다. 외부 계정으로 가입할 때도 같습니다 (외부 계정 이름을 미리 채워 줌) |
 | 3. 시작 | 메인 화면으로 이동. 초대 링크로 왔다면 그 초대장으로 돌아갑니다 |
 
@@ -118,7 +118,12 @@ npm run deploy         # 화면 빌드 + wrangler deploy
 
 ### 로그인 설정
 
-로그인 방법마다 필요한 값을 클라우드플레어 대시보드 → **Workers & Pages → madang → Settings → Variables and Secrets → Add**에서 **Type: Secret**으로 추가합니다. 저장하면 바로 적용되고(다시 배포할 필요 없음), 값이 있는 방법만 로그인 화면에 나타납니다. 모든 콜백 주소는 `https://madang.party/api/auth/callback/<google|github|apple>` 형식입니다.
+로그인 방법마다 필요한 값을 아래 둘 중 한 곳에 넣습니다. 값이 있는 방법만 로그인 화면에 나타납니다. 콜백 주소는 `https://madang.party/api/auth/callback/<google|github>` 형식입니다.
+
+- **GitHub 저장소 Secrets** (*Settings → Secrets and variables → Actions*): 다음 배포 때 **Deploy to Cloudflare** 워크플로가 Worker의 Secret으로 옮깁니다 (로그에는 이름만 표시). GitHub Secret 이름은 `GITHUB_`로 시작할 수 없어서 깃허브 로그인 값은 `GIT_CLIENT_ID` · `GIT_CLIENT_SECRET`을 씁니다.
+- **클라우드플레어 대시보드** → *Workers & Pages → madang → Settings → Variables and Secrets → Add* → **Type: Secret**. 저장하면 바로 적용됩니다.
+
+배포 워크플로는 로그인 방법이 **하나도 없으면 배포를 중단**합니다 (아무도 로그인할 수 없는 상태로 바뀌지 않도록 이전 버전을 그대로 둠).
 
 **① 이메일 인증 코드 — [Resend](https://resend.com) (무료: 하루 100통 · 한 달 3,000통)**
 1. Resend 가입 → *Domains → Add Domain* → `madang.party` → 안내되는 DNS 레코드를 추가합니다. 도메인이 클라우드플레어에 있으면 *Auto configure*(클라우드플레어 로그인)로 한 번에 추가됩니다.
@@ -137,13 +142,7 @@ npm run deploy         # 화면 빌드 + wrangler deploy
 1. GitHub → *Settings → Developer settings → OAuth Apps → New OAuth App*
    - Homepage URL: `https://madang.party` · Authorization callback URL: `https://madang.party/api/auth/callback/github`
 2. *Generate a new client secret*
-3. Secrets `GITHUB_CLIENT_ID`, `GITHUB_CLIENT_SECRET`
-
-**④ Apple** (Apple Developer Program 유료 가입 필요 · 연 $99)
-1. [Certificates, Identifiers & Profiles](https://developer.apple.com/account/resources/identifiers/list) → *Identifiers*: App ID를 만들고 *Sign in with Apple* 체크
-2. *Identifiers → Services IDs* 새로 만들기 (예: `party.madang.web`) → *Sign in with Apple → Configure*: 위 App ID 선택 · *Domains* `madang.party` · *Return URLs* `https://madang.party/api/auth/callback/apple`
-3. *Keys* → 새 키 (*Sign in with Apple* 체크, 위 App ID) → `.p8` 파일 다운로드 (한 번만 받을 수 있음), *Key ID* 확인
-4. Secrets `APPLE_CLIENT_ID`(Services ID) · `APPLE_TEAM_ID`(오른쪽 위 팀 ID) · `APPLE_KEY_ID` · `APPLE_PRIVATE_KEY`(`.p8` 파일 내용 전체)
+3. Secrets `GIT_CLIENT_ID`, `GIT_CLIENT_SECRET`
 
 ### 무료 요금제에서 얼마나 쓸 수 있나 (작성 시점 기준)
 
@@ -181,7 +180,7 @@ npm run deploy         # 화면 빌드 + wrangler deploy
 | 개인 공간 → 초대 시 협업 전환 | 위 "개인 공간 → 협업 공간" 참고 |
 | 최적의 초대 방식 | 위 "초대 방식" 참고 |
 | 데스크톱 우선 | 데스크톱 레이아웃만 제공(최소 폭 960px), 좁은 창 안내, 모바일 전용 레이아웃·PWA 제거 |
-| 로그인 · 로그아웃 · 회원가입 | 로그인 화면 · Google/GitHub/Apple 로그인 · 이메일 인증 코드 가입 · 인증 후 표시 이름 입력 · 프로필 메뉴의 로그아웃. 위 "로그인" 참고 |
+| 로그인 · 로그아웃 · 회원가입 | 로그인 화면 · Google/GitHub 로그인 · 이메일 인증 코드 가입 · 인증 후 표시 이름 입력 · 프로필 메뉴의 로그아웃. 위 "로그인" 참고 |
 
 ## 기능별 도구
 
@@ -248,12 +247,12 @@ npm run deploy         # 화면 빌드 + wrangler deploy
 ## 프로젝트 구조
 
 ```
-.github/workflows/ ci.yml(타입 검사 · 빌드 · 통합 테스트), deploy.yml(클라우드플레어 배포)
+.github/workflows/ ci.yml(타입 검사 · 빌드 · 통합 테스트), deploy.yml(로그인 설정 옮기기 · 클라우드플레어 배포), site-check.yml(주소 · 로그인 설정 점검)
 shared/            공용 타입 · 실시간 메시지 형식(protocol) · 활동 정의 · Y.Doc 스키마 · 프리셋 · 시드
 worker/
   wrangler.jsonc   Worker · 정적 파일 · Durable Object 설정
   src/index.ts     API 라우팅(로그인 포함), 초대 링크 미리보기
-  src/auth.ts      로그인 쿠키 · 구글/깃허브/애플 OAuth
+  src/auth.ts      로그인 쿠키 · 구글/깃허브 OAuth
   src/mail.ts      인증 코드 메일 (Resend)
   src/directory.ts 계정 · 로그인 세션 · 템플릿 · 멤버 · 초대 링크 · 참여 요청 (Durable Object)
   src/room.ts      템플릿 방: 실시간 동기화 · 타임라인 · 채팅 · 비밀 노트 (Durable Object)
@@ -279,7 +278,7 @@ client/src/
 ## 알려진 한계와 다음 단계
 
 - **개인 공간 데이터**: 브라우저에만 있으므로 브라우저 데이터를 지우면 사라집니다. 중요한 템플릿은 협업 공간으로 전환하면 클라우드에 보관됩니다. 다음 단계로 개인 공간 백업(파일 내보내기/가져오기)을 제안합니다.
-- **로그인**: 외부 로그인(구글·깃허브·애플)은 배포된 주소에서만 동작합니다 (로컬은 이메일 개발 모드). 인증 메일은 Resend 무료 한도(하루 100통)를 넘으면 그날은 보내지 못하니, 사용자가 늘면 유료 요금제나 클라우드플레어 Email Service로 옮기세요. 모바일 앱은 같은 로그인 API를 쓰되 앱 전용 로그인 흐름(딥 링크)을 추가해야 합니다.
+- **로그인**: 외부 로그인(구글·깃허브)은 배포된 주소에서만 동작합니다 (로컬은 이메일 개발 모드). 인증 메일은 Resend 무료 한도(하루 100통)를 넘으면 그날은 보내지 못하니, 사용자가 늘면 유료 요금제나 클라우드플레어 Email Service로 옮기세요. 모바일 앱은 같은 로그인 API를 쓰되 앱 전용 로그인 흐름(딥 링크)을 추가해야 합니다.
 - **알림 범위**: 실시간 알림은 열어 둔 템플릿 기준입니다. 대시보드는 60초마다(또는 창으로 돌아올 때) 목록·접속자·참여 요청 수를 새로 고칩니다.
 - **실행 가능한 언어**: 브라우저에서 실행되는 것은 JavaScript와 HTML 미리보기입니다. Python 등은 Pyodide 연동이 다음 후보입니다.
 - **추가 로드맵**: 버전 스냅샷/복원, 디자인 코멘트 핀, @멘션 알림, 이미지 업로드(R2).

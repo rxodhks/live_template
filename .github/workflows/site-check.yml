@@ -61,4 +61,15 @@ jobs:
             row "❌" "http://madang.party/join/test?x=1" "$url (HTTP $code) · SSL/TLS → Edge Certificates → Always Use HTTPS를 켜 주세요"; fail=1
           fi
 
+          # 5) 로그인 화면에 쓸 수 있는 로그인 방법이 하나 이상 있는지
+          auth=$(curl -sS --max-time 15 -w '\n%{http_code}' https://madang.party/api/auth/config || echo "- 000")
+          code=$(printf '%s' "$auth" | tail -n1); body=$(printf '%s' "$auth" | head -n1)
+          if [ "$code" = "200" ] && printf '%s' "$body" | grep -q 'true'; then
+            row "✅" "https://madang.party/api/auth/config" "$body"
+          elif [ "$code" = "404" ]; then
+            row "ℹ️" "https://madang.party/api/auth/config" "로그인 기능 배포 전"
+          else
+            row "❌" "https://madang.party/api/auth/config" "HTTP $code $body · 사용할 수 있는 로그인 방법이 없습니다"; fail=1
+          fi
+
           exit $fail

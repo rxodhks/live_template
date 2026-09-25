@@ -20,8 +20,8 @@ const sockets: Client[] = [];
 
 async function startWorker() {
   // AUTH_DEV_MODE: 메일 대신 응답으로 인증 코드를 받는다 (localhost에서만 동작)
-  // GITHUB_*: 외부 로그인 시작 · 되돌아오기 검증용 가짜 설정 (실제 깃허브와는 통신이 실패한다)
-  const vars = ['AUTH_DEV_MODE:1', 'GITHUB_CLIENT_ID:test-client', 'GITHUB_CLIENT_SECRET:test-secret'].flatMap((v) => ['--var', v]);
+  // GIT_*: 깃허브 외부 로그인 시작 · 되돌아오기 검증용 가짜 설정 (실제 깃허브와는 통신이 실패한다)
+  const vars = ['AUTH_DEV_MODE:1', 'GIT_CLIENT_ID:test-client', 'GIT_CLIENT_SECRET:test-secret'].flatMap((v) => ['--var', v]);
   proc = spawn('npx', ['wrangler', 'dev', '--port', String(port), '--ip', '127.0.0.1', '--persist-to', persistDir, '--log-level', 'warn', ...vars], {
     cwd: workerDir,
     stdio: ['ignore', 'pipe', 'pipe'],
@@ -204,7 +204,7 @@ after(async () => {
 describe('로그인', () => {
   it('로그인 화면 설정: 설정된 방법만 켜진다', async () => {
     const config = await raw('GET', '/api/auth/config');
-    assert.deepEqual(config.data, { email: true, providers: { google: false, github: true, apple: false }, devMode: true });
+    assert.deepEqual(config.data, { email: true, providers: { google: false, github: true }, devMode: true });
     // 설정되지 않은 외부 로그인은 로그인 화면으로 돌려보낸다
     const google = await raw('GET', '/api/auth/oauth/google?next=/t/abc');
     assert.equal(google.status, 302);
@@ -222,7 +222,7 @@ describe('로그인', () => {
     const state = to.searchParams.get('state')!;
     const bound = start.setCookies.find((c) => c.startsWith('__Host-madang_oauth='))!;
     assert.equal(start.cookies['__Host-madang_oauth'], state);
-    assert.match(bound, /SameSite=None/);
+    assert.match(bound, /SameSite=Lax/);
     assert.match(bound, /HttpOnly/);
 
     const cb = (q: string, cookie?: string) => raw('GET', `/api/auth/callback/github?${q}`, { cookie });
