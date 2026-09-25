@@ -52,8 +52,13 @@ jobs:
             row "❌" "http://www.madang.party/join/test?x=1" "이동 ${hops}번 → $url (HTTP $code)"; fail=1
           fi
 
-          # 참고: http://madang.party 가 https로 넘어가는지 (Always Use HTTPS 설정)
-          read -r code url hops <<< "$(follow 'http://madang.party/')"
-          if [ "$url" = "https://madang.party/" ]; then row "✅" "http://madang.party/ (참고)" "https로 이동 (HTTP $code)"; else row "ℹ️" "http://madang.party/ (참고)" "$url (HTTP $code) · SSL/TLS → Edge Certificates → Always Use HTTPS를 켜면 https로 넘어갑니다"; fi
+          # 4) http://madang.party 도 https로 넘어가는지 (Always Use HTTPS 설정)
+          #    http로 열리면 비밀 노트 암호화(보안 연결 필요)가 동작하지 않고, 개인 공간 저장소도 https와 나뉜다
+          read -r code url hops <<< "$(follow 'http://madang.party/join/test?x=1')"
+          if [ "$url" = "https://madang.party/join/test?x=1" ] && [ "$code" = "200" ]; then
+            row "✅" "http://madang.party/join/test?x=1" "이동 ${hops}번 → $url (HTTP $code)"
+          else
+            row "❌" "http://madang.party/join/test?x=1" "$url (HTTP $code) · SSL/TLS → Edge Certificates → Always Use HTTPS를 켜 주세요"; fail=1
+          fi
 
           exit $fail
