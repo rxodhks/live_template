@@ -10,7 +10,7 @@ import { fromB64, toB64 } from './crypto';
  *  · RoomProvider  : 협업 공간 — 클라우드플레어 방과 실시간 동기화
  *      1) 접속할 때마다 상태 벡터를 교환해 서로 없는 부분만 주고받는다 (오프라인 편집 자동 병합)
  *      2) 로컬 변경은 짧게 모아 한 번에 보낸다 (요청 수 절약) · 서버 확인(ack)으로 "저장됨" 표시
- *      3) awareness(텍스트 커서/선택 영역)를 같은 방 사람들과 공유
+ *      3) awareness(텍스트 커서/선택 영역)는 보는 사람이 있을 때만, 문서 변경과 같은 메시지에 실어 보낸다
  */
 
 export type ProviderStatus = 'connecting' | 'synced' | 'offline' | 'error';
@@ -21,6 +21,8 @@ export interface DocProvider {
   readonly readOnly: boolean;
   readonly synced: boolean;
   subscribe(fn: () => void): () => void;
+  /** 연속 동작(도형 끌기 등) 중에는 더 자주 동기화 */
+  setLive?(on: boolean): void;
   destroy(): void;
 }
 
@@ -43,8 +45,15 @@ export class LocalProvider implements DocProvider {
   }
 }
 
-/** 변경을 이 시간 동안 모아서 보낸다 */
-const BATCH_MS = 60;
+/*
+ * 전송 묶음 간격 — 다른 사람 화면에서 부드럽게 보이는 선에서 메시지 수를 줄인다
+ *  · 혼자일 때: 보는 사람이 없으니 1초씩 모아 저장만 (브라우저 사본에는 즉시 기록됨)
+ *  · 함께일 때: 150ms — 글자는 1~2자 단위로 자연스럽게 나타나고, 한글 조합 중 생기는 여러 변경이 한 번에 합쳐진다
+ *  · 도형을 끄는 중: 50ms — 움직임이 끊겨 보이지 않도록
+ */
+const ALONE_MS = 1000;
+const SHARED_MS = 150;
+const LIVE_MS = 50;
 
 export class RoomProvider implements DocProvider {
   readonly awareness: Awareness;
@@ -55,7 +64,11 @@ export class RoomProvider implements DocProvider {
   private destroyed = false;
   private ready = false;
   private outbox: Uint8Array[] = [];
-  private outboxTimer: ReturnType<typeof setTimeout> | null = null;
+  /** 보내야 할 텍스트 커서(awareness) 변경 */
+  private awDirty = new Set<number>();
+  private timer: ReturnType<typeof setTimeout> | null = null;
+  private dueAt = 0;
+  private live = false;
 
   constructor(
     private readonly room: RoomConnection,
@@ -68,9 +81,22 @@ export class RoomProvider implements DocProvider {
     this.awareness.on('update', this.onAwarenessUpdate);
     this.offs.push(
       room.onStatus(this.onRoomStatus),
-      room.on('update', (m) => Y.applyUpdate(doc, fromB64(m.u), this)),
+      room.onAudience((n) => {
+        // 누군가 들어오면 모아 둔 변경과 내 텍스트 커서를 바로 보낸다
+        if (n > 0) {
+          this.awDirty.add(doc.clientID);
+          this.flush();
+        }
+      }),
+      room.on('update', (m) => {
+        Y.applyUpdate(doc, fromB64(m.u), this);
+        if (m.aw) applyAwarenessUpdate(this.awareness, fromB64(m.aw), this);
+      }),
       room.on('aw', (m) => applyAwarenessUpdate(this.awareness, fromB64(m.u), this)),
-      room.on('aw:query', () => this.sendAwareness([doc.clientID])),
+      room.on('aw:query', () => {
+        this.awDirty.add(doc.clientID);
+        this.flush();
+      }),
       room.on('presence:leave', (m) => m.clients.length && removeAwarenessStates(this.awareness, m.clients, this)),
       room.on('role', (m) => {
         this.readOnly = m.role === 'viewer';
@@ -92,6 +118,12 @@ export class RoomProvider implements DocProvider {
   subscribe(fn: () => void): () => void {
     this.listeners.add(fn);
     return () => this.listeners.delete(fn);
+  }
+
+  /** 도형을 끄는 동안처럼 움직임이 연속적일 때 더 자주 보낸다 */
+  setLive(on: boolean): void {
+    this.live = on;
+    if (!on && this.outbox.length) this.flush();
   }
 
   private notify() {
@@ -128,28 +160,46 @@ export class RoomProvider implements DocProvider {
     // 서버에 없는 로컬 변경(오프라인 편집 등)을 올린다
     if (!this.readOnly) {
       const diff = Y.encodeStateAsUpdate(this.doc, fromB64(res.data.sv));
-      if (diff.length > 2) this.queue(diff);
+      if (diff.length > 2) this.enqueue(diff);
     }
-    this.outboxFlush();
-    if (this.awareness.getLocalState() !== null) this.sendAwareness([this.doc.clientID]);
+    if (this.awareness.getLocalState() !== null) this.awDirty.add(this.doc.clientID);
     useConnection.getState().setOfflineChanges(false);
     this.setStatus('synced');
+    this.flush();
   }
 
-  private queue(update: Uint8Array) {
-    this.outbox.push(update);
-    if (!this.outboxTimer) this.outboxTimer = setTimeout(() => this.outboxFlush(), BATCH_MS);
+  /** 다음 전송 예약 (이미 더 이른 예약이 있으면 그대로) */
+  private schedule(ms: number) {
+    const due = Date.now() + ms;
+    if (this.timer && this.dueAt <= due) return;
+    if (this.timer) clearTimeout(this.timer);
+    this.dueAt = due;
+    this.timer = setTimeout(() => this.flush(), ms);
   }
 
-  private outboxFlush() {
-    if (this.outboxTimer) clearTimeout(this.outboxTimer);
-    this.outboxTimer = null;
-    if (!this.outbox.length || !this.room.online) return;
+  private windowMs(): number {
+    if (this.room.audience === 0) return ALONE_MS;
+    return this.live ? LIVE_MS : SHARED_MS;
+  }
+
+  private flush() {
+    if (this.timer) clearTimeout(this.timer);
+    this.timer = null;
+    if (!this.room.online || this.status !== 'synced') return;
+    // 보는 사람이 있을 때만 텍스트 커서를 싣는다 (혼자면 모아 두었다가 누가 들어오면 보냄)
+    let aw: string | undefined;
+    if (this.awDirty.size && this.room.audience > 0) {
+      aw = toB64(encodeAwarenessUpdate(this.awareness, Array.from(this.awDirty)));
+      this.awDirty.clear();
+    }
+    if (!this.outbox.length) {
+      if (aw) this.room.send({ t: 'aw', u: aw });
+      return;
+    }
     const merged = this.outbox.length === 1 ? this.outbox[0] : Y.mergeUpdates(this.outbox);
+    // 대기 중으로 세어 둔 1건을 이 요청이 이어받는다 (응답이 오면 해제)
     this.outbox = [];
-    const conn = useConnection.getState();
-    conn.addPending(1);
-    void this.room.request({ t: 'update', u: toB64(merged) }).then((res) => {
+    void this.room.request({ t: 'update', u: toB64(merged), aw }).then((res) => {
       const c = useConnection.getState();
       c.addPending(-1);
       if (res.ok) return c.markSaved();
@@ -164,34 +214,42 @@ export class RoomProvider implements DocProvider {
     });
   }
 
-  private sendAwareness(clients: number[]) {
-    if (this.status !== 'synced' && this.status !== 'connecting') return;
-    this.room.send({ t: 'aw', u: toB64(encodeAwarenessUpdate(this.awareness, clients)) });
-  }
-
   private onDocUpdate = (update: Uint8Array, origin: unknown) => {
     if (origin === this || this.readOnly) return;
     if (this.status !== 'synced') {
       useConnection.getState().setOfflineChanges(true);
       return;
     }
-    this.queue(update);
+    this.enqueue(update);
+    this.schedule(this.windowMs());
   };
+
+  /** 보낼 변경을 쌓는다. 비어 있다가 처음 쌓이면 "저장 중"으로 표시 */
+  private enqueue(update: Uint8Array) {
+    if (!this.outbox.length) useConnection.getState().addPending(1);
+    this.outbox.push(update);
+  }
 
   private onAwarenessUpdate = ({ added, updated, removed }: { added: number[]; updated: number[]; removed: number[] }, origin: unknown) => {
     if (origin === this) return;
-    this.sendAwareness(added.concat(updated, removed));
+    for (const id of [...added, ...updated, ...removed]) this.awDirty.add(id);
+    // 혼자면 보내지 않고, 함께면 문서 변경과 같은 묶음으로
+    if (this.room.audience > 0) this.schedule(this.live ? LIVE_MS : SHARED_MS);
   };
 
   destroy(): void {
     if (this.destroyed) return;
-    this.outboxFlush();
+    this.flush();
     this.destroyed = true;
+    if (this.timer) clearTimeout(this.timer);
+    // 연결이 없어 못 보낸 변경은 브라우저 사본에 남아 다음 접속 때 동기화된다
+    if (this.outbox.length) useConnection.getState().addPending(-1);
+    this.outbox = [];
     this.doc.off('update', this.onDocUpdate);
     this.awareness.off('update', this.onAwarenessUpdate);
     for (const off of this.offs) off();
     removeAwarenessStates(this.awareness, [this.doc.clientID], 'destroy');
-    this.room.send({ t: 'aw', u: toB64(encodeAwarenessUpdate(this.awareness, [this.doc.clientID])) });
+    if (this.room.audience > 0) this.room.send({ t: 'aw', u: toB64(encodeAwarenessUpdate(this.awareness, [this.doc.clientID])) });
     this.awareness.destroy();
     this.listeners.clear();
   }

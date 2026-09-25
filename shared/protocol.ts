@@ -28,8 +28,11 @@ export interface PresencePatch {
 /** 브라우저 → 서버 */
 export type ClientMessage =
   | { t: 'sync'; id: number; sv: string }
-  | { t: 'update'; id: number; u: string }
+  /** 문서 변경. aw: 같은 순간의 텍스트 커서(awareness) 변경을 한 메시지에 함께 싣는다 */
+  | { t: 'update'; id: number; u: string; aw?: string }
   | { t: 'aw'; u: string }
+  /** 저장하지 않고 다른 사람에게만 보내는 순간 정보 (예: 그리고 있는 펜 선) */
+  | { t: 'live'; k: string; d: unknown }
   | { t: 'presence'; patch: PresencePatch }
   | { t: 'cursor'; c: CursorPoint | null }
   | { t: 'action'; label: string }
@@ -47,8 +50,9 @@ export type TemplateBroadcast = Omit<TemplateSummary, 'myRole'>;
 export type ServerMessage =
   | { t: 'welcome'; sid: string; role: Role; presence: PresenceState[]; chat: ChatMessage[]; notes: SecretNoteMeta[]; requests: JoinRequest[] }
   | { t: 'ack'; id: number; ok: boolean; error?: string; status?: number; data?: unknown }
-  | { t: 'update'; u: string }
+  | { t: 'update'; u: string; aw?: string }
   | { t: 'aw'; u: string }
+  | { t: 'live'; sid: string; k: string; d: unknown }
   | { t: 'aw:query' }
   | { t: 'presence'; state: PresenceState }
   | { t: 'presence:leave'; sid: string; clients: number[] }
@@ -69,4 +73,17 @@ export type ServerMessage =
 export interface NoteJoinData {
   snapshot: string;
   updates: { uid: number; data: string }[];
+}
+
+/** 펜으로 그리는 중인 선 (저장하지 않고 중계만) */
+export interface LivePen {
+  /** 완성되면 저장될 도형 ID */
+  id: string;
+  board: string;
+  /** 새로 추가된 점들 (월드 좌표 x, y 반복) */
+  pts: number[];
+  /** 처음 보낼 때만: 선 스타일 */
+  style?: { stroke: string; strokeWidth: number; opacity: number };
+  /** 그리기가 끝났거나 취소됨 */
+  end?: 'commit' | 'cancel';
 }

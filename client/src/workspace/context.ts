@@ -43,6 +43,10 @@ export interface WorkspaceValue {
   action(label: string): void;
   publishCursor(cursor: CursorPoint | null): void;
   updatePresence(patch: Partial<Pick<PresenceState, 'viewport' | 'selection' | 'idle'>>): void;
+  /** 저장하지 않고 다른 사람에게만 보내는 순간 정보 (보는 사람이 있을 때만 전송) */
+  live(kind: string, data: unknown): void;
+  /** 지금 같은 템플릿에 다른 사람이 있는지 */
+  hasAudience(): boolean;
   /** 따라가는 사용자 ID */
   follow: string | null;
   setFollow(userId: string | null): void;

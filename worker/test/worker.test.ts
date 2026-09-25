@@ -357,6 +357,21 @@ describe('실시간 협업', () => {
     const tl = await a.waitType('timeline', (m) => m.event.type === 'code.create');
     assert.equal(tl.event.user.id, editor.user.id);
 
+    // 텍스트 커서(awareness)를 문서 변경과 한 메시지로
+    const awState = new Uint8Array([1, 7, 1, 2, 123, 125]); // clientID 7, clock 1, state "{}"
+    b.send({ t: 'update', id: 1000, u: b64(Y.encodeStateAsUpdate(docB, Y.encodeStateVector(docA))), aw: b64(awState) });
+    const withAw = await a.waitType('update', (m) => typeof m.aw === 'string');
+    assert.equal(withAw.aw, b64(awState));
+
+    // 저장하지 않는 순간 정보(그리는 중인 펜 선)는 보낸 사람 ID와 함께 그대로 중계
+    b.send({ t: 'live', k: 'pen', d: { id: 'pen1', board: 'b1', pts: [1, 2, 3, 4] } });
+    const live = await a.waitType('live');
+    assert.equal(live.sid, welcomeB.sid);
+    assert.deepEqual(live.d.pts, [1, 2, 3, 4]);
+    b.send({ t: 'live', k: 'pen', d: { pts: 'x'.repeat(20_000) } }); // 너무 크면 버림
+    await sleep(300);
+    assert.ok(!a.messages.some((m) => m.t === 'live'), '큰 순간 정보는 중계하지 않는다');
+
     // 채팅
     const sent = await b.request({ t: 'chat', text: '안녕하세요' });
     assert.ok(sent.ok);

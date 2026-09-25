@@ -828,7 +828,8 @@ textarea.input {
   left: 0;
   top: 0;
   pointer-events: none;
-  transition: transform 90ms linear;
+  /* 위치는 100ms마다 도착한다. 도착 간격보다 조금 길게 이어 움직여 멈칫거림 없이 미끄러지듯 보이게 한다 */
+  transition: transform 120ms linear;
   will-change: transform;
   z-index: 16;
 }

@@ -25,6 +25,9 @@ export class RoomConnection {
   role: Role | null = null;
   deniedReason: string | null = null;
 
+  /** 같은 방에 있는 다른 연결들 (다른 사람 또는 내 다른 탭) */
+  private others = new Set<string>();
+  private audienceListeners = new Set<(n: number) => void>();
   private ws: WebSocket | null = null;
   private handlers = new Map<string, Set<(m: never) => void>>();
   private statusListeners = new Set<(s: RoomStatus) => void>();
@@ -56,6 +59,22 @@ export class RoomConnection {
 
   get online(): boolean {
     return this.status === 'online';
+  }
+
+  /** 지금 내 화면을 볼 수 있는 다른 연결 수. 0이면 커서·텍스트 커서처럼 보는 사람이 필요한 정보는 보내지 않는다 */
+  get audience(): number {
+    return this.others.size;
+  }
+
+  onAudience(fn: (n: number) => void): () => void {
+    this.audienceListeners.add(fn);
+    return () => this.audienceListeners.delete(fn);
+  }
+
+  private setOthers(update: (s: Set<string>) => void) {
+    const before = this.others.size;
+    update(this.others);
+    if (this.others.size !== before) for (const fn of this.audienceListeners) fn(this.others.size);
   }
 
   send(msg: Outgoing): boolean {
@@ -93,6 +112,7 @@ export class RoomConnection {
     this.ws = null;
     this.handlers.clear();
     this.statusListeners.clear();
+    this.audienceListeners.clear();
   }
 
   /* ───────────── 내부 ───────────── */
@@ -137,7 +157,15 @@ export class RoomConnection {
         this.sid = m.sid;
         this.role = m.role;
         this.startPing();
+        this.setOthers((set) => {
+          set.clear();
+          for (const p of m.presence) if (p.socketId !== m.sid) set.add(p.socketId);
+        });
         this.setStatus('online');
+      } else if (m.t === 'presence') {
+        if (m.state.socketId !== this.sid) this.setOthers((set) => set.add(m.state.socketId));
+      } else if (m.t === 'presence:leave') {
+        this.setOthers((set) => set.delete(m.sid));
       } else if (m.t === 'ack') {
         const a = this.acks.get(m.id);
         if (a) {
@@ -158,6 +186,7 @@ export class RoomConnection {
       if (this.ws !== ws) return;
       this.ws = null;
       this.cleanup();
+      this.setOthers((set) => set.clear());
       if (this.closed) {
         this.setStatus('offline');
         return;

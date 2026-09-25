@@ -4,7 +4,7 @@ import * as Y from 'yjs';
 import { IndexeddbPersistence } from 'y-indexeddb';
 import { ShieldAlert, SearchX } from 'lucide-react';
 import type { ActivityInput, ChatMessage, CursorPoint, JoinRequest, SecretNoteMeta, TemplateEntry, TemplateSummary, ViewModule } from '@shared/types';
-import type { PresencePatch } from '@shared/protocol';
+import type { LivePen, PresencePatch } from '@shared/protocol';
 import { RoomConnection } from '../lib/room';
 import { type DocProvider, LocalProvider, RoomProvider } from '../lib/yprovider';
 import { createNotesApi, type UnlockedNote } from '../lib/notes';
@@ -15,6 +15,7 @@ import { throttle } from '../lib/util';
 import { usePresence, useUserPresence } from '../store/presence';
 import { dispatchTimelineEvent, useTemplates } from '../store/templates';
 import { useConnection } from '../store/connection';
+import { useLive } from '../store/live';
 import { toast } from '../store/toasts';
 import { useSession } from '../store/session';
 import { WorkspaceContext, type WorkspaceValue, parseView, sameView, viewPath } from './context';
@@ -37,8 +38,10 @@ const NotesModule = lazy(() => import('../modules/notes/NotesModule').then((m) =
 /** 잦은 편집 활동은 대상별로 이 간격에 한 번만 보고 (서버에서도 5분 단위로 합침) */
 const EDIT_REPORT_INTERVAL = 20_000;
 const IDLE_AFTER_MS = 90_000;
-/** 커서 위치 전송 간격 — 부드러움과 무료 사용량 사이의 균형 */
-const CURSOR_MS = 70;
+/** 커서 위치 전송 간격 — 받는 쪽에서 이 간격을 부드럽게 이어 그린다 (CSS 보간) */
+const CURSOR_MS = 100;
+/** 같은 행동 라벨 재전송 간격 (말풍선이 3.5초 유지되므로 그 안에서 한 번이면 계속 보인다) */
+const ACTION_REPEAT_MS = 3000;
 
 const ROLE_LABEL = { owner: '소유자', editor: '편집자', viewer: '뷰어' } as const;
 
@@ -188,7 +191,18 @@ function WorkspaceInner({ entry }: { entry: TemplateEntry }) {
         room.send({ t: 'presence', patch: { view: viewRef.current, idle: document.hidden } });
       }),
       room.on('presence', (m) => usePresence.getState().upsert(m.state)),
-      room.on('presence:leave', (m) => usePresence.getState().remove(m.sid)),
+      room.on('presence:leave', (m) => {
+        usePresence.getState().remove(m.sid);
+        useLive.getState().removeBySid(m.sid);
+      }),
+      room.on('live', (m) => {
+        if (m.k !== 'pen') return;
+        const pen = m.d as LivePen;
+        useLive.getState().receivePen(m.sid, pen);
+        // 그리는 동안에는 커서 메시지를 따로 보내지 않으므로 선 끝을 커서 위치로 쓴다
+        const n = pen.pts?.length ?? 0;
+        if (n >= 2) usePresence.getState().setCursor(m.sid, { x: pen.pts[n - 2], y: pen.pts[n - 1] });
+      }),
       room.on('cursor', (m) => usePresence.getState().setCursor(m.sid, m.c)),
       room.on('action', (m) => usePresence.getState().setAction(m.sid, m.label)),
       room.on('timeline', (m) => dispatchTimelineEvent(m)),
@@ -228,6 +242,7 @@ function WorkspaceInner({ entry }: { entry: TemplateEntry }) {
     return () => {
       offs.forEach((off) => off());
       presence.clear();
+      useLive.getState().clear();
       connection.setStatus('online');
     };
   }, [conn, tid, navigate]);
@@ -317,23 +332,48 @@ function WorkspaceInner({ entry }: { entry: TemplateEntry }) {
 
   /* ── 컨텍스트 함수들 ── */
   const room = conn?.room ?? null;
+  // 커서·행동 라벨·화면 위치처럼 "보는 사람"이 있어야 의미 있는 정보는 혼자일 때 보내지 않는다
   const action = useMemo(() => {
     let lastLabel = '';
     let lastAt = 0;
     return (label: string) => {
       const now = Date.now();
-      if (!room || (label === lastLabel && now - lastAt < 1500)) return;
+      if (!room || !room.audience || (label === lastLabel && now - lastAt < ACTION_REPEAT_MS)) return;
       lastLabel = label;
       lastAt = now;
       room.send({ t: 'action', label });
     };
   }, [room]);
 
-  const publishCursor = useMemo(() => throttle((c: CursorPoint | null) => room?.send({ t: 'cursor', c }), CURSOR_MS), [room]);
+  const publishCursor = useMemo(
+    () =>
+      throttle((c: CursorPoint | null) => {
+        if (room?.audience) room.send({ t: 'cursor', c });
+      }, CURSOR_MS),
+    [room],
+  );
+
+  const live = useCallback((k: string, d: unknown) => {
+    if (room?.audience) room.send({ t: 'live', k, d });
+  }, [room]);
+
+  const hasAudience = useCallback(() => !!room?.audience, [room]);
 
   const updatePresence = useMemo(() => {
+    // 혼자일 때 바뀐 화면 위치·선택은 모아 두었다가 누가 들어오면 한 번에 보낸다
+    let held: PresencePatch | null = null;
     const send = throttle((patch: PresencePatch) => room?.send({ t: 'presence', patch }), 100);
-    return (patch: PresencePatch) => send(patch);
+    room?.onAudience((n) => {
+      if (n > 0 && held) {
+        room.send({ t: 'presence', patch: held });
+        held = null;
+      }
+    });
+    return (patch: PresencePatch) => {
+      if (!room) return;
+      if (!room.audience) held = { ...held, ...patch };
+      else send(patch);
+    };
   }, [room]);
 
   const setTicket = useCallback((noteId: string, t: UnlockedNote | null) => {
@@ -401,6 +441,8 @@ function WorkspaceInner({ entry }: { entry: TemplateEntry }) {
     action,
     publishCursor,
     updatePresence,
+    live,
+    hasAudience,
     follow,
     setFollow,
     tickets,

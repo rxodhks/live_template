@@ -327,27 +327,25 @@ export class TemplateRoom extends DurableObject<Env> {
         } catch {
           return ack(msg.id, { ok: false, status: 400, error: '잘못된 문서 변경입니다.' });
         }
+        const aw = typeof msg.aw === 'string' && msg.aw.length < 20_000 ? msg.aw : undefined;
+        if (aw) this.trackAwareness(ws, a, aw);
         this.pending.push(update);
         await this.scheduleFlush();
-        this.broadcast({ t: 'update', u: msg.u }, { exceptSid: a.sid, filter: (o) => o.synced });
+        this.broadcast(aw ? { t: 'update', u: msg.u, aw } : { t: 'update', u: msg.u }, { exceptSid: a.sid, filter: (o) => o.synced });
         ack(msg.id, { ok: true });
         this.touchDirectory();
         return;
       }
       case 'aw': {
-        let changed = false;
-        for (const { id, removed } of readAwareness(fromB64(msg.u))) {
-          const has = a.aw.includes(id);
-          if (removed && has) {
-            a.aw = a.aw.filter((x) => x !== id);
-            changed = true;
-          } else if (!removed && !has && a.aw.length < 8) {
-            a.aw.push(id);
-            changed = true;
-          }
-        }
-        if (changed) ws.serializeAttachment(a);
+        if (typeof msg.u !== 'string' || msg.u.length > 20_000) return;
+        this.trackAwareness(ws, a, msg.u);
         this.broadcast({ t: 'aw', u: msg.u }, { exceptSid: a.sid, filter: (o) => o.synced });
+        return;
+      }
+      case 'live': {
+        // 저장하지 않는 순간 정보는 크기만 제한해서 그대로 중계
+        if (typeof msg.k !== 'string' || msg.k.length > 16 || raw.length > 16_000) return;
+        this.broadcast({ t: 'live', sid: a.sid, k: msg.k, d: msg.d }, { exceptSid: a.sid });
         return;
       }
       case 'presence': {
@@ -456,6 +454,28 @@ export class TemplateRoom extends DurableObject<Env> {
         return;
       }
     }
+  }
+
+  /** 이 연결이 가진 awareness clientID 기록 (연결이 끊기면 다른 사람 화면에서 커서를 지우기 위해) */
+  private trackAwareness(ws: WebSocket, a: Attachment, u: string): void {
+    let entries: { id: number; removed: boolean }[];
+    try {
+      entries = readAwareness(fromB64(u));
+    } catch {
+      return;
+    }
+    let changed = false;
+    for (const { id, removed } of entries) {
+      const has = a.aw.includes(id);
+      if (removed && has) {
+        a.aw = a.aw.filter((x) => x !== id);
+        changed = true;
+      } else if (!removed && !has && a.aw.length < 8) {
+        a.aw.push(id);
+        changed = true;
+      }
+    }
+    if (changed) ws.serializeAttachment(a);
   }
 
   /* ───────────── Yjs 문서 저장 ───────────── */
