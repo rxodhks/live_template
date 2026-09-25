@@ -1,26 +1,68 @@
 import { useNavigate } from 'react-router-dom';
-import { Copy, DoorOpen, Share2, UserMinus, Users } from 'lucide-react';
-import type { Role, TemplateSummary } from '@shared/types';
+import { DoorOpen, HardDrive, Link2, UserMinus, UserPlus, Users } from 'lucide-react';
+import type { Role } from '@shared/types';
 import { useWorkspace } from './context';
-import { useTemplates } from '../store/templates';
 import { useSession } from '../store/session';
 import { useUI } from '../store/ui';
 import { toast } from '../store/toasts';
 import { usePresence } from '../store/presence';
 import { api, errorMessage } from '../lib/api';
-import { copyText } from '../lib/util';
+import { leaveTemplate } from '../lib/templateOps';
+import { inviteSummary, useInvites } from '../lib/invites';
 import { formatDate } from '../lib/time';
 import { CursorPage } from '../components/Cursors';
-import { Avatar, Button, IconButton, confirmDialog } from '../components/ui';
-import { inviteUrl } from '../components/Dialogs';
+import { Requests } from '../components/InviteDialog';
+import { Avatar, Button, EmptyState, IconButton, confirmDialog } from '../components/ui';
 
 const ROLE_INFO: Record<Role, { label: string; desc: string }> = {
   owner: { label: '소유자', desc: '모든 권한 · 멤버 관리 · 템플릿 삭제' },
-  editor: { label: '편집자', desc: '디자인/코드/문서/비밀 노트 편집' },
-  viewer: { label: '뷰어', desc: '읽기 전용 · 커서/채팅은 사용 가능' },
+  editor: { label: '편집자', desc: '디자인/코드/문서/비밀 노트 편집 · 초대 링크 만들기' },
+  viewer: { label: '뷰어', desc: '읽기 전용 · 커서 공유와 채팅은 사용 가능' },
 };
 
 export function Members() {
+  const ws = useWorkspace();
+  return ws.mode === 'personal' ? <PersonalMembers /> : <SharedMembers />;
+}
+
+function PersonalMembers() {
+  const setShareOpen = useUI((s) => s.setShareOpen);
+  const me = useSession((s) => s.user)!;
+  return (
+    <CursorPage>
+      <header className="page-header">
+        <h1>
+          <Users size={22} /> 멤버
+        </h1>
+      </header>
+      <ul className="member-list">
+        <li className="member-row">
+          <Avatar user={me} size={38} />
+          <div className="member-info">
+            <b>
+              {me.name} <span className="muted">(나)</span>
+            </b>
+            <span className="muted small">이 브라우저의 개인 공간</span>
+          </div>
+          <span className="role-chip role-owner">소유자</span>
+        </li>
+      </ul>
+      <EmptyState
+        icon={<HardDrive size={30} />}
+        title="혼자 작업 중인 개인 공간입니다"
+        action={
+          <Button variant="primary" icon={<UserPlus size={15} />} onClick={() => setShareOpen(true)}>
+            팀원 초대하기
+          </Button>
+        }
+      >
+        초대 링크를 만들면 이 템플릿이 협업 공간으로 전환되고, 참여한 사람들이 여기에 표시됩니다. 권한(편집자/뷰어)은 링크마다 정할 수 있습니다.
+      </EmptyState>
+    </CursorPage>
+  );
+}
+
+function SharedMembers() {
   const ws = useWorkspace();
   const t = ws.template;
   const me = useSession((s) => s.user)!;
@@ -29,11 +71,11 @@ export function Members() {
   const setShareOpen = useUI((s) => s.setShareOpen);
   const navigate = useNavigate();
   const isOwner = t.myRole === 'owner';
+  const { invites } = useInvites(t.id, ws.canEdit);
 
   const setRole = async (userId: string, role: Role) => {
     try {
-      const res = await api<{ template: TemplateSummary }>('PATCH', `/templates/${t.id}/members/${userId}`, { role });
-      useTemplates.getState().upsert(res.template);
+      await api('PATCH', `/templates/${t.id}/members/${userId}`, { role });
       toast.success('권한을 변경했습니다', ROLE_INFO[role].label);
     } catch (err) {
       toast.error('권한을 변경하지 못했습니다', errorMessage(err));
@@ -44,18 +86,20 @@ export function Members() {
     const self = userId === me.id;
     const ok = await confirmDialog({
       title: self ? '템플릿에서 나갈까요?' : `${name} 님을 내보낼까요?`,
-      message: self ? '다시 참여하려면 초대 링크가 필요합니다.' : '이 사람은 더 이상 템플릿에 접근할 수 없습니다.',
+      message: self ? '다시 참여하려면 새 초대 링크가 필요합니다.' : '이 사람은 즉시 연결이 끊기고 더 이상 템플릿에 접근할 수 없습니다.',
       confirmText: self ? '나가기' : '내보내기',
       danger: true,
     });
     if (!ok) return;
     try {
-      await api('DELETE', `/templates/${t.id}/members/${userId}`);
       if (self) {
-        useTemplates.getState().remove(t.id);
+        await leaveTemplate(t);
         navigate('/');
         toast.info('템플릿에서 나왔습니다', t.name);
-      } else toast.show({ kind: 'warning', title: '멤버를 내보냈습니다', message: name });
+      } else {
+        await api('DELETE', `/templates/${t.id}/members/${userId}`);
+        toast.show({ kind: 'warning', title: '멤버를 내보냈습니다', message: name });
+      }
     } catch (err) {
       toast.error('실패했습니다', errorMessage(err));
     }
@@ -63,31 +107,21 @@ export function Members() {
 
   return (
     <CursorPage>
-      <header className="page-header">
-        <h1>
-          <Users size={22} /> 멤버 <span className="muted">{t.members.length}</span>
-        </h1>
-        <p className="muted">권한에 따라 편집 가능 여부가 달라집니다. 뷰어는 읽기 전용이지만 커서 공유와 채팅은 사용할 수 있습니다.</p>
+      <header className="page-header page-header-row">
+        <div>
+          <h1>
+            <Users size={22} /> 멤버 <span className="muted">{t.members.length}</span>
+          </h1>
+          <p className="muted">권한에 따라 편집 가능 여부가 달라집니다. 뷰어는 읽기 전용이지만 커서 공유와 채팅은 사용할 수 있습니다.</p>
+        </div>
+        {ws.canEdit && (
+          <Button variant="primary" icon={<UserPlus size={15} />} onClick={() => setShareOpen(true)}>
+            초대
+          </Button>
+        )}
       </header>
 
-      {t.inviteCode && (
-        <div className="invite-box">
-          <div>
-            <b>초대 링크</b>
-            <span className="muted small">링크를 받은 사람은 편집자로 참여합니다</span>
-          </div>
-          <code className="invite-code">{inviteUrl(t.inviteCode)}</code>
-          <Button
-            icon={<Copy size={14} />}
-            onClick={async () => (await copyText(inviteUrl(t.inviteCode!))) && toast.success('초대 링크를 복사했습니다')}
-          >
-            복사
-          </Button>
-          <Button variant="ghost" icon={<Share2 size={14} />} onClick={() => setShareOpen(true)}>
-            공유
-          </Button>
-        </div>
-      )}
+      {ws.canEdit && <Requests requests={ws.requests} templateId={t.id} />}
 
       <ul className="member-list">
         {t.members.map((m) => {
@@ -115,11 +149,7 @@ export function Members() {
                 </span>
               )}
               {m.role !== 'owner' && (isOwner || m.user.id === me.id) ? (
-                <IconButton
-                  label={m.user.id === me.id ? '템플릿 나가기' : '내보내기'}
-                  size="sm"
-                  onClick={() => remove(m.user.id, m.user.name)}
-                >
+                <IconButton label={m.user.id === me.id ? '템플릿 나가기' : '내보내기'} size="sm" onClick={() => remove(m.user.id, m.user.name)}>
                   {m.user.id === me.id ? <DoorOpen size={16} /> : <UserMinus size={16} />}
                 </IconButton>
               ) : (
@@ -129,6 +159,25 @@ export function Members() {
           );
         })}
       </ul>
+
+      {ws.canEdit && invites && invites.length > 0 && (
+        <section className="members-invites">
+          <h4>
+            <Link2 size={15} /> 사용 중인 초대 링크 {invites.length}개
+          </h4>
+          <ul>
+            {invites.slice(0, 5).map((i) => (
+              <li key={i.id} className="muted small">
+                <span className={`role-chip role-${i.role}`}>{i.role === 'viewer' ? '뷰어' : '편집자'}</span> {i.label ? `${i.label} · ` : ''}
+                {inviteSummary(i)}
+              </li>
+            ))}
+          </ul>
+          <Button size="sm" variant="ghost" onClick={() => setShareOpen(true)}>
+            초대 링크 관리
+          </Button>
+        </section>
+      )}
 
       <div className="role-legend">
         {(Object.keys(ROLE_INFO) as Role[]).map((r) => (

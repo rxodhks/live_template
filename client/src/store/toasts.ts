@@ -10,8 +10,8 @@ export interface Toast extends ToastPayload {
 }
 
 export const TOAST_FADE_MS = 320;
-/** 동시에 보이는 토스트 수 (작은 화면에서는 본문을 가리지 않도록 2개) */
-const maxVisible = () => (typeof window !== 'undefined' && window.matchMedia('(max-width: 768px)').matches ? 2 : 5);
+/** 동시에 보이는 토스트 수 */
+const maxVisible = () => 5;
 
 interface ToastState {
   toasts: Toast[];

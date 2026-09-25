@@ -4,22 +4,32 @@ import type {
   ActivityInput,
   ChatMessage,
   CursorPoint,
+  JoinRequest,
   PresenceState,
   PresenceView,
   Role,
   SecretNoteMeta,
-  TemplateSummary,
-  UnlockResult,
+  TemplateEntry,
+  TemplateMode,
   ViewModule,
 } from '@shared/types';
-import type { SocketYProvider } from '../lib/yprovider';
+import type { DocProvider } from '../lib/yprovider';
+import type { RoomConnection } from '../lib/room';
+import type { NotesApi, UnlockedNote } from '../lib/notes';
 
 export interface WorkspaceValue {
-  template: TemplateSummary;
+  template: TemplateEntry;
+  /** personal: 이 브라우저에만 있는 개인 공간 / shared: 초대로 전환된 협업 공간 */
+  mode: TemplateMode;
   role: Role;
   canEdit: boolean;
   doc: Y.Doc;
-  provider: SocketYProvider;
+  provider: DocProvider;
+  /** 협업 공간의 실시간 연결 (개인 공간이면 null) */
+  room: RoomConnection | null;
+  notesApi: NotesApi;
+  /** 승인 대기 중인 참여 요청 (편집자 이상에게만) */
+  requests: JoinRequest[];
   synced: boolean;
   view: PresenceView;
   notes: SecretNoteMeta[];
@@ -36,8 +46,9 @@ export interface WorkspaceValue {
   /** 따라가는 사용자 ID */
   follow: string | null;
   setFollow(userId: string | null): void;
-  tickets: Record<string, UnlockResult>;
-  setTicket(noteId: string, ticket: UnlockResult | null): void;
+  /** 잠금 해제한 비밀 노트의 키 (메모리에만 보관) */
+  tickets: Record<string, UnlockedNote>;
+  setTicket(noteId: string, ticket: UnlockedNote | null): void;
   go(module: ViewModule, itemId?: string | null): void;
   panelOpen: boolean;
   setPanelOpen(open: boolean): void;

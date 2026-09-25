@@ -1,40 +1,33 @@
 import { Link, useNavigate } from 'react-router-dom';
 import {
+  Check,
   ChevronDown,
+  Cloud,
+  CloudOff,
   Eye,
+  HardDrive,
+  Keyboard,
   LayoutGrid,
-  LogOut,
   MapPin,
   MessageSquare,
-  Moon,
   Monitor,
+  Moon,
   PanelLeft,
   Search,
-  Share2,
   Sun,
+  UserPlus,
   UserRound,
-  Wifi,
-  WifiOff,
-  Keyboard,
-  Menu as MenuIcon,
-  X,
-  Download,
-  Check,
-  Server,
 } from 'lucide-react';
 import { FEATURE_INFO } from '@shared/presets';
 import { useOptionalWorkspace, viewPath } from '../workspace/context';
 import { useSession, type ThemePref } from '../store/session';
 import { useTemplates } from '../store/templates';
 import { usePresence, uniqueUsers } from '../store/presence';
-import { useConnection } from '../store/connection';
 import { useUI } from '../store/ui';
-import { Avatar, IconButton, Kbd, Menu, confirmDialog } from './ui';
+import { useConnection } from '../store/connection';
+import { Avatar, IconButton, Kbd, Menu } from './ui';
 import { SaveIndicator } from './SaveIndicator';
 import { modKey } from '../lib/util';
-import { setToken } from '../lib/api';
-import { resetSocket } from '../lib/socket';
-import { BASE_URL, IS_STATIC_HOST, SERVER_URL, isExternalServer, saveServerUrl } from '../lib/server';
 import { MODULE_NAMES, viewLabel } from '../workspace/viewLabel';
 import { itemsMap } from '../workspace/actions';
 import { useYField } from '../hooks/useY';
@@ -49,7 +42,8 @@ export function TopBar() {
   const theme = useSession((s) => s.theme);
   const setTheme = useSession((s) => s.setTheme);
   const templates = useTemplates((s) => s.templates);
-  const status = useConnection((s) => s.status);
+  const hasAccount = useSession((s) => s.hasAccount);
+  const remoteError = useTemplates((s) => s.remoteError);
   const ui = useUI();
   const navigate = useNavigate();
 
@@ -59,15 +53,6 @@ export function TopBar() {
   return (
     <header className="topbar">
       <div className="topbar-left">
-        <button
-          className="icon-btn nav-toggle"
-          aria-label={ui.navOpen ? '메뉴 닫기' : '메뉴 열기'}
-          aria-expanded={ui.navOpen}
-          aria-controls="app-nav"
-          onClick={() => ui.setNavOpen(!ui.navOpen)}
-        >
-          {ui.navOpen ? <X size={20} /> : <MenuIcon size={20} />}
-        </button>
         <Link to="/" className="brand" aria-label="LiveTemplate 홈">
           <span className="brand-mark">
             <svg viewBox="0 0 32 32" width="22" height="22" aria-hidden>
@@ -93,7 +78,7 @@ export function TopBar() {
                   label: t.name,
                   icon: <span>{t.emoji}</span>,
                   checked: t.id === ws.template.id,
-                  hint: t.features.map((f) => FEATURE_INFO[f].emoji).join(''),
+                  hint: `${t.mode === 'personal' ? '개인' : '협업'} ${t.features.map((f) => FEATURE_INFO[f].emoji).join('')}`,
                   onSelect: () => navigate(`/t/${t.id}`),
                 })),
                 { divider: true, label: '' },
@@ -107,6 +92,7 @@ export function TopBar() {
                 </button>
               )}
             />
+            <SpaceBadge />
             <span className="crumb-sep">/</span>
             <CurrentViewLabel />
           </>
@@ -120,20 +106,23 @@ export function TopBar() {
       </button>
 
       <div className="topbar-right">
-        {ws && <SaveIndicator synced={ws.synced} />}
-        {!ws && (
-          <span className={`conn-dot is-${status}`} data-tip={status === 'online' ? '실시간 연결됨' : '연결 끊김 · 재연결 중'}>
-            {status === 'online' ? <Wifi size={15} /> : <WifiOff size={15} />}
+        {ws && <SaveIndicator synced={ws.synced} mode={ws.mode} />}
+        {!ws && hasAccount && remoteError && (
+          <span className="conn-dot is-offline" data-tip={`협업 서버에 연결할 수 없습니다 · 개인 공간은 계속 사용할 수 있습니다`}>
+            <CloudOff size={15} />
           </span>
         )}
-        {ws && <PresenceAvatars />}
-        {ws && ws.role !== 'viewer' && (
-          <button className="btn btn-primary btn-sm" onClick={() => ui.setShareOpen(true)}>
-            <Share2 size={14} />
-            <span className="hide-sm">초대</span>
-          </button>
+        {ws?.mode === 'shared' && <PresenceAvatars />}
+        {ws && ws.canEdit && (
+          <span className="badge-anchor">
+            <button className="btn btn-primary btn-sm" onClick={() => ui.setShareOpen(true)} data-tip={ws.mode === 'personal' ? '초대하면 협업 공간으로 전환됩니다' : '초대 링크 만들기 · 관리'}>
+              <UserPlus size={14} />
+              <span>초대</span>
+            </button>
+            {ws.requests.length > 0 && <span className="badge-count">{ws.requests.length}</span>}
+          </span>
         )}
-        {ws && (
+        {ws?.mode === 'shared' && (
           <span className="badge-anchor">
             <IconButton label="채팅" active={ws.chatOpen} onClick={() => ws.setChatOpen(!ws.chatOpen)}>
               <MessageSquare size={17} />
@@ -153,7 +142,7 @@ export function TopBar() {
                 <Avatar user={user} size={32} tooltip={false} />
                 <div>
                   <b>{user.name}</b>
-                  <span className="muted">이 브라우저에 저장된 프로필</span>
+                  <span className="muted">{hasAccount ? '협업 계정 연결됨' : '개인 공간 · 가입 없이 사용 중'}</span>
                 </div>
               </div>
             }
@@ -163,56 +152,8 @@ export function TopBar() {
                 const Icon = THEME_ICON[t];
                 return { label: THEME_LABEL[t], icon: <Icon size={15} />, checked: theme === t, hint: theme === t ? <Check size={14} /> : undefined, onSelect: () => setTheme(t) };
               }),
-              ...(ui.installPrompt
-                ? [
-                    {
-                      label: '앱으로 설치 (홈 화면에 추가)',
-                      icon: <Download size={15} />,
-                      onSelect: async () => {
-                        const p = ui.installPrompt!;
-                        ui.setInstallPrompt(null);
-                        await p.prompt();
-                      },
-                    },
-                  ]
-                : []),
               { divider: true, label: '' },
               { label: '키보드 단축키', icon: <Keyboard size={15} />, onSelect: () => ui.setShortcutsOpen(true) },
-              ...(IS_STATIC_HOST || isExternalServer()
-                ? [
-                    {
-                      label: '협업 서버 변경',
-                      icon: <Server size={15} />,
-                      hint: SERVER_URL ? new URL(SERVER_URL).host.split('.')[0].slice(0, 14) : undefined,
-                      onSelect: async () => {
-                        const ok = await confirmDialog({
-                          title: '다른 협업 서버에 연결할까요?',
-                          message: `지금 연결된 서버: ${SERVER_URL}\n서버를 바꾸면 그 서버의 템플릿이 보입니다. 이 서버의 프로필은 이 브라우저에 그대로 남습니다.`,
-                          confirmText: '서버 변경',
-                        });
-                        if (ok) saveServerUrl(null);
-                      },
-                    },
-                  ]
-                : []),
-              { divider: true, label: '' },
-              {
-                label: '이 기기에서 로그아웃',
-                icon: <LogOut size={15} />,
-                danger: true,
-                onSelect: async () => {
-                  const ok = await confirmDialog({
-                    title: '로그아웃할까요?',
-                    message: '이 브라우저에 저장된 프로필 토큰이 삭제됩니다. 같은 계정으로 다시 들어오려면 초대 링크로 새로 참여해야 합니다.',
-                    confirmText: '로그아웃',
-                    danger: true,
-                  });
-                  if (!ok) return;
-                  setToken(null);
-                  resetSocket();
-                  location.href = BASE_URL;
-                },
-              },
             ]}
             trigger={({ toggle, ref }) => (
               <button ref={ref} className="profile-trigger" onClick={toggle} aria-label="내 프로필">
@@ -280,6 +221,30 @@ function PresenceAvatars() {
       ))}
       {users.length > shown.length && <span className="avatar avatar-more">+{users.length - shown.length}</span>}
     </div>
+  );
+}
+
+/** 개인 공간 / 협업 공간 표시 */
+function SpaceBadge() {
+  const ws = useOptionalWorkspace()!;
+  const ui = useUI();
+  const status = useConnection((s) => s.status);
+  if (ws.mode === 'personal') {
+    return (
+      <button
+        className="space-chip is-personal as-button"
+        data-tip="이 브라우저에만 저장된 개인 공간입니다. 초대하면 협업 공간으로 전환됩니다."
+        onClick={() => ws.canEdit && ui.setShareOpen(true)}
+      >
+        <HardDrive size={12} /> 개인 공간
+      </button>
+    );
+  }
+  const offline = status !== 'online';
+  return (
+    <span className={`space-chip is-shared${offline ? ' is-offline' : ''}`} data-tip={offline ? '연결이 끊겼습니다 · 편집은 이 기기에 보관되고 다시 연결되면 합쳐집니다' : '클라우드에 저장되는 협업 공간입니다'}>
+      {offline ? <CloudOff size={12} /> : <Cloud size={12} />} 협업 공간
+    </span>
   );
 }
 

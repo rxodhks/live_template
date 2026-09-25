@@ -1,15 +1,15 @@
 import { useEffect, useRef, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { Check, Loader2, Settings as SettingsIcon, Trash2 } from 'lucide-react';
-import type { Feature, TemplateSummary } from '@shared/types';
+import type { Feature } from '@shared/types';
 import { FEATURE_INFO, FEATURE_ORDER } from '@shared/presets';
 import { addBoard, addCodeFile, addDocument, getBoards, getDocs, getFiles } from '@shared/schema';
 import { BLANK_CONTENT } from '@shared/presets';
 import { useWorkspace } from './context';
-import { useTemplates } from '../store/templates';
 import { useSession } from '../store/session';
 import { toast } from '../store/toasts';
-import { api, errorMessage } from '../lib/api';
+import { errorMessage } from '../lib/api';
+import { deleteTemplate, updateTemplate } from '../lib/templateOps';
 import { cx, newId } from '../lib/util';
 import { CursorPage } from '../components/Cursors';
 import { Button, Field, confirmDialog } from '../components/ui';
@@ -38,8 +38,7 @@ export function Settings() {
   const save = async (patch: Partial<{ name: string; description: string; emoji: string; features: Feature[] }>) => {
     setState('saving');
     try {
-      const res = await api<{ template: TemplateSummary }>('PATCH', `/templates/${t.id}`, patch);
-      useTemplates.getState().upsert(res.template);
+      await updateTemplate(t, patch);
       setState('saved');
       return true;
     } catch (err) {
@@ -98,15 +97,17 @@ export function Settings() {
   const removeTemplate = async () => {
     const ok = await confirmDialog({
       title: '템플릿을 영구 삭제할까요?',
-      message: '모든 멤버에게서 디자인·코드·문서·비밀 노트·채팅·타임라인이 삭제되며 되돌릴 수 없습니다.',
+      message:
+        ws.mode === 'personal'
+          ? '이 브라우저에서 디자인·코드·문서·비밀 노트·타임라인이 삭제되며 되돌릴 수 없습니다.'
+          : '모든 멤버에게서 디자인·코드·문서·비밀 노트·채팅·타임라인이 삭제되며 되돌릴 수 없습니다.',
       confirmText: '영구 삭제',
       danger: true,
       requireText: t.name,
     });
     if (!ok) return;
     try {
-      await api('DELETE', `/templates/${t.id}`);
-      useTemplates.getState().remove(t.id);
+      await deleteTemplate(t);
       toast.show({ kind: 'danger', title: '템플릿을 삭제했습니다', message: t.name });
       navigate('/');
     } catch (err) {

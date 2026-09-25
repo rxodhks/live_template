@@ -1,169 +1,79 @@
 import { useEffect, useState } from 'react';
-import { BrowserRouter, Navigate, Route, Routes, useNavigate } from 'react-router-dom';
-import type { PublicUser, TemplateSummary, TimelineEvent, ToastPayload } from '@shared/types';
-import { api, getToken, setToken } from './lib/api';
-import { getSocket, resetSocket } from './lib/socket';
+import { BrowserRouter, Navigate, Route, Routes } from 'react-router-dom';
+import { Monitor, X } from 'lucide-react';
 import { isTypingTarget } from './lib/util';
-import { ROUTER_BASENAME, SERVER_URL, appPathname, checkServer, isExternalServer, needsServerSetup } from './lib/server';
-import { ServerSetup } from './pages/ServerSetup';
+import { loadProfile, verifyAccount } from './lib/profile';
 import { useSession } from './store/session';
-import { dispatchTimelineEvent, useTemplates } from './store/templates';
+import { useTemplates } from './store/templates';
 import { toast } from './store/toasts';
 import { useUI } from './store/ui';
 import { ToastViewport } from './components/Toasts';
 import { TooltipHost } from './components/Tooltip';
-import { ConfirmHost, PromptHost, Spinner } from './components/ui';
+import { ConfirmHost, PromptHost } from './components/ui';
 import { Onboarding } from './pages/Onboarding';
 import { Dashboard } from './pages/Dashboard';
 import { JoinPage } from './pages/JoinPage';
 import { GlobalTimeline } from './pages/GlobalTimeline';
 import { Workspace } from './workspace/Workspace';
 
+/** 협업 템플릿 목록을 다시 확인하는 간격 */
+const REFRESH_MS = 60_000;
+
 export function App() {
-  const ready = useSession((s) => s.ready);
   const user = useSession((s) => s.user);
-  const [server, setServer] = useState<'ok' | 'setup' | 'down'>(() => (needsServerSetup() ? 'setup' : 'ok'));
+  const [booted] = useState(() => {
+    // 프로필은 이 브라우저에 있다 → 서버 없이 바로 시작
+    useSession.getState().setUser(loadProfile());
+    useSession.getState().setReady(true);
+    return true;
+  });
+
+  // 프로필이 생기면(또는 협업 계정이 생겨 ID가 바뀌면) 템플릿 목록을 불러온다
+  useEffect(() => {
+    if (!user) return;
+    void verifyAccount();
+    void useTemplates.getState().load();
+  }, [user?.id]); // eslint-disable-line react-hooks/exhaustive-deps
 
   useEffect(() => {
-    const { setUser, setReady } = useSession.getState();
-    if (needsServerSetup()) {
-      setReady(true);
-      return;
-    }
-    const start = async () => {
-      // 다른 주소의 서버(GitHub Pages → Codespaces 등)는 먼저 살아 있는지 확인
-      if (isExternalServer() && !(await checkServer(SERVER_URL))) {
-        setServer('down');
-        setReady(true);
-        return;
-      }
-      if (!getToken()) {
-        setReady(true);
-        return;
-      }
-      await loadMe();
+    if (!user) return;
+    const refresh = () => document.visibilityState === 'visible' && void useTemplates.getState().refreshRemote();
+    const t = setInterval(refresh, REFRESH_MS);
+    window.addEventListener('focus', refresh);
+    return () => {
+      clearInterval(t);
+      window.removeEventListener('focus', refresh);
     };
-    const loadMe = () =>
-      api<{ user: PublicUser }>('GET', '/me')
-      .then((res) => setUser(res.user))
-      .catch((err) => {
-        if (err.status === 401) setToken(null);
-        else toast.error('서버에 연결할 수 없습니다', '잠시 후 새로고침해 주세요.');
-      })
-      .finally(() => setReady(true));
-    void start();
-  }, []);
+  }, [user?.id]); // eslint-disable-line react-hooks/exhaustive-deps
 
-  if (!ready) {
-    return (
-      <div className="center-fill full">
-        <Spinner size={28} />
-      </div>
-    );
-  }
-
-  if (server !== 'ok') {
-    return (
-      <>
-        <ServerSetup reason={server} />
-        <TooltipHost />
-      </>
-    );
-  }
+  if (!booted) return null;
 
   return (
-    <BrowserRouter basename={ROUTER_BASENAME}>
-      {user ? <AuthedApp /> : <Onboarding />}
+    <BrowserRouter>
+      <Routes>
+        {/* 초대 링크는 프로필이 없어도 바로 열린다 */}
+        <Route path="/join/:code" element={<JoinPage />} />
+        <Route path="*" element={user ? <AuthedApp /> : <Onboarding />} />
+      </Routes>
       <ToastViewport />
       <TooltipHost />
       <ConfirmHost />
       <PromptHost />
+      <NarrowScreenNotice />
     </BrowserRouter>
   );
 }
 
 function AuthedApp() {
-  useGlobalSocket();
   useGlobalShortcuts();
   return (
     <Routes>
       <Route path="/" element={<Dashboard />} />
       <Route path="/timeline" element={<GlobalTimeline />} />
-      <Route path="/join/:code" element={<JoinPage />} />
       <Route path="/t/:tid/*" element={<Workspace />} />
       <Route path="*" element={<Navigate to="/" replace />} />
     </Routes>
   );
-}
-
-function clearLocalCopy(templateId: string) {
-  try {
-    indexedDB.deleteDatabase(`lt:tpl:${templateId}`);
-  } catch {
-    /* 무시 */
-  }
-}
-
-/** 앱 전역 실시간 이벤트: 토스트, 템플릿 변경/삭제, 접속자 수, 타임라인 */
-function useGlobalSocket() {
-  const navigate = useNavigate();
-
-  useEffect(() => {
-    const s = getSocket();
-    const store = useTemplates.getState();
-    store.load().catch(() => toast.error('템플릿 목록을 불러오지 못했습니다'));
-
-    const inside = (id: string) => appPathname().startsWith(`/t/${id}`);
-
-    const onToast = (t: ToastPayload) => toast.show(t);
-    const onUpdated = (t: TemplateSummary) => useTemplates.getState().upsert(t);
-    const onDeleted = (p: { templateId: string; name: string; by: PublicUser }) => {
-      useTemplates.getState().remove(p.templateId);
-      clearLocalCopy(p.templateId);
-      if (p.by.id !== useSession.getState().user?.id) {
-        toast.show({ kind: 'danger', title: '템플릿이 삭제되었습니다', message: `${p.by.name} 님이 ‘${p.name}’ 템플릿을 삭제했습니다.`, user: p.by });
-      }
-      if (inside(p.templateId)) navigate('/');
-    };
-    const onRemoved = (p: { templateId: string; name: string; self: boolean }) => {
-      useTemplates.getState().remove(p.templateId);
-      clearLocalCopy(p.templateId);
-      if (!p.self) toast.warning('템플릿에서 제외되었습니다', `‘${p.name}’ 템플릿에 더 이상 접근할 수 없습니다.`);
-      if (inside(p.templateId)) navigate('/');
-    };
-    const onOnline = (p: { templateId: string; userIds: string[] }) => useTemplates.getState().setOnline(p.templateId, p.userIds);
-    const onTouched = (p: { templateId: string; updatedAt: number }) => useTemplates.getState().touch(p.templateId, p.updatedAt);
-    const onTimeline = (p: { event: TimelineEvent; merged: boolean }) => dispatchTimelineEvent(p);
-    const onConnectError = (err: Error) => {
-      if (err.message === 'unauthorized') {
-        setToken(null);
-        resetSocket();
-        useSession.getState().setUser(null);
-      }
-    };
-    const onReconnect = () => useTemplates.getState().load().catch(() => {});
-
-    s.on('toast', onToast);
-    s.on('template:updated', onUpdated);
-    s.on('template:deleted', onDeleted);
-    s.on('template:removed', onRemoved);
-    s.on('online', onOnline);
-    s.on('template:touched', onTouched);
-    s.on('timeline:event', onTimeline);
-    s.on('connect_error', onConnectError);
-    s.io.on('reconnect', onReconnect);
-    return () => {
-      s.off('toast', onToast);
-      s.off('template:updated', onUpdated);
-      s.off('template:deleted', onDeleted);
-      s.off('template:removed', onRemoved);
-      s.off('online', onOnline);
-      s.off('template:touched', onTouched);
-      s.off('timeline:event', onTimeline);
-      s.off('connect_error', onConnectError);
-      s.io.off('reconnect', onReconnect);
-    };
-  }, []); // eslint-disable-line react-hooks/exhaustive-deps
 }
 
 function useGlobalShortcuts() {
@@ -184,4 +94,44 @@ function useGlobalShortcuts() {
     window.addEventListener('keydown', onKey);
     return () => window.removeEventListener('keydown', onKey);
   }, []);
+}
+
+/** 데스크톱 전용 안내 — 모바일은 별도 앱으로 출시 예정 */
+function NarrowScreenNotice() {
+  const [narrow, setNarrow] = useState(() => window.innerWidth < 960);
+  const [dismissed, setDismissed] = useState(() => {
+    try {
+      return sessionStorage.getItem('lt.narrowOk') === '1';
+    } catch {
+      return false;
+    }
+  });
+  useEffect(() => {
+    const onResize = () => setNarrow(window.innerWidth < 960);
+    window.addEventListener('resize', onResize);
+    return () => window.removeEventListener('resize', onResize);
+  }, []);
+  if (!narrow || dismissed) return null;
+  return (
+    <div className="narrow-notice" role="status">
+      <Monitor size={16} />
+      <span>
+        LiveTemplate은 <b>데스크톱 화면</b>에 맞춰져 있습니다. 창을 넓히면 모든 기능을 편하게 쓸 수 있어요. 모바일은 전용 앱으로 준비 중입니다.
+      </span>
+      <button
+        className="icon-btn"
+        aria-label="안내 닫기"
+        onClick={() => {
+          setDismissed(true);
+          try {
+            sessionStorage.setItem('lt.narrowOk', '1');
+          } catch {
+            /* 무시 */
+          }
+        }}
+      >
+        <X size={15} />
+      </button>
+    </div>
+  );
 }

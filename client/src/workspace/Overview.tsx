@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { ArrowRight, Eye, History, Lock, Plus, Share2 } from 'lucide-react';
+import { ArrowRight, Cloud, Eye, History, HardDrive, Lock, MessageSquare, MousePointer2, Plus, Share2, Users } from 'lucide-react';
 import type { Feature, TimelineEvent } from '@shared/types';
 import { FEATURE_INFO } from '@shared/presets';
 import { getLanguage } from '@shared/schema';
@@ -13,7 +13,7 @@ import { usePresence, uniqueUsers } from '../store/presence';
 import { useSession } from '../store/session';
 import { onTimelineEvent } from '../store/templates';
 import { useUI } from '../store/ui';
-import { api } from '../lib/api';
+import { queryTimeline } from '../lib/timeline';
 import { relativeTime } from '../lib/time';
 import { CursorPage } from '../components/Cursors';
 import { Avatar, AvatarStack, Button } from '../components/ui';
@@ -47,7 +47,7 @@ export function Overview() {
         </div>
       </header>
 
-      <Collaborators />
+      {ws.mode === 'shared' ? <Collaborators /> : <PersonalBanner />}
 
       <div className="overview-grid">
         {t.features.map((f) => (
@@ -58,6 +58,42 @@ export function Overview() {
 
       <RecentTemplateActivity />
     </CursorPage>
+  );
+}
+
+/** 개인 공간 안내 — 초대하면 협업 공간으로 바뀐다는 것을 알려 준다 */
+function PersonalBanner() {
+  const setShareOpen = useUI((s) => s.setShareOpen);
+  return (
+    <section className="personal-banner">
+      <div className="personal-banner-icon">
+        <HardDrive size={22} />
+      </div>
+      <div className="personal-banner-text">
+        <b>개인 공간</b>
+        <span>
+          이 템플릿은 이 브라우저에만 저장되어 있어 인터넷 없이도 작업할 수 있습니다. 팀원을 초대하면 <b>협업 공간</b>으로 전환되어 클라우드에 안전하게
+          저장되고, 아래 기능이 켜집니다.
+        </span>
+        <ul className="personal-banner-list">
+          <li>
+            <MousePointer2 size={14} /> 실시간 커서 · 행동 표시
+          </li>
+          <li>
+            <MessageSquare size={14} /> 채팅
+          </li>
+          <li>
+            <Users size={14} /> 멤버 · 권한 관리
+          </li>
+          <li>
+            <Cloud size={14} /> 여러 기기에서 이어서 작업
+          </li>
+        </ul>
+      </div>
+      <Button variant="primary" icon={<Share2 size={15} />} onClick={() => setShareOpen(true)}>
+        팀원 초대하고 협업 시작
+      </Button>
+    </section>
   );
 }
 
@@ -211,7 +247,7 @@ function RecentTemplateActivity() {
   const [events, setEvents] = useState<TimelineEvent[]>([]);
   useTick(30_000);
   useEffect(() => {
-    api<{ events: TimelineEvent[] }>('GET', `/timeline?templateId=${ws.template.id}&limit=8`)
+    queryTimeline(ws.template.id, { limit: 8 })
       .then((r) => setEvents(r.events))
       .catch(() => {});
     return onTimelineEvent(({ event }) => {

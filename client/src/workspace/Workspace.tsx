@@ -2,21 +2,19 @@ import { Suspense, lazy, useCallback, useEffect, useMemo, useRef, useState } fro
 import { useLocation, useNavigate, useParams } from 'react-router-dom';
 import * as Y from 'yjs';
 import { IndexeddbPersistence } from 'y-indexeddb';
-import type {
-  ActivityInput,
-  ChatMessage,
-  CursorPoint,
-  PresenceState,
-  SecretNoteMeta,
-  TemplateSummary,
-  UnlockResult,
-  ViewModule,
-} from '@shared/types';
-import { getSocket, request } from '../lib/socket';
-import { SocketYProvider } from '../lib/yprovider';
+import { ShieldAlert, SearchX } from 'lucide-react';
+import type { ActivityInput, ChatMessage, CursorPoint, JoinRequest, SecretNoteMeta, TemplateEntry, TemplateSummary, ViewModule } from '@shared/types';
+import type { PresencePatch } from '@shared/protocol';
+import { RoomConnection } from '../lib/room';
+import { type DocProvider, LocalProvider, RoomProvider } from '../lib/yprovider';
+import { createNotesApi, type UnlockedNote } from '../lib/notes';
+import { recordLocal } from '../lib/local';
+import { docDbName } from '../lib/idb';
+import { api } from '../lib/api';
 import { throttle } from '../lib/util';
 import { usePresence, useUserPresence } from '../store/presence';
-import { useTemplates } from '../store/templates';
+import { dispatchTimelineEvent, useTemplates } from '../store/templates';
+import { useConnection } from '../store/connection';
 import { toast } from '../store/toasts';
 import { useSession } from '../store/session';
 import { WorkspaceContext, type WorkspaceValue, parseView, sameView, viewPath } from './context';
@@ -28,157 +26,254 @@ import { Overview } from './Overview';
 import { TemplateTimeline } from './TemplateTimeline';
 import { Members } from './Members';
 import { Settings } from './Settings';
+import { EmptyState, Spinner, Button } from '../components/ui';
 
 // 에디터 모듈은 필요할 때 불러온다 (초기 로딩 경량화)
 const CodeModule = lazy(() => import('../modules/code/CodeModule').then((m) => ({ default: m.CodeModule })));
 const DocsModule = lazy(() => import('../modules/docs/DocsModule').then((m) => ({ default: m.DocsModule })));
 const DesignModule = lazy(() => import('../modules/design/DesignModule').then((m) => ({ default: m.DesignModule })));
 const NotesModule = lazy(() => import('../modules/notes/NotesModule').then((m) => ({ default: m.NotesModule })));
-import { EmptyState, Spinner, Button } from '../components/ui';
-import { ShieldAlert } from 'lucide-react';
 
 /** 잦은 편집 활동은 대상별로 이 간격에 한 번만 보고 (서버에서도 5분 단위로 합침) */
 const EDIT_REPORT_INTERVAL = 20_000;
 const IDLE_AFTER_MS = 90_000;
+/** 커서 위치 전송 간격 — 부드러움과 무료 사용량 사이의 균형 */
+const CURSOR_MS = 70;
 
+const ROLE_LABEL = { owner: '소유자', editor: '편집자', viewer: '뷰어' } as const;
+
+/**
+ * 템플릿 화면.
+ * 개인 공간과 협업 공간은 같은 화면·같은 문서를 쓰고, 연결 방식만 다르다.
+ * 초대해서 협업 공간으로 바뀌면 그 자리에서 실시간 협업 모드로 다시 연결된다.
+ */
 export function Workspace() {
   const { tid = '' } = useParams();
+  const entry = useTemplates((s) => s.templates[tid]);
+  const loaded = useTemplates((s) => s.loaded);
+  const hasAccount = useSession((s) => s.hasAccount);
+  const [lookup, setLookup] = useState<'idle' | 'loading' | 'missing'>('idle');
+  const navigate = useNavigate();
+
+  // 목록에 없는 협업 템플릿 링크로 바로 들어온 경우 (다른 기기에서 참여한 템플릿 등)
+  useEffect(() => {
+    if (!loaded || entry || lookup !== 'idle') return;
+    if (!hasAccount) return setLookup('missing');
+    setLookup('loading');
+    api<{ template: TemplateSummary }>('GET', `/templates/${tid}`)
+      .then((r) => useTemplates.getState().upsertShared(r.template))
+      .catch(() => setLookup('missing'));
+  }, [loaded, entry, lookup, hasAccount, tid]);
+
+  useEffect(() => setLookup('idle'), [tid]);
+
+  if (!entry) {
+    return (
+      <AppShell>
+        {lookup === 'missing' ? (
+          <EmptyState
+            icon={<SearchX size={36} />}
+            title="템플릿을 찾을 수 없습니다"
+            action={
+              <Button variant="primary" onClick={() => navigate('/')}>
+                대시보드로 이동
+              </Button>
+            }
+          >
+            이 브라우저에 없는 템플릿이거나, 삭제되었거나, 접근 권한이 없습니다.
+          </EmptyState>
+        ) : (
+          <div className="center-fill">
+            <Spinner size={28} />
+          </div>
+        )}
+      </AppShell>
+    );
+  }
+  // 모드가 바뀌면(개인 → 협업) 연결을 새로 구성한다
+  return <WorkspaceInner key={`${entry.id}:${entry.mode}`} entry={entry} />;
+}
+
+function WorkspaceInner({ entry }: { entry: TemplateEntry }) {
+  const tid = entry.id;
+  const shared = entry.mode === 'shared';
   const location = useLocation();
   const navigate = useNavigate();
   const { view } = parseView(location.pathname);
   const me = useSession((s) => s.user)!;
 
-  const cached = useTemplates((s) => s.templates[tid]);
-  const [template, setTemplate] = useState<TemplateSummary | null>(cached ?? null);
   const [error, setError] = useState<string | null>(null);
   const [notes, setNotes] = useState<SecretNoteMeta[]>([]);
   const [chat, setChat] = useState<ChatMessage[]>([]);
+  const [requests, setRequests] = useState<JoinRequest[]>([]);
   const [chatOpen, setChatOpenState] = useState(false);
   const [unread, setUnread] = useState(0);
   const [follow, setFollow] = useState<string | null>(null);
-  const [tickets, setTickets] = useState<Record<string, UnlockResult>>({});
-  const [panelOpen, setPanelOpen] = useState(() => window.innerWidth > 900);
-  const [synced, setSynced] = useState(false);
+  const [tickets, setTickets] = useState<Record<string, UnlockedNote>>({});
+  const [panelOpen, setPanelOpen] = useState(true);
+  const [synced, setSynced] = useState(!shared);
 
   const viewRef = useRef(view);
   viewRef.current = view;
   const chatOpenRef = useRef(chatOpen);
   chatOpenRef.current = chatOpen;
+  const entryRef = useRef(entry);
+  entryRef.current = entry;
 
-  /* ── Y.Doc + 프로바이더 (IndexedDB에 로컬 사본 보관 → 오프라인에서도 편집 가능) ── */
-  const [yjs, setYjs] = useState<{ doc: Y.Doc; provider: SocketYProvider } | null>(null);
+  /* ── 연결: 개인 공간은 브라우저만, 협업 공간은 실시간 방 ── */
+  const [conn, setConn] = useState<{ doc: Y.Doc; provider: DocProvider; room: RoomConnection | null } | null>(null);
   useEffect(() => {
     const doc = new Y.Doc();
-    const idb = new IndexeddbPersistence(`lt:tpl:${tid}`, doc);
+    // 두 모드 모두 브라우저에 사본을 둔다 → 새로고침·오프라인에도 바로 열린다
+    const idb = new IndexeddbPersistence(docDbName(tid), doc);
     const whenReady = Promise.race([idb.whenSynced, new Promise((r) => setTimeout(r, 1500))]);
-    const provider = new SocketYProvider(getSocket(), `tpl:${tid}`, doc, {
-      whenReady,
-      onError: (message, status) => {
-        if (status === 403 || status === 404) setError(message);
-      },
-    });
+    const room = shared ? new RoomConnection(tid) : null;
+    const provider: DocProvider = room ? new RoomProvider(room, doc, { whenReady }) : new LocalProvider(doc);
     const update = () => setSynced(provider.synced);
     const unsub = provider.subscribe(update);
-    update();
-    setYjs({ doc, provider });
+    let cancelled = false;
+    void whenReady.then(() => !cancelled && setConn({ doc, provider, room }));
     return () => {
+      cancelled = true;
       unsub();
-      setYjs(null);
+      setConn(null);
       provider.destroy();
+      room?.close();
       void idb.destroy();
       doc.destroy();
     };
-  }, [tid]);
+  }, [tid, shared]);
 
-  /* ── 템플릿 입장 + 실시간 이벤트 ── */
+  /* ── 개인 공간: 수정 시각 갱신 ── */
   useEffect(() => {
-    const s = getSocket();
-    const presence = usePresence.getState();
-
-    const enter = async () => {
-      const res = await request<{
-        template: TemplateSummary;
-        presence: PresenceState[];
-        chat: ChatMessage[];
-        notes: SecretNoteMeta[];
-      }>('template:enter', { templateId: tid, view: viewRef.current });
-      if (!res.ok) {
-        if (res.status === 403 || res.status === 404) setError(res.error ?? '템플릿을 열 수 없습니다.');
-        return;
-      }
-      setError(null);
-      setTemplate(res.template);
-      useTemplates.getState().upsert(res.template);
-      usePresence.getState().reset(res.presence, s.id ?? null);
-      setNotes(res.notes);
-      setChat(res.chat);
+    if (!conn || shared) return;
+    let timer: ReturnType<typeof setTimeout> | null = null;
+    const onUpdate = (_u: Uint8Array, origin: unknown) => {
+      if (origin instanceof IndexeddbPersistence || timer) return;
+      timer = setTimeout(() => {
+        timer = null;
+        useTemplates.getState().touch(tid);
+      }, 3000);
     };
-
-    const onPresenceUpdate = (p: PresenceState) => usePresence.getState().upsert(p);
-    const onPresenceLeave = ({ socketId }: { socketId: string }) => {
-      usePresence.getState().remove(socketId);
-    };
-    const onCursor = ({ socketId, cursor }: { socketId: string; cursor: CursorPoint | null }) =>
-      usePresence.getState().setCursor(socketId, cursor);
-    const onAction = ({ socketId, label }: { socketId: string; label: string }) =>
-      usePresence.getState().setAction(socketId, label);
-    const onNotes = (p: { templateId: string; notes: SecretNoteMeta[] }) => {
-      if (p.templateId === tid) setNotes(p.notes);
-    };
-    const onChat = (p: { templateId: string; message: ChatMessage }) => {
-      if (p.templateId !== tid) return;
-      setChat((c) => [...c.slice(-299), p.message]);
-      if (p.message.user.id !== useSession.getState().user?.id && !chatOpenRef.current) {
-        setUnread((n) => n + 1);
-        toast.show({
-          kind: 'info',
-          title: `${p.message.user.name} · 채팅`,
-          message: p.message.text.length > 80 ? `${p.message.text.slice(0, 80)}…` : p.message.text,
-          user: p.message.user,
-        });
-      }
-    };
-    const onTemplateUpdated = (t: TemplateSummary) => {
-      if (t.id === tid) setTemplate(t);
-    };
-
-    s.on('connect', enter);
-    s.on('presence:update', onPresenceUpdate);
-    s.on('presence:leave', onPresenceLeave);
-    s.on('presence:cursor', onCursor);
-    s.on('presence:action', onAction);
-    s.on('notes:changed', onNotes);
-    s.on('chat:message', onChat);
-    s.on('template:updated', onTemplateUpdated);
-    if (s.connected) void enter();
-
+    conn.doc.on('update', onUpdate);
     return () => {
-      s.off('connect', enter);
-      s.off('presence:update', onPresenceUpdate);
-      s.off('presence:leave', onPresenceLeave);
-      s.off('presence:cursor', onCursor);
-      s.off('presence:action', onAction);
-      s.off('notes:changed', onNotes);
-      s.off('chat:message', onChat);
-      s.off('template:updated', onTemplateUpdated);
-      if (s.connected) s.emit('template:leave', {});
-      presence.clear();
+      conn.doc.off('update', onUpdate);
+      if (timer) clearTimeout(timer);
     };
-  }, [tid]);
+  }, [conn, shared, tid]);
+
+  /* ── 협업 공간: 실시간 이벤트 ── */
+  useEffect(() => {
+    const room = conn?.room;
+    if (!room) return;
+    const presence = usePresence.getState();
+    const connection = useConnection.getState();
+    const setRoleInStore = (role: TemplateEntry['myRole']) => {
+      const t = useTemplates.getState().templates[tid];
+      if (t) useTemplates.getState().upsert({ ...t, myRole: role });
+    };
+    const offs = [
+      room.onStatus((s) => {
+        connection.setStatus(s === 'online' ? 'online' : s === 'connecting' ? 'connecting' : 'offline');
+        if (s === 'denied') setError(room.deniedReason ?? '템플릿에 접근할 수 없습니다.');
+        if (s !== 'online') usePresence.getState().clear();
+      }),
+      room.on('welcome', (m) => {
+        usePresence.getState().reset(m.presence, m.sid);
+        setNotes(m.notes);
+        setChat(m.chat);
+        setRequests(m.requests);
+        useTemplates.getState().setRequests(tid, m.requests.length);
+        if (m.role !== entryRef.current.myRole) setRoleInStore(m.role);
+        room.send({ t: 'presence', patch: { view: viewRef.current, idle: document.hidden } });
+      }),
+      room.on('presence', (m) => usePresence.getState().upsert(m.state)),
+      room.on('presence:leave', (m) => usePresence.getState().remove(m.sid)),
+      room.on('cursor', (m) => usePresence.getState().setCursor(m.sid, m.c)),
+      room.on('action', (m) => usePresence.getState().setAction(m.sid, m.label)),
+      room.on('timeline', (m) => dispatchTimelineEvent(m)),
+      room.on('toast', (m) => toast.show(m.toast)),
+      room.on('notes', (m) => setNotes(m.notes)),
+      room.on('chat', (m) => {
+        setChat((c) => [...c.slice(-299), m.message]);
+        if (m.message.user.id !== useSession.getState().user?.id && !chatOpenRef.current) {
+          setUnread((n) => n + 1);
+          toast.show({
+            kind: 'info',
+            title: `${m.message.user.name} · 채팅`,
+            message: m.message.text.length > 80 ? `${m.message.text.slice(0, 80)}…` : m.message.text,
+            user: m.message.user,
+          });
+        }
+      }),
+      room.on('template', (m) => {
+        useTemplates.getState().upsert({ ...m.template, myRole: entryRef.current.myRole, mode: 'shared' });
+      }),
+      room.on('role', (m) => {
+        setRoleInStore(m.role);
+        toast.show({ kind: 'info', title: '내 권한이 변경되었습니다', message: `이제 ${ROLE_LABEL[m.role]}입니다.${m.role === 'viewer' ? ' 읽기 전용으로 전환됩니다.' : ''}` });
+      }),
+      room.on('requests', (m) => {
+        setRequests(m.requests);
+        useTemplates.getState().setRequests(tid, m.requests.length);
+      }),
+      room.on('kicked', (m) => {
+        const name = entryRef.current.name;
+        useTemplates.getState().remove(tid, { dropLocalCopy: true });
+        if (m.reason === 'deleted') toast.show({ kind: 'danger', title: '템플릿이 삭제되었습니다', message: `${m.by ?? '소유자'} 님이 ‘${name}’ 템플릿을 삭제했습니다.` });
+        else if (m.reason === 'removed') toast.warning('템플릿에서 제외되었습니다', `‘${name}’ 템플릿에 더 이상 접근할 수 없습니다.`);
+        navigate('/', { replace: true });
+      }),
+    ];
+    return () => {
+      offs.forEach((off) => off());
+      presence.clear();
+      connection.setStatus('online');
+    };
+  }, [conn, tid, navigate]);
+
+  /* ── 개인 공간: 비밀 노트 목록 ── */
+  const reloadLocalNotes = useRef<() => void>(() => {});
+  const report = useCallbackReport(entry, conn?.room ?? null, shared);
+
+  const notesApi = useMemo(
+    () =>
+      createNotesApi({
+        mode: entry.mode,
+        templateId: tid,
+        me: () => useSession.getState().user!,
+        room: conn?.room ?? null,
+        record: (input) => void recordLocal(entryRef.current, useSession.getState().user!, input),
+        changed: () => reloadLocalNotes.current(),
+      }),
+    [entry.mode, tid, conn?.room],
+  );
+
+  useEffect(() => {
+    if (shared) return;
+    let alive = true;
+    reloadLocalNotes.current = () => void notesApi.list().then((list) => alive && setNotes(list));
+    reloadLocalNotes.current();
+    return () => {
+      alive = false;
+    };
+  }, [notesApi, shared]);
 
   /* ── 내가 보고 있는 화면을 알림 ── */
   useEffect(() => {
-    getSocket().emit('presence:update', { view });
-  }, [view.module, view.itemId]); // eslint-disable-line react-hooks/exhaustive-deps
+    conn?.room?.send({ t: 'presence', patch: { view } });
+  }, [view.module, view.itemId, conn]); // eslint-disable-line react-hooks/exhaustive-deps
 
   /* ── 자리 비움 감지 ── */
   useEffect(() => {
+    const room = conn?.room;
+    if (!room) return;
     let idle = false;
     let timer: ReturnType<typeof setTimeout>;
     const setIdle = (v: boolean) => {
       if (idle === v) return;
       idle = v;
-      getSocket().emit('presence:update', { idle: v });
+      room.send({ t: 'presence', patch: { idle: v } });
     };
     const activity = () => {
       setIdle(document.hidden);
@@ -192,10 +287,10 @@ export function Workspace() {
       clearTimeout(timer);
       events.forEach((e) => window.removeEventListener(e, activity));
     };
-  }, [tid]);
+  }, [conn]);
 
   /* ── 따라가기: 상대가 보는 화면으로 이동 ── */
-  // 소켓이 아니라 사용자를 따라가므로 상대가 새로고침/재접속해도 계속 따라간다
+  // 연결이 아니라 사용자를 따라가므로 상대가 새로고침/재접속해도 계속 따라간다
   const followed = useUserPresence(follow);
   useEffect(() => {
     if (!follow) return;
@@ -221,41 +316,27 @@ export function Workspace() {
   }, [follow]);
 
   /* ── 컨텍스트 함수들 ── */
-  const lastReport = useRef(new Map<string, number>());
-  const report = useCallback((input: ActivityInput) => {
-    const frequent = input.type.endsWith('.edit') || input.type === 'design.shape.add' || input.type === 'design.shape.delete';
-    if (frequent) {
-      const key = `${input.type}:${input.targetId}`;
-      const now = Date.now();
-      if (now - (lastReport.current.get(key) ?? 0) < EDIT_REPORT_INTERVAL) return;
-      lastReport.current.set(key, now);
-    }
-    getSocket().emit('activity', input, () => {});
-  }, []);
-
+  const room = conn?.room ?? null;
   const action = useMemo(() => {
     let lastLabel = '';
     let lastAt = 0;
     return (label: string) => {
       const now = Date.now();
-      if (label === lastLabel && now - lastAt < 1500) return;
+      if (!room || (label === lastLabel && now - lastAt < 1500)) return;
       lastLabel = label;
       lastAt = now;
-      getSocket().emit('presence:action', { label });
+      room.send({ t: 'action', label });
     };
-  }, []);
+  }, [room]);
 
-  const publishCursor = useMemo(
-    () => throttle((cursor: CursorPoint | null) => getSocket().volatile.emit('presence:cursor', { cursor }), 40),
-    [],
-  );
+  const publishCursor = useMemo(() => throttle((c: CursorPoint | null) => room?.send({ t: 'cursor', c }), CURSOR_MS), [room]);
 
   const updatePresence = useMemo(() => {
-    const send = throttle((patch: Record<string, unknown>) => getSocket().emit('presence:update', patch), 80);
-    return (patch: Record<string, unknown>) => send(patch);
-  }, []);
+    const send = throttle((patch: PresencePatch) => room?.send({ t: 'presence', patch }), 100);
+    return (patch: PresencePatch) => send(patch);
+  }, [room]);
 
-  const setTicket = useCallback((noteId: string, t: UnlockResult | null) => {
+  const setTicket = useCallback((noteId: string, t: UnlockedNote | null) => {
     setTickets((prev) => {
       const next = { ...prev };
       if (t) next[noteId] = t;
@@ -264,24 +345,12 @@ export function Workspace() {
     });
   }, []);
 
-  const go = useCallback(
-    (module: ViewModule, itemId?: string | null) => navigate(viewPath(tid, module, itemId)),
-    [navigate, tid],
-  );
+  const go = useCallback((module: ViewModule, itemId?: string | null) => navigate(viewPath(tid, module, itemId)), [navigate, tid]);
 
   const setChatOpen = useCallback((open: boolean) => {
     setChatOpenState(open);
     if (open) setUnread(0);
   }, []);
-
-  // 템플릿 전환 시 상태 초기화
-  useEffect(() => {
-    setTickets({});
-    setFollow(null);
-    setUnread(0);
-    setError(null);
-    setTemplate(useTemplates.getState().templates[tid] ?? null);
-  }, [tid]);
 
   if (error) {
     return (
@@ -301,7 +370,7 @@ export function Workspace() {
     );
   }
 
-  if (!template || !yjs) {
+  if (!conn) {
     return (
       <AppShell>
         <div className="center-fill">
@@ -312,16 +381,20 @@ export function Workspace() {
   }
 
   const value: WorkspaceValue = {
-    template,
-    role: template.myRole,
-    canEdit: template.myRole !== 'viewer',
-    doc: yjs.doc,
-    provider: yjs.provider,
+    template: entry,
+    mode: entry.mode,
+    role: entry.myRole,
+    canEdit: entry.myRole !== 'viewer',
+    doc: conn.doc,
+    provider: conn.provider,
+    room: conn.room,
+    notesApi,
+    requests,
     synced,
     view,
     notes,
     chat,
-    chatOpen,
+    chatOpen: shared && chatOpen,
     setChatOpen,
     unread,
     report,
@@ -337,11 +410,11 @@ export function Workspace() {
     setPanelOpen,
   };
 
-  const featureOff = (['design', 'code', 'docs'] as const).includes(view.module as 'design') && !template.features.includes(view.module as 'design');
+  const featureOff = (['design', 'code', 'docs'] as const).includes(view.module as 'design') && !entry.features.includes(view.module as 'design');
 
   return (
     <WorkspaceContext.Provider value={value}>
-      <AppShell panel={<Explorer />} panelOpen={panelOpen} drawer={chatOpen ? <ChatPanel /> : null}>
+      <AppShell panel={<Explorer />} panelOpen={panelOpen} drawer={value.chatOpen ? <ChatPanel /> : null}>
         {follow && followed && <FollowBanner presence={followed} onStop={() => setFollow(null)} />}
         {featureOff ? (
           <EmptyState title="이 템플릿에서 사용하지 않는 기능입니다" action={<Button onClick={() => go('settings')}>설정에서 기능 켜기</Button>}>
@@ -359,8 +432,29 @@ export function Workspace() {
           </Suspense>
         )}
       </AppShell>
-      <MeWatermark name={me.name} />
+      <span className="sr-only">{me.name} 님으로 작업 중</span>
     </WorkspaceContext.Provider>
+  );
+}
+
+/** 활동 보고: 개인 공간은 브라우저 타임라인, 협업 공간은 서버 타임라인 */
+function useCallbackReport(entry: TemplateEntry, room: RoomConnection | null, shared: boolean) {
+  const lastReport = useRef(new Map<string, number>());
+  const entryRef = useRef(entry);
+  entryRef.current = entry;
+  return useCallback(
+    (input: ActivityInput) => {
+      const frequent = input.type.endsWith('.edit') || input.type === 'design.shape.add' || input.type === 'design.shape.delete';
+      if (frequent) {
+        const key = `${input.type}:${input.targetId}`;
+        const now = Date.now();
+        if (now - (lastReport.current.get(key) ?? 0) < EDIT_REPORT_INTERVAL) return;
+        lastReport.current.set(key, now);
+      }
+      if (shared) room?.send({ t: 'activity', input });
+      else void recordLocal(entryRef.current, useSession.getState().user!, input);
+    },
+    [room, shared],
   );
 }
 
@@ -385,7 +479,3 @@ function ModuleView({ module }: { module: ViewModule }) {
   }
 }
 
-/** 스크린 리더용: 현재 사용자 표시 */
-function MeWatermark({ name }: { name: string }) {
-  return <span className="sr-only">{name} 님으로 접속 중</span>;
-}

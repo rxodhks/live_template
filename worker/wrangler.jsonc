@@ -1,0 +1,23 @@
+{
+  "$schema": "../node_modules/wrangler/config-schema.json",
+  // 클라우드플레어 Workers 하나로 화면(정적 파일)과 협업 서버(API · 실시간 연결)를 함께 제공한다.
+  "name": "live-template",
+  "main": "src/index.ts",
+  "compatibility_date": "2026-09-01",
+  "assets": {
+    "directory": "../client/dist",
+    "binding": "ASSETS",
+    "not_found_handling": "single-page-application",
+    // /api 요청과 초대 링크(미리보기 카드)만 Worker 코드가 처리하고, 나머지는 정적 파일로 바로 응답
+    "run_worker_first": ["/api/*", "/join/*"]
+  },
+  "durable_objects": {
+    "bindings": [
+      { "name": "DIRECTORY", "class_name": "Directory" },
+      { "name": "ROOM", "class_name": "TemplateRoom" }
+    ]
+  },
+  // 무료 요금제에서는 SQLite 저장소를 쓰는 Durable Object만 사용할 수 있다
+  "migrations": [{ "tag": "v1", "new_sqlite_classes": ["Directory", "TemplateRoom"] }],
+  "observability": { "enabled": true }
+}

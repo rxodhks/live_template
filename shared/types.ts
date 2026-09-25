@@ -1,4 +1,4 @@
-// 서버와 클라이언트가 함께 사용하는 타입 정의
+// 서버(Cloudflare Worker)와 클라이언트가 함께 사용하는 타입 정의
 
 export type Feature = 'design' | 'code' | 'docs';
 export type Role = 'owner' | 'editor' | 'viewer';
@@ -36,8 +36,68 @@ export interface TemplateSummary {
   createdAt: number;
   updatedAt: number;
   myRole: Role;
-  /** 소유자/편집자에게만 전달 */
-  inviteCode?: string;
+}
+
+/**
+ * 템플릿이 어디에 있는지
+ *  - personal: 이 브라우저에만 저장된 개인 공간 (서버 불필요)
+ *  - shared  : 초대를 통해 협업 공간으로 전환된 템플릿 (클라우드플레어에 저장, 실시간 협업)
+ */
+export type TemplateMode = 'personal' | 'shared';
+
+export interface TemplateEntry extends TemplateSummary {
+  mode: TemplateMode;
+}
+
+/* ───────────── 초대 ───────────── */
+
+export type InviteRole = 'editor' | 'viewer';
+
+/** 초대 링크 하나. 링크마다 권한·만료·사용 횟수·승인 여부를 따로 정한다 */
+export interface InviteInfo {
+  id: string;
+  token: string;
+  role: InviteRole;
+  createdBy: PublicUser | null;
+  createdAt: number;
+  /** null이면 만료 없음 */
+  expiresAt: number | null;
+  /** null이면 횟수 제한 없음 */
+  maxUses: number | null;
+  uses: number;
+  requireApproval: boolean;
+  label: string;
+}
+
+export interface InviteOptions {
+  role: InviteRole;
+  /** 일 단위, null이면 만료 없음 */
+  expiresInDays: number | null;
+  maxUses: number | null;
+  requireApproval: boolean;
+  label?: string;
+}
+
+export interface InvitePreview {
+  valid: boolean;
+  /** valid=false일 때 이유 */
+  reason?: string;
+  template: { id: string; name: string; emoji: string; description: string; features: Feature[]; memberCount: number } | null;
+  inviter: PublicUser | null;
+  role: InviteRole;
+  requireApproval: boolean;
+  expiresAt: number | null;
+}
+
+export type JoinStatus = 'joined' | 'member' | 'pending' | 'approved' | 'denied';
+
+export interface JoinRequest {
+  id: string;
+  templateId: string;
+  user: PublicUser;
+  role: InviteRole;
+  status: 'pending' | 'approved' | 'denied';
+  createdAt: number;
 }
 
 export interface PresenceView {
@@ -81,6 +141,10 @@ export type ActivityType =
   | 'presence.leave'
   | 'template.create'
   | 'template.update'
+  | 'template.share'
+  | 'invite.create'
+  | 'invite.revoke'
+  | 'member.request'
   | 'member.join'
   | 'member.leave'
   | 'member.role'
@@ -154,6 +218,12 @@ export interface ChatMessage {
   at: number;
 }
 
+/** 비밀번호에서 키를 만드는 방식 (공개 정보) */
+export interface NoteKdf {
+  salt: string;
+  iterations: number;
+}
+
 export interface SecretNoteMeta {
   id: string;
   title: string;
@@ -161,11 +231,37 @@ export interface SecretNoteMeta {
   createdBy: PublicUser;
   createdAt: number;
   updatedAt: number;
+  kdf: NoteKdf;
+}
+
+/**
+ * 비밀 노트는 브라우저에서 암호화된다 (종단 간 암호화).
+ * 서버는 암호문과 비밀번호 확인값의 해시만 알고, 내용을 복호화할 수 없다.
+ */
+export interface EncryptedNote extends SecretNoteMeta {
+  /** SHA-256(확인값) — 비밀번호 확인용 */
+  verifierHash: string;
+  /** 암호화된 Y.Doc 전체 상태 (iv + 암호문, base64) */
+  snapshot: string;
 }
 
 export interface UnlockResult {
   ticket: string;
   expiresAt: number;
+}
+
+/** 개인 공간 → 협업 공간 전환 시 서버로 올리는 내용 */
+export interface ShareUpload {
+  id: string;
+  name: string;
+  description: string;
+  emoji: string;
+  features: Feature[];
+  createdAt: number;
+  /** Y.Doc 전체 상태 (base64) */
+  state: string;
+  timeline: TimelineEvent[];
+  notes: EncryptedNote[];
 }
 
 export interface ApiError {

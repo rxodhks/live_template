@@ -15,5 +15,5 @@ jobs:
           cache: npm
       - run: npm ci
       - run: npm run typecheck
+      # 화면을 빌드한 뒤, 클라우드플레어 로컬 런타임(workerd)에서 Worker + Durable Object 통합 테스트
       - run: npm test
-      - run: npm run build

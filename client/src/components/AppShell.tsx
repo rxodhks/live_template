@@ -1,55 +1,87 @@
-import { type ReactNode, useEffect } from 'react';
-import { useLocation } from 'react-router-dom';
+import { type ReactNode, useCallback, useEffect, useRef, useState } from 'react';
 import { TopBar } from './TopBar';
 import { LeftRail } from './LeftRail';
 import { CommandPalette } from './CommandPalette';
-import { ProfileDialog, ShareDialog, ShortcutsDialog } from './Dialogs';
-import { useUI } from '../store/ui';
-import { useIsMobile } from '../hooks/useMedia';
+import { ProfileDialog, ShortcutsDialog } from './Dialogs';
+import { InviteDialog } from './InviteDialog';
 import { cx } from '../lib/util';
 
 interface Props {
   panel?: ReactNode;
-  /** 데스크톱에서 탐색 패널 표시 여부 (모바일은 서랍 안에 항상 표시) */
+  /** 탐색 패널 표시 여부 */
   panelOpen?: boolean;
   drawer?: ReactNode;
   children: ReactNode;
 }
 
+const PANEL_KEY = 'lt.panelWidth';
+const PANEL_MIN = 200;
+const PANEL_MAX = 420;
+
+function readWidth(): number {
+  try {
+    const v = Number(localStorage.getItem(PANEL_KEY));
+    return v >= PANEL_MIN && v <= PANEL_MAX ? v : 260;
+  } catch {
+    return 260;
+  }
+}
+
 /**
- * 상단 바 + 왼쪽 레일 + (컨텍스트 패널) + 본문 + (오른쪽 서랍)
- * 휴대폰에서는 레일과 패널이 햄버거 버튼으로 여는 왼쪽 서랍이 된다.
+ * 데스크톱 레이아웃: 상단 바 + 왼쪽 레일 + (크기 조절 가능한 탐색 패널) + 본문 + (오른쪽 서랍)
  */
 export function AppShell({ panel, panelOpen = true, drawer, children }: Props) {
-  const navOpen = useUI((s) => s.navOpen);
-  const setNavOpen = useUI((s) => s.setNavOpen);
-  const isMobile = useIsMobile();
-  const location = useLocation();
+  const [width, setWidth] = useState(readWidth);
+  const dragging = useRef(false);
 
-  // 이동하면 서랍을 닫는다
-  useEffect(() => setNavOpen(false), [location.pathname, setNavOpen]);
-  useEffect(() => {
-    if (!isMobile) setNavOpen(false);
-  }, [isMobile, setNavOpen]);
-  useEffect(() => {
-    if (!navOpen) return;
-    const onKey = (e: KeyboardEvent) => e.key === 'Escape' && setNavOpen(false);
-    window.addEventListener('keydown', onKey);
-    return () => window.removeEventListener('keydown', onKey);
-  }, [navOpen, setNavOpen]);
+  const startResize = useCallback((e: React.PointerEvent) => {
+    e.preventDefault();
+    dragging.current = true;
+    const startX = e.clientX;
+    const startW = width;
+    const move = (ev: PointerEvent) => setWidth(Math.min(PANEL_MAX, Math.max(PANEL_MIN, startW + ev.clientX - startX)));
+    const up = () => {
+      dragging.current = false;
+      document.body.classList.remove('is-resizing');
+      window.removeEventListener('pointermove', move);
+      window.removeEventListener('pointerup', up);
+    };
+    document.body.classList.add('is-resizing');
+    window.addEventListener('pointermove', move);
+    window.addEventListener('pointerup', up);
+  }, [width]);
 
-  const showPanel = !!panel && (isMobile || panelOpen);
-  const drawerHidden = isMobile && !navOpen;
+  useEffect(() => {
+    if (dragging.current) return;
+    try {
+      localStorage.setItem(PANEL_KEY, String(width));
+    } catch {
+      /* 무시 */
+    }
+  }, [width]);
+
+  const showPanel = !!panel && panelOpen;
 
   return (
-    <div className={cx('shell', navOpen && 'is-nav-open', isMobile && 'is-mobile')}>
+    <div className="shell">
       <TopBar />
       <div className="shell-body">
-        <div className={cx('shell-nav', showPanel && 'has-panel')} id="app-nav" inert={drawerHidden || undefined}>
+        <div className={cx('shell-nav', showPanel && 'has-panel')}>
           <LeftRail />
-          {showPanel && <aside className="shell-panel">{panel}</aside>}
+          {showPanel && (
+            <aside className="shell-panel" style={{ width }}>
+              {panel}
+              <div
+                className="panel-resizer"
+                role="separator"
+                aria-orientation="vertical"
+                aria-label="탐색 패널 너비 조절"
+                onPointerDown={startResize}
+                onDoubleClick={() => setWidth(260)}
+              />
+            </aside>
+          )}
         </div>
-        {isMobile && navOpen && <div className="nav-backdrop" onClick={() => setNavOpen(false)} aria-hidden />}
         <main className="shell-main" id="main">
           {children}
         </main>
@@ -57,7 +89,7 @@ export function AppShell({ panel, panelOpen = true, drawer, children }: Props) {
       </div>
       {/* 워크스페이스 컨텍스트 안에서 렌더링되어야 하는 전역 대화상자 */}
       <CommandPalette />
-      <ShareDialog />
+      <InviteDialog />
       <ProfileDialog />
       <ShortcutsDialog />
     </div>

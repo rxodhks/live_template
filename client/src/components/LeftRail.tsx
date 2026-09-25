@@ -94,6 +94,7 @@ export function LeftRail() {
               >
                 <Icon size={19} />
                 <span className="rail-label">{MODULE_TIP[m]!.replace('템플릿 ', '')}</span>
+                {m === 'members' && ws.requests.length > 0 && <span className="badge-count rail-badge">{ws.requests.length}</span>}
                 {viewers.length > 0 && (
                   <span className="rail-viewers">
                     {viewers.slice(0, 3).map((v) => (

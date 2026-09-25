@@ -2,11 +2,10 @@ import { defineConfig } from 'vite';
 import react from '@vitejs/plugin-react';
 import path from 'node:path';
 
-const apiTarget = process.env.API_URL ?? 'http://localhost:3001';
+// 개발 중에는 클라우드플레어 로컬 런타임(wrangler dev, 8787)으로 API와 실시간 연결을 넘긴다
+const apiTarget = process.env.API_URL ?? 'http://localhost:8787';
 
 export default defineConfig({
-  // GitHub Pages 프로젝트 사이트는 /저장소이름/ 아래에서 열린다 (BASE_PATH로 지정)
-  base: process.env.BASE_PATH ?? '/',
   plugins: [react()],
   resolve: {
     alias: { '@shared': path.resolve(__dirname, '../shared') },
@@ -15,12 +14,9 @@ export default defineConfig({
   },
   server: {
     port: 5173,
-    // 같은 Wi‑Fi의 휴대폰에서도 접속할 수 있도록 모든 네트워크 인터페이스에서 대기
-    host: true,
     fs: { allow: [path.resolve(__dirname, '..')] },
     proxy: {
-      '/api': apiTarget,
-      '/socket.io': { target: apiTarget, ws: true },
+      '/api': { target: apiTarget, ws: true },
     },
   },
   build: {

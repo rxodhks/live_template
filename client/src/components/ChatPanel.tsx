@@ -2,7 +2,6 @@ import { useEffect, useRef, useState } from 'react';
 import { MessageSquare, Send, X } from 'lucide-react';
 import { useWorkspace } from '../workspace/context';
 import { useSession } from '../store/session';
-import { request } from '../lib/socket';
 import { toast } from '../store/toasts';
 import { Avatar, EmptyState, IconButton } from './ui';
 import { formatTime, dayKey, dayLabel } from '../lib/time';
@@ -10,7 +9,7 @@ import { cx } from '../lib/util';
 
 /** 템플릿 멤버끼리의 실시간 채팅 (자동 저장, 최근 500개 보관) */
 export function ChatPanel() {
-  const { chat, setChatOpen, template } = useWorkspace();
+  const { chat, setChatOpen, template, room } = useWorkspace();
   const me = useSession((s) => s.user)!;
   const [text, setText] = useState('');
   const [sending, setSending] = useState(false);
@@ -25,7 +24,7 @@ export function ChatPanel() {
     const value = text.trim();
     if (!value || sending) return;
     setSending(true);
-    const res = await request('chat:send', { text: value });
+    const res = room ? await room.request({ t: 'chat', text: value }) : { ok: false, error: '협업 공간에서만 채팅할 수 있습니다.' };
     setSending(false);
     if (!res.ok) {
       toast.error('메시지를 보내지 못했습니다', res.error);

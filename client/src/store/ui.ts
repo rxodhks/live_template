@@ -1,9 +1,5 @@
 import { create } from 'zustand';
-
-export interface InstallPromptEvent extends Event {
-  prompt(): Promise<void>;
-  userChoice: Promise<{ outcome: 'accepted' | 'dismissed' }>;
-}
+import type { InviteInfo } from '@shared/types';
 
 interface UIState {
   paletteOpen: boolean;
@@ -11,17 +7,16 @@ interface UIState {
   shortcutsOpen: boolean;
   shareOpen: boolean;
   newNoteOpen: boolean;
-  /** 모바일: 왼쪽 내비게이션 서랍 */
-  navOpen: boolean;
-  /** 브라우저가 제공한 "앱 설치" 이벤트 (Android Chrome 등) */
-  installPrompt: InstallPromptEvent | null;
+  /** 방금 만든 초대 링크 (개인 → 협업 전환 중 화면이 다시 그려져도 유지) */
+  createdInvite: InviteInfo | null;
+  inviteBusy: boolean;
   setNewNoteOpen(v: boolean): void;
-  setNavOpen(v: boolean): void;
-  setInstallPrompt(e: InstallPromptEvent | null): void;
   setPaletteOpen(v: boolean): void;
   setProfileOpen(v: boolean): void;
   setShortcutsOpen(v: boolean): void;
   setShareOpen(v: boolean): void;
+  setCreatedInvite(v: InviteInfo | null): void;
+  setInviteBusy(v: boolean): void;
 }
 
 export const useUI = create<UIState>((set) => ({
@@ -30,13 +25,13 @@ export const useUI = create<UIState>((set) => ({
   shortcutsOpen: false,
   shareOpen: false,
   newNoteOpen: false,
-  navOpen: false,
-  installPrompt: null,
+  createdInvite: null,
+  inviteBusy: false,
   setNewNoteOpen: (newNoteOpen) => set({ newNoteOpen }),
-  setNavOpen: (navOpen) => set({ navOpen }),
-  setInstallPrompt: (installPrompt) => set({ installPrompt }),
   setPaletteOpen: (paletteOpen) => set({ paletteOpen }),
   setProfileOpen: (profileOpen) => set({ profileOpen }),
   setShortcutsOpen: (shortcutsOpen) => set({ shortcutsOpen }),
-  setShareOpen: (shareOpen) => set({ shareOpen }),
+  setShareOpen: (shareOpen) => set(shareOpen ? { shareOpen } : { shareOpen, createdInvite: null }),
+  setCreatedInvite: (createdInvite) => set({ createdInvite }),
+  setInviteBusy: (inviteBusy) => set({ inviteBusy }),
 }));

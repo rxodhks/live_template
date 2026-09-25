@@ -1,9 +1,5 @@
-import { useState } from 'react';
-import { Code2, FileText, Lock, MousePointer2, Palette, Sparkles } from 'lucide-react';
-import type { PublicUser } from '@shared/types';
-import { api, errorMessage, setToken } from '../lib/api';
-import { appPathname } from '../lib/server';
-import { useSession } from '../store/session';
+import { Code2, FileText, HardDrive, Lock, MousePointer2, Palette, Sparkles, UserPlus } from 'lucide-react';
+import { createLocalProfile } from '../lib/profile';
 import { toast } from '../store/toasts';
 import { Button } from '../components/ui';
 import { ProfileForm, useProfileDraft } from '../components/ProfileForm';
@@ -13,29 +9,22 @@ const FEATURES = [
   { icon: <Palette size={18} />, title: '디자인 캔버스', text: '도형·스티키 노트·펜으로 함께 그립니다.' },
   { icon: <Code2 size={18} />, title: '코드 에디터', text: '24개 언어, 실행과 미리보기까지.' },
   { icon: <FileText size={18} />, title: '문서 작성', text: '리치 텍스트 문서를 동시에 편집합니다.' },
-  { icon: <Lock size={18} />, title: '비밀 노트', text: '비밀번호로 잠그고 AES-256으로 암호화합니다.' },
+  { icon: <Lock size={18} />, title: '비밀 노트', text: '브라우저에서 AES-256으로 암호화 — 서버도 읽을 수 없습니다.' },
 ];
 
-/** 처음 방문한 사용자의 프로필 만들기 (별도 가입 없이 이 브라우저에 토큰 저장) */
+const STEPS = [
+  { icon: <HardDrive size={16} />, title: '개인 공간에서 시작', text: '가입 없이 바로. 작업은 이 브라우저에 자동 저장됩니다.' },
+  { icon: <UserPlus size={16} />, title: '필요할 때 초대', text: '초대 링크를 만들면 그 템플릿만 협업 공간으로 전환됩니다.' },
+];
+
+/** 처음 방문한 사용자의 프로필 만들기 — 가입 없이 이 브라우저에만 저장 */
 export function Onboarding() {
   const [draft, setDraft] = useProfileDraft();
-  const [saving, setSaving] = useState(false);
-  const setUser = useSession((s) => s.setUser);
-  const joining = appPathname().startsWith('/join/');
 
-  const submit = async () => {
-    if (!draft.name.trim() || saving) return;
-    setSaving(true);
-    try {
-      const res = await api<{ user: PublicUser; token: string }>('POST', '/users', draft);
-      setToken(res.token);
-      setUser(res.user);
-      toast.success(`환영합니다, ${res.user.name} 님!`, joining ? '초대받은 템플릿을 확인해 보세요.' : '첫 템플릿을 만들어 보세요.');
-    } catch (err) {
-      toast.error('프로필을 만들지 못했습니다', errorMessage(err));
-    } finally {
-      setSaving(false);
-    }
+  const submit = () => {
+    if (!draft.name.trim()) return;
+    const user = createLocalProfile(draft);
+    toast.success(`환영합니다, ${user.name} 님!`, '첫 템플릿을 만들어 보세요.');
   };
 
   return (
@@ -53,7 +42,20 @@ export function Onboarding() {
           디자인 · 코딩 · 문서를
           <br />한 화면에서 <em>함께</em>.
         </h1>
-        <p>템플릿 하나에 필요한 기능만 골라 담고, 팀원들과 실시간으로 동시에 작업하세요. 모든 변경은 자동 저장됩니다.</p>
+        <p>템플릿 하나에 필요한 기능만 골라 담고, 혼자 시작해서 필요할 때 팀원을 초대해 실시간으로 함께 작업하세요. 모든 변경은 자동 저장됩니다.</p>
+        <ol className="onboarding-steps">
+          {STEPS.map((s, i) => (
+            <li key={s.title}>
+              <span className="onboarding-step-num">{i + 1}</span>
+              <div>
+                <b>
+                  {s.icon} {s.title}
+                </b>
+                <span>{s.text}</span>
+              </div>
+            </li>
+          ))}
+        </ol>
         <ul className="onboarding-features">
           {FEATURES.map((f) => (
             <li key={f.title}>
@@ -69,12 +71,12 @@ export function Onboarding() {
       <section className="onboarding-card">
         <div className="onboarding-card-inner">
           <h2>
-            <Sparkles size={20} /> {joining ? '초대를 받으셨네요!' : '시작하기'}
+            <Sparkles size={20} /> 시작하기
           </h2>
-          <p className="muted">협업할 때 표시될 이름과 커서 색상을 정해 주세요. 나중에 언제든 바꿀 수 있습니다.</p>
+          <p className="muted">가입은 필요 없습니다. 나중에 함께 작업할 때 표시될 이름과 커서 색상을 정해 주세요. 언제든 바꿀 수 있습니다.</p>
           <ProfileForm draft={draft} onChange={setDraft} onSubmit={submit} />
-          <Button variant="primary" size="lg" className="w-full" onClick={submit} loading={saving} disabled={!draft.name.trim()}>
-            {joining ? '프로필 만들고 참여하기' : '프로필 만들고 시작하기'}
+          <Button variant="primary" size="lg" className="w-full" onClick={submit} disabled={!draft.name.trim()}>
+            내 공간 만들기
           </Button>
         </div>
       </section>
