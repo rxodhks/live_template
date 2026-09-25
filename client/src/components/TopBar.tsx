@@ -57,7 +57,7 @@ export function TopBar() {
 
   return (
     <header className="topbar">
-      <div className="topbar-left">
+      <div className={ws ? 'topbar-left has-crumbs' : 'topbar-left'}>
         <Link to="/" className="brand" aria-label={`${BRAND} 홈`}>
           <span className="brand-mark">
             <BrandMark size={22} />
@@ -94,7 +94,6 @@ export function TopBar() {
               )}
             />
             <SpaceBadge />
-            <span className="crumb-sep">/</span>
             <CurrentViewLabel />
           </>
         )}
@@ -209,5 +208,12 @@ function CurrentViewLabel() {
   const name = useYField<string>(item, module === 'docs' ? 'title' : 'name');
   const noteTitle = module === 'notes' && itemId ? ws.notes.find((n) => n.id === itemId)?.title : undefined;
   const label = name ?? noteTitle;
-  return <span className="crumb-view">{label ? `${MODULE_NAMES[module]} › ${label}` : MODULE_NAMES[module]}</span>;
+  const text = label ? `${MODULE_NAMES[module]} › ${label}` : MODULE_NAMES[module];
+  // 긴 위치(항목 이름 포함)만 자리에 맞춰 줄어든다. 짧은 위치는 그대로 보이거나 통째로 숨는다
+  return (
+    <span className={`crumb-where${text.length > 8 ? ' is-long' : ''}`}>
+      <span className="crumb-sep">/</span>
+      <span className="crumb-view">{text}</span>
+    </span>
+  );
 }

@@ -37,10 +37,6 @@
   border-color: var(--accent);
   color: var(--accent-text);
 }
-.topbar .space-chip {
-  margin-left: 6px;
-}
-
 .request-pill {
   display: inline-flex;
   align-items: center;
@@ -487,27 +483,11 @@
   right: -6px;
 }
 
-/* 상단 바: 템플릿 이름이 먼저, 위치 표시는 남는 폭에서 줄어든다 */
-.topbar .crumb-template {
-  flex: 0 0 auto;
-  min-width: 0;
-  max-width: 220px;
-}
+/* 상단 바: 공간 표시는 줄이거나 가리지 않고, 템플릿 이름과 간격을 둔다 (배치 규칙은 layout.css) */
 .topbar .space-chip {
   flex: none;
-}
-.topbar .crumb-view {
-  flex: 0 1 auto;
-  min-width: 0;
-}
-.topbar .search-trigger {
-  flex: 0 1 300px;
-  min-width: 120px;
-}
-.topbar .search-trigger span {
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
+  margin-left: 4px;
+  margin-right: 2px;
 }
 
 /* ───────────── 상단 바 접속자: 겹친 프로필 한 줄 + 펼치기 ───────────── */
