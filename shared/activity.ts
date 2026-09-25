@@ -58,9 +58,9 @@ export const ACTIVITY: Record<ActivityType, ActivityDef> = {
   'notes.password': { module: 'notes', label: '비밀번호 변경', text: (t) => `${q(t)}비밀 노트의 비밀번호를 변경했습니다`, important: true, toastKind: 'warning' },
   'notes.edit': { module: 'notes', label: '비밀 노트 편집', text: (t) => `${q(t)}비밀 노트를 편집했습니다`, coalesce: true },
 
-  'section.create': { module: 'template', label: '목록 추가', text: (t) => `${q(t)}목록을 만들었습니다` },
-  'section.rename': { module: 'template', label: '목록 이름 변경', text: (_t, d) => `목록 이름을 변경했습니다 · ${d}` },
-  'section.delete': { module: 'template', label: '목록 삭제', text: (t, d) => `${q(t)}목록을 삭제했습니다${d ? ` · ${d}` : ''}` },
+  'section.create': { module: 'template', label: '폴더 추가', text: (t) => `${q(t)}폴더를 만들었습니다` },
+  'section.rename': { module: 'template', label: '폴더 이름 변경', text: (_t, d) => `폴더 이름을 변경했습니다 · ${d}` },
+  'section.delete': { module: 'template', label: '폴더 삭제', text: (t, d) => `${q(t)}폴더를 삭제했습니다${d ? ` · ${d}` : ''}` },
   'page.move': { module: 'template', label: '페이지 이동', text: (t, d) => `${q(t)}페이지를 옮겼습니다${d ? ` · ${d}` : ''}`, coalesce: true },
 };
 
