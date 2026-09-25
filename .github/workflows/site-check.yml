@@ -72,4 +72,26 @@ jobs:
             row "❌" "https://madang.party/api/auth/config" "HTTP $code $body · 사용할 수 있는 로그인 방법이 없습니다"; fail=1
           fi
 
+          # 6) 외부 로그인 시작: 서버가 구글 · 깃허브 로그인 화면으로 보내고, 각 서비스가 우리 설정(클라이언트 ID · 돌아올 주소)을 받아들이는지
+          ua='Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/140.0 Safari/537.36'
+          for p in google github; do
+            start="https://madang.party/api/auth/oauth/$p"
+            loc=$(curl -sS -o /dev/null --max-time 15 -w '%{redirect_url}' "$start" || true)
+            case "$loc" in
+              https://accounts.google.com/*|https://github.com/login/oauth/authorize*) ;;
+              */login\?error=unavailable) row "ℹ️" "$start" "설정되지 않은 로그인 방법"; continue ;;
+              *) row "❌" "$start" "로그인 화면으로 보내지 않음: ${loc:-응답 없음}"; fail=1; continue ;;
+            esac
+            back=$(printf '%s' "$loc" | grep -o 'redirect_uri=[^&]*' | sed 's/redirect_uri=//; s/%3A/:/g; s/%2F/\//g')
+            # 설정이 맞으면 로그인 페이지(200)가 열리고, 클라이언트 ID나 돌아올 주소가 틀리면 오류(4xx) 페이지가 나온다
+            page=$(curl -sS -L --max-redirs 5 --max-time 20 -A "$ua" -o /tmp/oauth.html -w '%{http_code} %{url_effective}' "$loc" || echo "000 -")
+            status=${page%% *}
+            if [ "$status" = "200" ] && ! printf '%s' "$page" | grep -q -E 'authError|oauth/error'; then
+              row "✅" "$p 로그인 시작" "로그인 페이지 열림 · 돌아올 주소 $back"
+            else
+              err=$(grep -o -E 'redirect_uri_mismatch|invalid_client|deleted_client|disabled_client|The OAuth client was not found' /tmp/oauth.html | head -1)
+              row "❌" "$p 로그인 시작" "HTTP $status ${err:-} · 돌아올 주소 $back"; fail=1
+            fi
+          done
+
           exit $fail
