@@ -263,6 +263,60 @@ export function Menu({ trigger, items, align = 'start', header, width = 220 }: M
   );
 }
 
+interface PopoverProps {
+  trigger: (props: { open: boolean; toggle: () => void; ref: React.Ref<HTMLButtonElement> }) => ReactNode;
+  children: (close: () => void) => ReactNode;
+  align?: 'start' | 'end';
+  width?: number;
+  className?: string;
+  label?: string;
+}
+
+/** 버튼 아래에 여는 자유 형식 패널 (바깥 클릭 · Esc로 닫힘) */
+export function Popover({ trigger, children, align = 'start', width = 300, className, label }: PopoverProps) {
+  const [open, setOpen] = useState(false);
+  const btnRef = useRef<HTMLButtonElement>(null);
+  const panelRef = useRef<HTMLDivElement>(null);
+  const [pos, setPos] = useState<{ top: number; left: number } | null>(null);
+
+  useLayoutEffect(() => {
+    if (!open || !btnRef.current) return;
+    const r = btnRef.current.getBoundingClientRect();
+    const left = align === 'end' ? r.right - width : r.left;
+    setPos({ top: r.bottom + 8, left: Math.max(8, Math.min(left, window.innerWidth - width - 8)) });
+  }, [open, align, width]);
+
+  useEffect(() => {
+    if (!open) return;
+    const onDown = (e: MouseEvent) => {
+      if (panelRef.current?.contains(e.target as Node) || btnRef.current?.contains(e.target as Node)) return;
+      setOpen(false);
+    };
+    const onKey = (e: KeyboardEvent) => e.key === 'Escape' && setOpen(false);
+    window.addEventListener('mousedown', onDown);
+    window.addEventListener('keydown', onKey);
+    return () => {
+      window.removeEventListener('mousedown', onDown);
+      window.removeEventListener('keydown', onKey);
+    };
+  }, [open]);
+
+  const close = () => setOpen(false);
+  return (
+    <>
+      {trigger({ open, toggle: () => setOpen((o) => !o), ref: btnRef })}
+      {open &&
+        pos &&
+        createPortal(
+          <div className={cx('popover', className)} ref={panelRef} style={{ top: pos.top, left: pos.left, width }} role="dialog" aria-label={label}>
+            {children(close)}
+          </div>,
+          document.body,
+        )}
+    </>
+  );
+}
+
 /* ───────────── 입력 ───────────── */
 
 export function Field({ label, hint, error, children }: { label: ReactNode; hint?: ReactNode; error?: ReactNode; children: ReactNode }) {

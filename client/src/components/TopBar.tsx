@@ -4,11 +4,9 @@ import {
   ChevronDown,
   Cloud,
   CloudOff,
-  Eye,
   HardDrive,
   Keyboard,
   LayoutGrid,
-  MapPin,
   MessageSquare,
   Monitor,
   Moon,
@@ -19,16 +17,16 @@ import {
   UserRound,
 } from 'lucide-react';
 import { FEATURE_INFO } from '@shared/presets';
-import { useOptionalWorkspace, viewPath } from '../workspace/context';
+import { useOptionalWorkspace } from '../workspace/context';
 import { useSession, type ThemePref } from '../store/session';
 import { useTemplates } from '../store/templates';
-import { usePresence, uniqueUsers } from '../store/presence';
 import { useUI } from '../store/ui';
 import { useConnection } from '../store/connection';
 import { Avatar, IconButton, Kbd, Menu } from './ui';
 import { SaveIndicator } from './SaveIndicator';
+import { PresenceBar } from './PresenceBar';
 import { modKey } from '../lib/util';
-import { MODULE_NAMES, viewLabel } from '../workspace/viewLabel';
+import { MODULE_NAMES } from '../workspace/viewLabel';
 import { itemsMap } from '../workspace/actions';
 import { useYField } from '../hooks/useY';
 
@@ -112,7 +110,7 @@ export function TopBar() {
             <CloudOff size={15} />
           </span>
         )}
-        {ws?.mode === 'shared' && <PresenceAvatars />}
+        {ws?.mode === 'shared' && <PresenceBar />}
         {ws && ws.canEdit && (
           <span className="badge-anchor">
             <button className="btn btn-primary btn-sm" onClick={() => ui.setShareOpen(true)} data-tip={ws.mode === 'personal' ? '초대하면 협업 공간으로 전환됩니다' : '초대 링크 만들기 · 관리'}>
@@ -164,63 +162,6 @@ export function TopBar() {
         )}
       </div>
     </header>
-  );
-}
-
-/** 같은 템플릿에 접속한 사람들. 클릭하면 따라가기/위치로 이동 */
-function PresenceAvatars() {
-  const ws = useOptionalWorkspace()!;
-  const others = usePresence((s) => s.others);
-  const users = uniqueUsers(others);
-  const navigate = useNavigate();
-  if (users.length === 0) return <span className="presence-alone" data-tip="지금은 혼자 작업 중입니다">혼자 작업 중</span>;
-  const shown = users.slice(0, 5);
-  return (
-    <div className="presence-avatars" aria-label={`${users.length}명 접속 중`}>
-      {shown.map((p) => (
-        <Menu
-          key={p.user.id}
-          align="end"
-          width={250}
-          header={
-            <div className="menu-profile">
-              <Avatar user={p.user} size={32} status={p.idle ? 'idle' : 'online'} tooltip={false} />
-              <div>
-                <b>{p.user.name}</b>
-                <span className="muted">
-                  {p.idle ? '자리 비움 · ' : ''}
-                  {viewLabel({ template: ws.template, view: p.view, doc: ws.doc, notes: ws.notes })}
-                </span>
-              </div>
-            </div>
-          }
-          items={[
-            {
-              label: ws.follow === p.user.id ? '따라가기 중지' : '따라가기',
-              icon: <Eye size={15} />,
-              onSelect: () => ws.setFollow(ws.follow === p.user.id ? null : p.user.id),
-            },
-            {
-              label: '이 사람의 위치로 이동',
-              icon: <MapPin size={15} />,
-              onSelect: () => navigate(viewPath(ws.template.id, p.view.module, p.view.itemId)),
-            },
-          ]}
-          trigger={({ toggle, ref }) => (
-            <button
-              ref={ref}
-              className={`presence-avatar ${ws.follow === p.user.id ? 'is-following' : ''}`}
-              onClick={toggle}
-              style={{ ['--user-color' as string]: p.user.color }}
-              aria-label={`${p.user.name} 메뉴`}
-            >
-              <Avatar user={p.user} size={28} status={p.idle ? 'idle' : 'online'} tooltip={p.user.name} />
-            </button>
-          )}
-        />
-      ))}
-      {users.length > shown.length && <span className="avatar avatar-more">+{users.length - shown.length}</span>}
-    </div>
   );
 }
 
