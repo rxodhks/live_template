@@ -1,0 +1,48 @@
+name: Email check
+
+# 로그인 인증 메일(Resend) 설정 점검 — Actions 탭의 Run workflow로 실행
+#  · Resend에 등록된 보내는 도메인과 인증 상태
+#  · 실제 발송 주소(EMAIL_FROM, 기본 login@madang.party)로 Resend 테스트 주소에 한 통 보내 보기
+#    (delivered@resend.dev는 Resend가 제공하는 테스트용 주소라 실제 사람에게는 가지 않는다)
+# 키 값은 로그에 나오지 않는다.
+on:
+  workflow_dispatch:
+  push:
+    paths: ['.github/workflows/email-check.yml']
+
+jobs:
+  check:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Resend 설정 점검
+        env:
+          RESEND_API_KEY: ${{ secrets.RESEND_API_KEY }}
+          EMAIL_FROM: ${{ secrets.EMAIL_FROM }}
+        run: |
+          if [ -z "$RESEND_API_KEY" ]; then
+            echo "::error::RESEND_API_KEY 저장소 Secret이 없습니다."
+            exit 1
+          fi
+          case "$RESEND_API_KEY" in re_*) echo "API 키 형식: re_로 시작 (정상)";; *) echo "::warning::API 키가 re_로 시작하지 않습니다. Resend의 API Keys에서 만든 키인지 확인하세요.";; esac
+
+          echo "── Resend 도메인"
+          domains=$(curl -sS --max-time 20 https://api.resend.com/domains -H "Authorization: Bearer $RESEND_API_KEY")
+          if printf '%s' "$domains" | jq -e '.data' >/dev/null 2>&1; then
+            printf '%s' "$domains" | jq -r '.data[] | "  \(.name) · 상태: \(.status) · 지역: \(.region // "-")"'
+            [ "$(printf '%s' "$domains" | jq '.data | length')" = "0" ] && echo "  (등록된 도메인 없음)"
+          else
+            echo "  목록을 볼 수 없음: $(printf '%s' "$domains" | jq -r '.message // .' 2>/dev/null | head -c 300)"
+          fi
+
+          from="${EMAIL_FROM:-Madang <login@madang.party>}"
+          echo "── 테스트 발송: $from → delivered@resend.dev"
+          body=$(jq -n --arg from "$from" '{from: $from, to: ["delivered@resend.dev"], subject: "Madang 메일 설정 점검", text: "로그인 인증 메일 설정 점검용 테스트입니다."}')
+          res=$(curl -sS --max-time 20 -w '\n%{http_code}' https://api.resend.com/emails \
+            -H "Authorization: Bearer $RESEND_API_KEY" -H 'content-type: application/json' -d "$body")
+          code=$(printf '%s' "$res" | tail -n1)
+          echo "  HTTP $code · $(printf '%s' "$res" | head -n1 | head -c 400)"
+          if [ "$code" != "200" ]; then
+            echo "::error::Resend가 발송을 거절했습니다 (위 메시지 참고)."
+            exit 1
+          fi
+          echo "✅ 발송 성공 — 로그인 인증 메일을 보낼 수 있습니다."
