@@ -6,7 +6,15 @@ import * as Y from 'yjs';
  *   files  : Y.Map<fileId, Y.Map{ id, name, language, createdAt, createdBy, content: Y.Text }>
  *   docs   : Y.Map<docId,  Y.Map{ id, title, emoji, createdAt, createdBy, content: Y.XmlFragment }>
  *   boards : Y.Map<boardId,Y.Map{ id, name, background, createdAt, createdBy, shapes: Y.Map<shapeId, Shape> }>
+ *   sections : Y.Map<sectionId, SectionRecord>  — 왼쪽 탐색기의 목록 구성 (사용자 정의)
  *
+ * 왼쪽 탐색기 목록
+ *  - 기본 목록은 기능별(design · code · docs, 목록 ID = 기능 이름)로 따로 저장하지 않아도 보인다.
+ *    이름 · 아이콘 · 순서를 바꾸거나 삭제하면 sections에 그 내용만 기록된다.
+ *  - 사용자가 만든 목록은 임의의 ID로 sections에 들어간다.
+ *  - 페이지(파일 · 문서 · 보드)는 자기 항목에 section(목록 ID)과 order(목록 안 순서)를 가진다.
+ *    section이 없거나 그 목록이 사라졌으면 자기 기능의 기본 목록으로 돌아간다 (페이지는 절대 사라지지 않는다).
+ *  - 목록 하나는 한 번에 통째로 덮어써서, 여러 사람이 동시에 바꿔도 목록이 둘로 갈라지지 않는다.
  * 비밀 노트는 템플릿 문서에 들어가지 않고 별도의 암호화된 Y.Doc(note:<id>)으로 관리된다.
  */
 
@@ -15,6 +23,19 @@ export type YItem = Y.Map<unknown>;
 export const getFiles = (doc: Y.Doc) => doc.getMap<YItem>('files');
 export const getDocs = (doc: Y.Doc) => doc.getMap<YItem>('docs');
 export const getBoards = (doc: Y.Doc) => doc.getMap<YItem>('boards');
+export const getSections = (doc: Y.Doc) => doc.getMap<SectionRecord>('sections');
+
+/** 탐색기 목록 하나 (기본 목록은 바꾼 값만, 사용자 목록은 전부 기록) */
+export interface SectionRecord {
+  name?: string;
+  emoji?: string;
+  /** 목록 순서 (작을수록 위). 기본 목록은 기능 순서(0, 1, 2)가 기본값 */
+  order?: number;
+  /** 삭제한 기본 목록 */
+  deleted?: boolean;
+  createdAt?: number;
+  createdBy?: string;
+}
 
 /** 비밀 노트 Y.Doc 안의 본문 */
 export const NOTE_FRAGMENT = 'content';

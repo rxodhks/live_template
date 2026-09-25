@@ -185,6 +185,8 @@ export interface MenuItem {
   hint?: ReactNode;
   checked?: boolean;
   divider?: boolean;
+  /** 누를 수 없는 소제목 */
+  heading?: boolean;
 }
 
 interface MenuProps {
@@ -238,6 +240,10 @@ export function Menu({ trigger, items, align = 'start', header, width = 220 }: M
             {list.map((item, i) =>
               item.divider ? (
                 <div className="menu-divider" key={i} />
+              ) : item.heading ? (
+                <div className="menu-heading" key={i}>
+                  {item.label}
+                </div>
               ) : (
                 <button
                   key={i}

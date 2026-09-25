@@ -1,5 +1,6 @@
 import * as Y from 'yjs';
-import type { PublicUser } from '@shared/types';
+import type { Feature, PublicUser } from '@shared/types';
+import { BLANK_CONTENT, FEATURE_INFO } from '@shared/presets';
 import {
   addBoard,
   addCodeFile,
@@ -12,9 +13,13 @@ import {
   type YItem,
 } from '@shared/schema';
 import { newId } from '../lib/util';
+import { errorMessage } from '../lib/api';
+import { updateTemplate } from '../lib/templateOps';
 import { confirmDialog, promptDialog } from '../components/ui';
 import { toast } from '../store/toasts';
+import { useTemplates } from '../store/templates';
 import type { WorkspaceValue } from './context';
+import { placeNewPage, restoreBuiltinSection } from './layout';
 
 export type ItemModule = 'code' | 'docs' | 'design';
 
@@ -35,7 +40,55 @@ function guard(ws: WorkspaceValue): boolean {
   return false;
 }
 
-export async function createCodeFile(ws: WorkspaceValue, me: PublicUser): Promise<void> {
+/** 새 페이지를 넣을 목록 (없으면 그 종류의 기본 목록) */
+export interface CreateOptions {
+  sectionId?: string;
+}
+
+/**
+ * 이 종류의 페이지를 쓸 수 있게 영역(기능)을 켠다 — 템플릿 안에서 바로 문서 · 디자인 · 코딩을 추가할 수 있도록.
+ * 꺼져 있었으면 켜고, 지웠던 기본 목록도 되살린다. 켜진 뒤의 기능 목록을 돌려준다 (실패하면 null)
+ */
+export async function ensureFeature(ws: WorkspaceValue, module: ItemModule, opts: { quiet?: boolean } = {}): Promise<Feature[] | null> {
+  const t = useTemplates.getState().templates[ws.template.id] ?? ws.template;
+  if (t.features.includes(module)) return t.features;
+  try {
+    const next = await updateTemplate(t, { features: [...t.features, module] });
+    restoreBuiltinSection(ws.doc, module);
+    if (!opts.quiet) toast.success(`${FEATURE_INFO[module].name} 영역을 추가했습니다`, '왼쪽 목록과 메뉴에 바로 나타납니다.');
+    return next.features;
+  } catch (err) {
+    toast.error(`${FEATURE_INFO[module].name} 영역을 추가하지 못했습니다`, errorMessage(err));
+    return null;
+  }
+}
+
+const currentFeatures = (ws: WorkspaceValue): Feature[] => (useTemplates.getState().templates[ws.template.id] ?? ws.template).features;
+const areaNote = (added: boolean, m: ItemModule) => (added ? ` · ${FEATURE_INFO[m].name} 영역도 함께 추가했습니다` : '');
+
+/** 영역을 켜고, 비어 있으면 첫 페이지를 하나 만들어 준다 (설정 · 개요의 영역 추가) */
+export async function enableFeature(ws: WorkspaceValue, module: ItemModule, me: PublicUser): Promise<boolean> {
+  const features = await ensureFeature(ws, module);
+  if (!features) return false;
+  const doc = ws.doc;
+  if (module === 'code' && getFiles(doc).size === 0) {
+    const c = BLANK_CONTENT.code[0];
+    addCodeFile(doc, { id: newId(), name: c.name, content: c.content, createdBy: me.id });
+  }
+  if (module === 'docs' && getDocs(doc).size === 0) {
+    const d = BLANK_CONTENT.docs[0];
+    addDocument(doc, { id: newId(), title: d.title, emoji: d.emoji, blocks: d.blocks, createdBy: me.id });
+  }
+  if (module === 'design' && getBoards(doc).size === 0) addBoard(doc, { id: newId(), name: '보드 1', createdBy: me.id });
+  return true;
+}
+
+/** 종류에 맞는 새 페이지 만들기 */
+export function createPage(ws: WorkspaceValue, module: ItemModule, me: PublicUser, opts: CreateOptions = {}): Promise<void> {
+  return module === 'code' ? createCodeFile(ws, me, opts) : module === 'docs' ? createDocument(ws, me, opts) : createBoard(ws, me, opts);
+}
+
+export async function createCodeFile(ws: WorkspaceValue, me: PublicUser, opts: CreateOptions = {}): Promise<void> {
   if (!guard(ws)) return;
   const names = new Set(Array.from(getFiles(ws.doc).values()).map((f) => String(f.get('name')).toLowerCase()));
   const raw = await promptDialog({
@@ -51,35 +104,47 @@ export async function createCodeFile(ws: WorkspaceValue, me: PublicUser): Promis
     },
   });
   if (!raw) return;
+  const added = !currentFeatures(ws).includes('code');
+  const features = await ensureFeature(ws, 'code', { quiet: true });
+  if (!features) return;
   const name = raw.includes('.') ? raw : `${raw}.js`;
   const id = newId();
   addCodeFile(ws.doc, { id, name, language: languageFromFilename(name).id, createdBy: me.id });
+  placeNewPage(ws.doc, features, 'code', id, opts.sectionId);
   ws.report({ type: 'code.create', targetId: id, targetName: name });
-  toast.success('파일을 만들었습니다', `${name} · ${languageFromFilename(name).name}`);
+  toast.success('파일을 만들었습니다', `${name} · ${languageFromFilename(name).name}${areaNote(added, 'code')}`);
   ws.go('code', id);
 }
 
-export function createDocument(ws: WorkspaceValue, me: PublicUser): void {
+export async function createDocument(ws: WorkspaceValue, me: PublicUser, opts: CreateOptions = {}): Promise<void> {
   if (!guard(ws)) return;
+  const added = !currentFeatures(ws).includes('docs');
+  const features = await ensureFeature(ws, 'docs', { quiet: true });
+  if (!features) return;
   const id = newId();
   const count = getDocs(ws.doc).size;
   const title = count === 0 ? '제목 없는 문서' : `제목 없는 문서 ${count + 1}`;
   addDocument(ws.doc, { id, title, emoji: '📄', createdBy: me.id, blocks: [{ type: 'heading', level: 1, text: '' }] });
+  placeNewPage(ws.doc, features, 'docs', id, opts.sectionId);
   ws.report({ type: 'docs.create', targetId: id, targetName: title });
-  toast.success('문서를 만들었습니다', title);
+  toast.success('문서를 만들었습니다', `${title}${areaNote(added, 'docs')}`);
   ws.go('docs', id);
 }
 
-export function createBoard(ws: WorkspaceValue, me: PublicUser): void {
+export async function createBoard(ws: WorkspaceValue, me: PublicUser, opts: CreateOptions = {}): Promise<void> {
   if (!guard(ws)) return;
+  const added = !currentFeatures(ws).includes('design');
+  const features = await ensureFeature(ws, 'design', { quiet: true });
+  if (!features) return;
   const id = newId();
   const names = new Set(Array.from(getBoards(ws.doc).values()).map((b) => b.get('name')));
   let n = getBoards(ws.doc).size + 1;
   while (names.has(`보드 ${n}`)) n++;
   const name = `보드 ${n}`;
   addBoard(ws.doc, { id, name, createdBy: me.id });
+  placeNewPage(ws.doc, features, 'design', id, opts.sectionId);
   ws.report({ type: 'design.create', targetId: id, targetName: name });
-  toast.success('보드를 만들었습니다', name);
+  toast.success('보드를 만들었습니다', `${name}${areaNote(added, 'design')}`);
   ws.go('design', id);
 }
 

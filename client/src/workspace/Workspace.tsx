@@ -19,7 +19,9 @@ import { useConnection } from '../store/connection';
 import { useLive } from '../store/live';
 import { toast } from '../store/toasts';
 import { useSession } from '../store/session';
-import { WorkspaceContext, type WorkspaceValue, parseView, sameView, viewPath } from './context';
+import { WorkspaceContext, type WorkspaceValue, parseView, sameView, useWorkspace, viewPath } from './context';
+import { enableFeature, type ItemModule } from './actions';
+import { FEATURE_INFO } from '@shared/presets';
 import { AppShell } from '../components/AppShell';
 import { Explorer } from './Explorer';
 import { ChatPanel } from '../components/ChatPanel';
@@ -469,9 +471,7 @@ function WorkspaceInner({ entry }: { entry: TemplateEntry }) {
       <AppShell panel={<Explorer />} panelOpen={panelOpen} drawer={value.chatOpen ? <ChatPanel /> : null}>
         {follow && followed && <FollowBanner presence={followed} onStop={() => setFollow(null)} />}
         {featureOff ? (
-          <EmptyState title="이 템플릿에서 사용하지 않는 기능입니다" action={<Button onClick={() => go('settings')}>설정에서 기능 켜기</Button>}>
-            템플릿 설정에서 기능을 추가하면 바로 사용할 수 있습니다.
-          </EmptyState>
+          <AddAreaPrompt module={view.module as ItemModule} />
         ) : (
           <Suspense
             fallback={
@@ -531,3 +531,33 @@ function ModuleView({ module }: { module: ViewModule }) {
   }
 }
 
+/** 꺼져 있는 영역의 주소로 들어왔을 때 — 여기서 바로 영역을 추가한다 */
+function AddAreaPrompt({ module }: { module: ItemModule }) {
+  const ws = useWorkspace();
+  const me = useSession((s) => s.user)!;
+  const [busy, setBusy] = useState(false);
+  const info = FEATURE_INFO[module];
+  return (
+    <EmptyState
+      icon={<span className="empty-emoji">{info.emoji}</span>}
+      title={`이 템플릿에는 아직 ${info.name} 영역이 없습니다`}
+      action={
+        ws.canEdit ? (
+          <Button
+            variant="primary"
+            loading={busy}
+            onClick={async () => {
+              setBusy(true);
+              await enableFeature(ws, module, me);
+              setBusy(false);
+            }}
+          >
+            {info.name} 영역 추가
+          </Button>
+        ) : undefined
+      }
+    >
+      {ws.canEdit ? `${info.description} 추가하면 왼쪽 목록과 메뉴에 바로 나타납니다.` : '편집 권한이 있는 멤버가 영역을 추가할 수 있습니다.'}
+    </EmptyState>
+  );
+}
