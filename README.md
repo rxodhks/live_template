@@ -74,7 +74,7 @@ npm run dev -w worker          # Worker가 화면 + API를 한 주소(8787)에�
 4. GitHub 저장소 → **Settings → Secrets and variables → Actions → New repository secret**
    - `CLOUDFLARE_API_TOKEN` = 3번 토큰
    - `CLOUDFLARE_ACCOUNT_ID` = 2번 계정 ID
-5. 이 브랜치를 `main`에 병합하면 **Deploy to Cloudflare** 워크플로가 자동으로 배포합니다. (Actions 탭에서 수동 실행도 가능)
+5. **Deploy to Cloudflare** 워크플로가 타입 검사 · 통합 테스트를 통과하면 자동으로 배포하고, 마지막에 `https://madang.party` 응답까지 확인합니다. `main`에 병합될 때, 그리고 병합 전까지는 작업 브랜치(`claude/realtime-collab-project-74x1da`)에 푸시할 때 실행됩니다.
 
 배포가 끝나면 **https://madang.party** 에서 열립니다.
 
