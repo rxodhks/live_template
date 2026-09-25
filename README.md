@@ -80,7 +80,7 @@ npm run dev -w worker          # Worker가 화면 + API를 한 주소(8787)에�
 
 - 도메인은 `worker/wrangler.jsonc`의 `routes`에 등록되어 있어, 배포할 때 클라우드플레어가 DNS 레코드와 HTTPS 인증서를 자동으로 만듭니다. (도메인이 같은 클라우드플레어 계정에 있어야 합니다)
 - 배포 중 도메인 연결 단계에서 권한 오류가 나면 대시보드 → Workers & Pages → **madang** → *Settings → Domains & Routes → Add → Custom domain*에서 `madang.party`를 한 번만 직접 추가하세요.
-- `*.workers.dev` 주소는 꺼 두었습니다. 개인 공간 데이터는 브라우저에 **주소별로** 저장되므로, 주소가 둘이면 같은 사람의 작업이 나뉘어 보이기 때문입니다. `www.madang.party`도 쓰려면 대시보드의 *Rules → Redirect Rules*에서 `madang.party`로 넘기는 규칙을 추가하세요.
+- `*.workers.dev` 주소는 꺼 두었습니다. 개인 공간 데이터는 브라우저에 **주소별로** 저장되므로, 주소가 둘이면 같은 사람의 작업이 나뉘어 보이기 때문입니다. `www.madang.party`는 대시보드의 *Rules → Redirect Rules*에서 `madang.party`로 넘기고 (경로 · 쿼리 유지, 301), `http://`는 *SSL/TLS → Edge Certificates → Always Use HTTPS*로 `https://`에 넘깁니다 (비밀 노트 암호화는 보안 연결에서만 동작). 동작 여부는 Actions 탭의 **Site check** 워크플로로 언제든 확인할 수 있습니다.
 - D1·KV 같은 추가 리소스를 만들 필요가 없습니다. Durable Object는 첫 배포 때 자동으로 생성됩니다.
 
 직접 배포하려면:
