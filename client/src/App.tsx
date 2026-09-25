@@ -11,6 +11,7 @@ import { ToastViewport } from './components/Toasts';
 import { TooltipHost } from './components/Tooltip';
 import { ConfirmHost, PromptHost } from './components/ui';
 import { BootScreen, LoginPage, SignupPage } from './pages/Auth';
+import { PrivacyPage, TermsPage } from './pages/Legal';
 import { Dashboard } from './pages/Dashboard';
 import { JoinPage } from './pages/JoinPage';
 import { GlobalTimeline } from './pages/GlobalTimeline';
@@ -57,6 +58,9 @@ export function App() {
       <Routes>
         <Route path="/login" element={<LoginPage />} />
         <Route path="/signup" element={<SignupPage />} />
+        {/* 약관 · 개인정보처리방침은 누구나 볼 수 있다 */}
+        <Route path="/privacy" element={<PrivacyPage />} />
+        <Route path="/terms" element={<TermsPage />} />
         {/* 초대장은 로그인하지 않아도 볼 수 있다 (참여하려면 로그인) */}
         <Route path="/join/:code" element={<JoinPage />} />
         <Route path="*" element={status === 'authed' ? <AuthedApp /> : <ToLogin />} />

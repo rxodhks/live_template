@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState, type ReactNode } from 'react';
-import { Navigate, useNavigate, useSearchParams } from 'react-router-dom';
+import { Link, Navigate, useNavigate, useSearchParams } from 'react-router-dom';
 import { ArrowLeft, CheckCircle2, Code2, FileText, Lock, Mail, MousePointer2, Palette, RotateCw, ShieldCheck, UserPlus, UserRound } from 'lucide-react';
 import type { AuthConfig, OAuthProvider, SignupInfo } from '@shared/types';
 import { USER_AVATARS, USER_COLORS } from '@shared/colors';
@@ -12,6 +12,7 @@ import { useTick } from '../hooks/useInterval';
 import { Button, Field, Spinner } from '../components/ui';
 import { BRAND, BrandMark } from '../components/Brand';
 import { ProfileForm, type ProfileDraft } from '../components/ProfileForm';
+import { LegalLinks } from './Legal';
 
 /*
  * 로그인 · 가입
@@ -72,7 +73,10 @@ function AuthLayout({ children }: { children: ReactNode }) {
         </ul>
       </section>
       <section className="onboarding-card">
-        <div className="onboarding-card-inner">{children}</div>
+        <div className="onboarding-card-inner">
+          {children}
+          <LegalLinks className="legal-links auth-legal" />
+        </div>
       </section>
     </div>
   );
@@ -422,6 +426,9 @@ export function SignupPage() {
               {error}
             </div>
           )}
+          <p className="auth-consent muted small">
+            가입을 완료하면 <Link to="/terms">이용약관</Link>에 동의하고 <Link to="/privacy">개인정보처리방침</Link>을 확인한 것으로 봅니다.
+          </p>
           <Button variant="primary" size="lg" className="w-full" onClick={submit} loading={saving} disabled={!draft.name.trim()}>
             가입 완료하고 시작하기
           </Button>
