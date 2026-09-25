@@ -109,6 +109,48 @@
 .ex-section.is-drop-target > .ex-section-head .ex-section-toggle {
   color: var(--accent-text);
 }
+/* 폴더 안의 폴더: 단계마다 들여쓰기 (--indent는 폴더마다 지정) */
+.ex-page-section > .ex-section-head .ex-section-toggle {
+  padding-left: calc(6px + var(--indent, 0px));
+}
+.ex-page-section > .ex-section-body > .ex-item {
+  padding-left: calc(24px + var(--indent, 0px));
+}
+.ex-page-section > .ex-section-body > .ex-empty {
+  padding-left: calc(28px + var(--indent, 0px));
+}
+.ex-page-section > .ex-section-body > .ex-drop-hint {
+  margin-left: calc(22px + var(--indent, 0px));
+  padding-left: 10px;
+}
+.ex-page-section > .ex-emoji-strip {
+  margin-left: calc(22px + var(--indent, 0px));
+}
+.ex-section.is-nested,
+.ex-section + .ex-section.is-nested {
+  margin-top: 0;
+}
+.ex-page-section > .ex-section-body {
+  position: relative;
+}
+/* 하위 폴더가 있는 폴더와 하위 폴더에는 세로 안내선 */
+.ex-page-section.is-nested > .ex-section-body::before,
+.ex-page-section > .ex-section-body:has(> .ex-page-section)::before {
+  content: '';
+  position: absolute;
+  left: calc(12.5px + var(--indent, 0px));
+  top: 0;
+  bottom: 6px;
+  width: 1px;
+  background: var(--border);
+  pointer-events: none;
+}
+.ex-section-head.is-drop-into .ex-section-toggle {
+  background: var(--accent-soft);
+  color: var(--accent-text);
+  box-shadow: inset 0 0 0 1.5px var(--accent);
+}
+
 /* 끌어 놓을 자리 표시선 */
 .ex-section.drop-before,
 .ex-section.drop-after,
@@ -139,13 +181,18 @@
 .ex-item.drop-after::after {
   bottom: -2px;
 }
+.ex-section.drop-before::before,
+.ex-section.drop-after::after {
+  left: calc(6px + var(--indent, 0px));
+}
 .ex-item.drop-before::before,
 .ex-item.drop-after::after {
-  left: 20px;
+  left: calc(20px + var(--indent, 0px));
 }
 .ex-drop-hint {
   margin: 2px 4px 4px 22px;
   padding: 7px 10px;
+  line-height: 1.45;
   border: 1px dashed var(--border-strong);
   border-radius: 7px;
 }
