@@ -9,7 +9,195 @@
 .explorer-scroll {
   flex: 1;
   overflow-y: auto;
-  padding: 8px 8px 12px;
+  padding: 4px 8px 12px;
+}
+
+/* 탐색기 머리: 페이지 추가 · 목록 설정 */
+.ex-head {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  padding: 10px 10px 4px 14px;
+  flex: none;
+}
+.ex-head-title {
+  flex: 1;
+  font-size: 11.5px;
+  font-weight: 700;
+  letter-spacing: 0.04em;
+  color: var(--text-3);
+}
+.ex-add-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  height: 26px;
+  padding: 0 9px 0 7px;
+  border-radius: 7px;
+  border: 1px solid var(--border);
+  background: var(--surface);
+  color: var(--text-2);
+  font-size: 12px;
+  font-weight: 650;
+}
+.ex-add-btn:hover,
+.ex-add-btn.is-open {
+  border-color: var(--accent);
+  color: var(--accent-text);
+  background: var(--accent-soft);
+}
+.menu-new-area {
+  font-size: 10.5px;
+  font-weight: 650;
+  color: var(--accent-text);
+  background: var(--accent-soft);
+  border-radius: 999px;
+  padding: 1px 6px;
+}
+
+/* 사용자 목록 */
+.ex-section-head {
+  position: relative;
+}
+.ex-section-name {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.ex-section-toggle.is-editing {
+  cursor: default;
+  padding-block: 3px;
+}
+.ex-section-toggle.is-editing:hover {
+  background: none;
+}
+.ex-section-input {
+  flex: 1;
+  min-width: 0;
+  height: 24px;
+  font-size: 12.5px;
+  font-weight: 650;
+}
+.ex-section-actions {
+  display: flex;
+  align-items: center;
+  opacity: 0;
+  transition: opacity 0.12s;
+}
+.ex-section-head:hover .ex-section-actions,
+.ex-section-head:focus-within .ex-section-actions {
+  opacity: 1;
+}
+.ex-page-section .ex-section-head[draggable='true'] {
+  cursor: grab;
+}
+.ex-page-section .ex-section-head[draggable='true'] .ex-section-toggle {
+  cursor: pointer;
+}
+.ex-section.is-dragging,
+.ex-item.is-dragging {
+  opacity: 0.45;
+}
+.ex-section.is-drop-target > .ex-section-head .ex-section-toggle,
+.ex-section.is-drop-target > .ex-section-body {
+  background: var(--accent-soft);
+}
+.ex-section.is-drop-target > .ex-section-body {
+  border-radius: 7px;
+}
+.ex-section.is-drop-target > .ex-section-head .ex-section-toggle {
+  color: var(--accent-text);
+}
+/* 끌어 놓을 자리 표시선 */
+.ex-section.drop-before,
+.ex-section.drop-after,
+.ex-item.drop-before,
+.ex-item.drop-after {
+  position: relative;
+}
+.ex-section.drop-before::before,
+.ex-section.drop-after::after,
+.ex-item.drop-before::before,
+.ex-item.drop-after::after,
+.ex-add-section.is-drop-line::before {
+  content: '';
+  position: absolute;
+  left: 6px;
+  right: 6px;
+  height: 2px;
+  border-radius: 2px;
+  background: var(--accent);
+  pointer-events: none;
+}
+.ex-section.drop-before::before,
+.ex-item.drop-before::before,
+.ex-add-section.is-drop-line::before {
+  top: -2px;
+}
+.ex-section.drop-after::after,
+.ex-item.drop-after::after {
+  bottom: -2px;
+}
+.ex-item.drop-before::before,
+.ex-item.drop-after::after {
+  left: 20px;
+}
+.ex-drop-hint {
+  margin: 2px 4px 4px 22px;
+  padding: 7px 10px;
+  border: 1px dashed var(--border-strong);
+  border-radius: 7px;
+}
+.ex-add-section {
+  position: relative;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  width: calc(100% - 4px);
+  margin: 8px 2px 4px;
+  padding: 6px 10px;
+  border: 1px dashed var(--border);
+  border-radius: 8px;
+  color: var(--text-3);
+  font-size: 12px;
+  font-weight: 600;
+}
+.ex-add-section:hover {
+  border-color: var(--accent);
+  color: var(--accent-text);
+  background: var(--accent-soft);
+}
+.ex-add-section + .ex-section {
+  margin-top: 10px;
+}
+.ex-emoji-strip {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 2px;
+  margin: 2px 4px 6px 22px;
+  padding: 6px;
+  border: 1px solid var(--border);
+  border-radius: 9px;
+  background: var(--surface-2);
+}
+.ex-emoji-choice {
+  width: 28px;
+  height: 28px;
+  border-radius: 6px;
+  font-size: 15px;
+}
+.ex-emoji-choice:hover {
+  background: var(--surface-hover);
+}
+.ex-emoji-choice.is-selected {
+  background: var(--accent-soft);
+  box-shadow: inset 0 0 0 1.5px var(--accent);
+}
+.ex-emoji-close {
+  margin-left: auto;
+  padding: 0 6px;
 }
 .ex-section + .ex-section {
   margin-top: 6px;
@@ -1180,4 +1368,9 @@ button.doc-emoji:hover:not(:disabled) {
     margin: 0;
     padding: 0;
   }
+}
+
+.empty-emoji {
+  font-size: 34px;
+  line-height: 1;
 }

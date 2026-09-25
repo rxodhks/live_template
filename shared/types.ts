@@ -206,7 +206,11 @@ export type ActivityType =
   | 'notes.unlock'
   | 'notes.unlock_fail'
   | 'notes.password'
-  | 'notes.edit';
+  | 'notes.edit'
+  | 'section.create'
+  | 'section.rename'
+  | 'section.delete'
+  | 'page.move';
 
 /** 클라이언트가 서버에 보고하는 활동 */
 export interface ActivityInput {

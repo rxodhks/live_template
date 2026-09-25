@@ -3,15 +3,14 @@ import { useNavigate } from 'react-router-dom';
 import { Check, Loader2, Settings as SettingsIcon, Trash2 } from 'lucide-react';
 import type { Feature } from '@shared/types';
 import { FEATURE_INFO, FEATURE_ORDER } from '@shared/presets';
-import { addBoard, addCodeFile, addDocument, getBoards, getDocs, getFiles } from '@shared/schema';
-import { BLANK_CONTENT } from '@shared/presets';
 import { useWorkspace } from './context';
+import { enableFeature } from './actions';
 import { useSession } from '../store/session';
 import { toast } from '../store/toasts';
 import { errorMessage } from '../lib/api';
 import { updateTemplate } from '../lib/templateOps';
 import { VersionHistory, confirmTrash, trashTemplate } from '../components/DataProtection';
-import { cx, newId } from '../lib/util';
+import { cx } from '../lib/util';
 import { CursorPage } from '../components/Cursors';
 import { Button, Field, confirmDialog } from '../components/ui';
 
@@ -76,23 +75,14 @@ export function Settings() {
       });
       if (!ok) return;
     }
-    const features = on ? t.features.filter((x) => x !== f) : FEATURE_ORDER.filter((x) => x === f || t.features.includes(x));
-    if (await save({ features })) {
-      // 처음 켠 기능이 비어 있으면 기본 항목을 하나 만들어 준다
-      if (!on && ws.canEdit) {
-        const doc = ws.doc;
-        if (f === 'code' && getFiles(doc).size === 0) {
-          const c = BLANK_CONTENT.code[0];
-          addCodeFile(doc, { id: newId(), name: c.name, content: c.content, createdBy: me.id });
-        }
-        if (f === 'docs' && getDocs(doc).size === 0) {
-          const d = BLANK_CONTENT.docs[0];
-          addDocument(doc, { id: newId(), title: d.title, emoji: d.emoji, blocks: d.blocks, createdBy: me.id });
-        }
-        if (f === 'design' && getBoards(doc).size === 0) addBoard(doc, { id: newId(), name: '보드 1', createdBy: me.id });
-      }
-      toast.success(on ? `${FEATURE_INFO[f].name} 기능을 껐습니다` : `${FEATURE_INFO[f].name} 기능을 켰습니다`);
+    if (!on) {
+      // 켜기: 지웠던 기본 목록을 되살리고, 비어 있으면 첫 페이지를 하나 만들어 준다
+      setState('saving');
+      const done = await enableFeature(ws, f, me);
+      setState(done ? 'saved' : 'idle');
+      return;
     }
+    if (await save({ features: t.features.filter((x) => x !== f) })) toast.success(`${FEATURE_INFO[f].name} 기능을 껐습니다`);
   };
 
   const removeTemplate = async () => {

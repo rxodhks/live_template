@@ -118,9 +118,11 @@ function Palette_() {
         list.push({ id: `note:${n.id}`, group: '비밀 노트', label: n.title, icon: <Lock size={16} />, run: () => ws.go('notes', n.id) });
 
       if (ws.canEdit) {
-        if (f.includes('code')) list.push({ id: 'new-file', group: '만들기', label: '새 코드 파일', icon: <FilePlus2 size={16} />, keywords: 'new file 파일 추가', run: () => void createCodeFile(ws, me) });
-        if (f.includes('docs')) list.push({ id: 'new-doc', group: '만들기', label: '새 문서', icon: <FileText size={16} />, keywords: 'new document', run: () => createDocument(ws, me) });
-        if (f.includes('design')) list.push({ id: 'new-board', group: '만들기', label: '새 디자인 보드', icon: <Palette size={16} />, keywords: 'new board canvas', run: () => createBoard(ws, me) });
+        // 꺼져 있는 영역이어도 만들 수 있다 (만들면 그 영역이 켜진다)
+        const area = (m: 'code' | 'docs' | 'design') => (f.includes(m) ? undefined : '영역 추가');
+        list.push({ id: 'new-doc', group: '만들기', label: '새 문서', hint: area('docs'), icon: <FileText size={16} />, keywords: 'new document 문서 추가', run: () => void createDocument(ws, me) });
+        list.push({ id: 'new-board', group: '만들기', label: '새 디자인 보드', hint: area('design'), icon: <Palette size={16} />, keywords: 'new board canvas 디자인 추가', run: () => void createBoard(ws, me) });
+        list.push({ id: 'new-file', group: '만들기', label: '새 코드 파일', hint: area('code'), icon: <FilePlus2 size={16} />, keywords: 'new file 파일 추가 코딩', run: () => void createCodeFile(ws, me) });
         list.push({
           id: 'new-note',
           group: '만들기',

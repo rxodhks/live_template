@@ -840,6 +840,33 @@
 .module-card li button .truncate {
   flex: 1;
 }
+.add-area-card {
+  border-style: dashed;
+  border-top-width: 1px;
+  background: var(--surface-2);
+}
+.add-area-card .module-card-emoji {
+  display: grid;
+  place-items: center;
+  width: 30px;
+  height: 30px;
+  border-radius: 8px;
+  background: var(--accent-soft);
+  color: var(--accent-text);
+}
+.add-area-card li button {
+  align-items: flex-start;
+}
+.add-area-card li button:hover {
+  background: var(--surface);
+}
+.add-area-text {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  gap: 1px;
+  min-width: 0;
+}
 .hover-arrow {
   opacity: 0;
   color: var(--text-3);

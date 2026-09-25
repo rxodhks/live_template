@@ -2,10 +2,10 @@ import { useEffect, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { ArrowRight, Cloud, Eye, History, HardDrive, Lock, MessageSquare, MousePointer2, Plus, Share2, Users } from 'lucide-react';
 import type { Feature, TimelineEvent } from '@shared/types';
-import { FEATURE_INFO } from '@shared/presets';
+import { FEATURE_INFO, FEATURE_ORDER } from '@shared/presets';
 import { getLanguage } from '@shared/schema';
 import { useWorkspace, viewPath } from './context';
-import { createBoard, createCodeFile, createDocument, itemLabel, itemsMap, type ItemModule } from './actions';
+import { createPage, enableFeature, itemLabel, itemsMap, type ItemModule } from './actions';
 import { itemName, MODULE_NAMES } from './viewLabel';
 import { useYItems } from '../hooks/useY';
 import { useTick } from '../hooks/useInterval';
@@ -16,7 +16,7 @@ import { useUI } from '../store/ui';
 import { queryTimeline } from '../lib/timeline';
 import { relativeTime } from '../lib/time';
 import { CursorPage } from '../components/Cursors';
-import { Avatar, AvatarStack, Button } from '../components/ui';
+import { Avatar, AvatarStack, Button, Spinner } from '../components/ui';
 
 export function Overview() {
   const ws = useWorkspace();
@@ -54,6 +54,7 @@ export function Overview() {
           <FeatureCard key={f} feature={f} />
         ))}
         <NotesCard />
+        <AddAreaCard />
       </div>
 
       <RecentTemplateActivity />
@@ -159,7 +160,7 @@ function FeatureCard({ feature }: { feature: Feature }) {
   const items = useYItems(itemsMap(ws.doc, module));
   const info = FEATURE_INFO[feature];
   const recent = [...items].reverse().slice(0, 5);
-  const add = () => (module === 'code' ? void createCodeFile(ws, me) : module === 'docs' ? createDocument(ws, me) : createBoard(ws, me));
+  const add = () => void createPage(ws, module, me);
   return (
     <section className={`module-card feature-${feature}`}>
       <header>
@@ -195,6 +196,48 @@ function FeatureCard({ feature }: { feature: Feature }) {
           );
         })}
         {items.length === 0 && <li className="muted small pad-sm">아직 비어 있습니다</li>}
+      </ul>
+    </section>
+  );
+}
+
+/** 템플릿 안에서 바로 영역(디자인 · 코딩 · 문서)을 더한다 — 설정에 들어가지 않아도 된다 */
+function AddAreaCard() {
+  const ws = useWorkspace();
+  const me = useSession((s) => s.user)!;
+  const [busy, setBusy] = useState<Feature | null>(null);
+  const missing = FEATURE_ORDER.filter((f) => !ws.template.features.includes(f));
+  if (!ws.canEdit || missing.length === 0) return null;
+  const add = async (f: Feature) => {
+    setBusy(f);
+    const ok = await enableFeature(ws, f, me);
+    setBusy(null);
+    if (ok) ws.go(f);
+  };
+  return (
+    <section className="module-card add-area-card">
+      <header>
+        <span className="module-card-emoji">
+          <Plus size={20} />
+        </span>
+        <div>
+          <h3>영역 추가</h3>
+          <span className="muted small">필요한 작업 공간을 이 템플릿에 바로 더합니다</span>
+        </div>
+      </header>
+      <ul>
+        {missing.map((f) => (
+          <li key={f}>
+            <button onClick={() => void add(f)} disabled={busy !== null} aria-label={`${FEATURE_INFO[f].name} 영역 추가`}>
+              <span>{FEATURE_INFO[f].emoji}</span>
+              <span className="add-area-text">
+                <b>{FEATURE_INFO[f].name}</b>
+                <span className="muted small">{FEATURE_INFO[f].description}</span>
+              </span>
+              {busy === f ? <Spinner size={14} /> : <Plus size={14} className="hover-arrow" />}
+            </button>
+          </li>
+        ))}
       </ul>
     </section>
   );
