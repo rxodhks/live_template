@@ -1,6 +1,6 @@
 import { memo } from 'react';
 import type { Shape } from '@shared/schema';
-import { TEXT_FONT, boundsOf, lineHeight, wrapText } from './geometry';
+import { type LineGeom, TEXT_FONT, boundsOf, endAngle, lineGeom, linePath, lineHeight, wrapText } from './geometry';
 
 interface Props {
   shape: Shape;
@@ -48,14 +48,15 @@ function ShapeText({ shape }: { shape: Shape }) {
   );
 }
 
-function ArrowHead({ shape }: { shape: Shape }) {
-  const x2 = shape.x + shape.w;
-  const y2 = shape.y + shape.h;
-  const angle = Math.atan2(shape.h, shape.w);
-  const size = 10 + shape.strokeWidth * 2;
+/** 화살표 머리 크기 (선 굵기에 비례) */
+export const arrowHeadSize = (strokeWidth: number) => 10 + strokeWidth * 2;
+
+function ArrowHead({ shape, g }: { shape: Shape; g: LineGeom }) {
+  const angle = endAngle(g);
+  const size = arrowHeadSize(shape.strokeWidth);
   const a1 = angle + Math.PI - Math.PI / 7;
   const a2 = angle + Math.PI + Math.PI / 7;
-  const points = `${x2},${y2} ${x2 + Math.cos(a1) * size},${y2 + Math.sin(a1) * size} ${x2 + Math.cos(a2) * size},${y2 + Math.sin(a2) * size}`;
+  const points = `${g.x2},${g.y2} ${g.x2 + Math.cos(a1) * size},${g.y2 + Math.sin(a1) * size} ${g.x2 + Math.cos(a2) * size},${g.y2 + Math.sin(a2) * size}`;
   return <polygon points={points} fill={none(shape.stroke)} stroke={none(shape.stroke)} strokeWidth={1} strokeLinejoin="round" />;
 }
 
@@ -100,15 +101,19 @@ export const ShapeView = memo(function ShapeView({ shape, exporting, zoom = 1, h
       body = !exporting ? <rect x={b.x} y={b.y} width={b.w} height={b.h} fill="transparent" /> : null;
       break;
     case 'line':
-    case 'arrow':
+    case 'arrow': {
+      // 화살표는 가운데를 끌어 휠 수 있다. 선 끝은 머리 안쪽에서 멈춰 둥근 끝이 머리 밖으로 나오지 않게
+      const g = lineGeom(shape);
+      const arrow = shape.type === 'arrow';
       body = (
         <>
-          {!exporting && <line x1={shape.x} y1={shape.y} x2={shape.x + shape.w} y2={shape.y + shape.h} stroke="transparent" strokeWidth={hitWidth} strokeLinecap="round" />}
-          <line x1={shape.x} y1={shape.y} x2={shape.x + shape.w} y2={shape.y + shape.h} stroke={none(shape.stroke)} strokeWidth={shape.strokeWidth} strokeLinecap="round" />
-          {shape.type === 'arrow' && <ArrowHead shape={shape} />}
+          {!exporting && <path d={linePath(g)} fill="none" stroke="transparent" strokeWidth={hitWidth} strokeLinecap="round" />}
+          <path d={linePath(g, arrow ? arrowHeadSize(shape.strokeWidth) * 0.5 : 0)} fill="none" stroke={none(shape.stroke)} strokeWidth={shape.strokeWidth} strokeLinecap="round" />
+          {arrow && <ArrowHead shape={shape} g={g} />}
         </>
       );
       break;
+    }
     case 'frame':
       // 아트보드: 흰 종이 + 위쪽 이름표. 안쪽을 누르면 빈 캔버스처럼(그리기 · 영역 선택), 이름표를 눌러 고른다
       body = (

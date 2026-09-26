@@ -140,6 +140,8 @@ export interface Shape {
   align?: 'left' | 'center' | 'right';
   /** pen: 바운딩 박스 기준 0~1 정규화 좌표 [x0,y0,x1,y1,...] */
   points?: number[];
+  /** arrow: 곡선 가운데가 시작→끝 직선에서 수직으로 벗어난 거리 (0 또는 없으면 직선) */
+  bend?: number;
   /** frame(아트보드): 이름 · 고른 형식(iphone-16, a4 …) */
   name?: string;
   preset?: string;
