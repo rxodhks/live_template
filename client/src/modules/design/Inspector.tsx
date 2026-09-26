@@ -13,6 +13,7 @@ import {
   Lock,
   Magnet,
   Ruler,
+  Spline,
   Trash2,
   Unlock,
 } from 'lucide-react';
@@ -54,6 +55,14 @@ function Row({ label, children }: { label: string; children: ReactNode }) {
     </div>
   );
 }
+
+/** 선의 각도 (도, 화면 위쪽이 +) */
+const lineAngle = (s: Shape) => Math.round((-Math.atan2(s.h, s.w) * 180) / Math.PI * 10) / 10;
+/** 길이 · 각도 → 시작점 기준 w, h */
+const polar = (len: number, deg: number): Partial<Shape> => {
+  const a = (-deg * Math.PI) / 180;
+  return { w: Math.round(Math.cos(a) * len * 10) / 10, h: Math.round(Math.sin(a) * len * 10) / 10 };
+};
 
 function NumberInput({ value, onChange, disabled, min, step = 1 }: { value: number; onChange: (v: number) => void; disabled?: boolean; min?: number; step?: number }) {
   return (
@@ -280,7 +289,7 @@ export function Inspector({ board }: { board: YItem }) {
             <label>
               Y <NumberInput value={b.y} disabled={readOnly || first.locked} onChange={(v) => apply({ y: first.y + (v - b.y) }, '위치 변경')} />
             </label>
-            {!isLine(first) && (
+            {!isLine(first) ? (
               <>
                 <label>
                   W <NumberInput value={b.w} min={4} disabled={readOnly || first.locked} onChange={(v) => apply({ w: v }, '크기 변경')} />
@@ -289,8 +298,26 @@ export function Inspector({ board }: { board: YItem }) {
                   H <NumberInput value={b.h} min={4} disabled={readOnly || first.locked} onChange={(v) => apply({ h: v }, '크기 변경')} />
                 </label>
               </>
+            ) : (
+              // 선 · 화살표는 시작점을 기준으로 길이와 각도(위쪽이 +)
+              <>
+                <label>
+                  길이 <NumberInput value={Math.hypot(first.w, first.h)} min={1} disabled={readOnly || first.locked} onChange={(v) => apply(polar(v, lineAngle(first)), '길이 변경')} />
+                </label>
+                <label>
+                  각도 <NumberInput value={lineAngle(first)} disabled={readOnly || first.locked} onChange={(v) => apply(polar(Math.hypot(first.w, first.h), v), '각도 변경')} />
+                </label>
+              </>
             )}
           </div>
+          {first.type === 'arrow' && (
+            <div className="insp-buttons">
+              <Button size="sm" icon={<Spline size={14} />} disabled={readOnly || first.locked || !first.bend} onClick={() => apply({ bend: 0 }, '➖ 화살표 곧게 펴기')}>
+                곧게 펴기
+              </Button>
+              <span className="insp-help">가운데 점을 끌면 휘어집니다</span>
+            </div>
+          )}
         </>
       )}
 

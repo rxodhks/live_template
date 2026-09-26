@@ -13,7 +13,7 @@ import type { LivePen } from '@shared/protocol';
 import { isTypingTarget, throttle } from '../../lib/util';
 import { useDesign, type Tool } from './store';
 import { ShapeView } from './ShapeView';
-import { type Box, type Handle, boundsOf, contains, intersects, isLine, lineHeight, resizeBox, snapAngle, snapTo, unionBounds, wrapText, TEXT_FONT } from './geometry';
+import { type Box, type Handle, bendAt, boundsOf, contains, intersects, isLine, lineGeom, lineHeight, linePath, resizeBox, snapAngle, snapTo, unionBounds, wrapText, TEXT_FONT } from './geometry';
 import { DEFAULT_SIZE, copyShapes, defaultShape, deleteShapes, insertShapes, maxZ, newFrame, updateShapes, useShapes, withFrameChildren, type ShapeMap } from './ops';
 import { promptDialog } from '../../components/ui';
 import { pagePx } from '../docs/page/pageSizes';
@@ -38,6 +38,8 @@ const PEN_LIVE_MS = 80;
 const PEN_REVEAL_MS = 120;
 const MIN_ZOOM = 0.1;
 const MAX_ZOOM = 5;
+/** 휘기 손잡이를 직선 가까이(화면 px) 가져가면 곧은 화살표로 붙는다 */
+const BEND_SNAP_PX = 6;
 
 /** 복사/붙여넣기용 (탭 안에서 유지) */
 let clipboard: Shape[] = [];
@@ -421,11 +423,20 @@ export function DesignCanvas({ board, onApi, onZoom, onAddArtboard }: Props) {
         const o = d.orig;
         const px = snapTo(p.x, snap);
         const py = snapTo(p.y, snap);
-        ws.action('⤡ 크기 조절 중');
+        ws.action(d.handle === 'bend' ? '↪️ 화살표 휘는 중' : isLine(o) ? '⤡ 끝점 옮기는 중' : '⤡ 크기 조절 중');
         schedule(() => {
           if (isLine(o)) {
-            if (d.handle === 'start') updateShapes(map, { [o.id]: { x: px, y: py, w: o.x + o.w - px, h: o.y + o.h - py } });
-            else {
+            if (d.handle === 'bend') {
+              // 가운데 손잡이: 포인터 쪽으로 휘고, 직선 가까이 오면 다시 곧게
+              const bend = bendAt(o, p.x, p.y);
+              updateShapes(map, { [o.id]: { bend: Math.abs(bend) * viewRef.current.zoom < BEND_SNAP_PX ? 0 : Math.round(bend) } });
+            } else if (d.handle === 'start') {
+              // 반대쪽 끝은 그대로 두고 이 끝만 옮긴다 (Shift: 45° 단위)
+              const ex = o.x + o.w;
+              const ey = o.y + o.h;
+              const v = e.shiftKey ? snapAngle(px - ex, py - ey) : { dx: px - ex, dy: py - ey };
+              updateShapes(map, { [o.id]: { x: ex + v.dx, y: ey + v.dy, w: -v.dx, h: -v.dy } });
+            } else {
               const v = e.shiftKey ? snapAngle(px - o.x, py - o.y) : { dx: px - o.x, dy: py - o.y };
               updateShapes(map, { [o.id]: { w: v.dx, h: v.dy } });
             }
@@ -539,6 +550,16 @@ export function DesignCanvas({ board, onApi, onZoom, onAddArtboard }: Props) {
   /** 도형의 글자를 편집하거나, 빈 곳이면 새 텍스트 상자를 만든다 */
   function openAt(target: Element, clientX: number, clientY: number) {
     if (readOnly) return;
+    // 손잡이를 두 번 누른 경우: 휘기 손잡이면 곧게 펴고, 나머지는 아무 것도 하지 않는다 (새 텍스트 상자 X)
+    const handle = target.closest('[data-handle]')?.getAttribute('data-handle');
+    if (handle) {
+      const s = selection.length === 1 ? byId.get(selection[0]) : undefined;
+      if (handle === 'bend' && s?.bend && !s.locked) {
+        updateShapes(map, { [s.id]: { bend: 0 } });
+        ws.action('➖ 화살표 곧게 펴기');
+      }
+      return;
+    }
     const shapeId = target.closest('[data-shape-id]')?.getAttribute('data-shape-id');
     const s = shapeId ? byId.get(shapeId) : undefined;
     // 아트보드 이름표를 두 번 누르면 이름 바꾸기
@@ -785,12 +806,19 @@ export function DesignCanvas({ board, onApi, onZoom, onAddArtboard }: Props) {
 
           {/* 다른 사람의 선택 영역 */}
           {viewers.map((p) => {
-            const b = unionBounds((p.selection ?? []).map((id) => byId.get(id)).filter((s): s is Shape => !!s));
+            const picked = (p.selection ?? []).map((id) => byId.get(id)).filter((s): s is Shape => !!s);
+            const b = unionBounds(picked);
             if (!b) return null;
             const pad = 4 / view.zoom;
+            const only = picked.length === 1 && isLine(picked[0]) ? picked[0] : null;
             return (
               <g key={`sel-${p.socketId}`} className="remote-selection" style={{ ['--user-color' as string]: p.user.color }}>
-                <rect x={b.x - pad} y={b.y - pad} width={b.w + pad * 2} height={b.h + pad * 2} fill="none" stroke={p.user.color} strokeWidth={2 / view.zoom} strokeDasharray={`${6 / view.zoom} ${4 / view.zoom}`} rx={4 / view.zoom} />
+                {only ? (
+                  // 선 · 화살표는 상자 대신 선을 따라 표시
+                  <path d={linePath(lineGeom(only))} fill="none" stroke={p.user.color} strokeOpacity={0.35} strokeWidth={only.strokeWidth + 6 / view.zoom} strokeLinecap="round" />
+                ) : (
+                  <rect x={b.x - pad} y={b.y - pad} width={b.w + pad * 2} height={b.h + pad * 2} fill="none" stroke={p.user.color} strokeWidth={2 / view.zoom} strokeDasharray={`${6 / view.zoom} ${4 / view.zoom}`} rx={4 / view.zoom} />
+                )}
                 <g transform={`translate(${b.x - pad} ${b.y - pad - 20 / view.zoom}) scale(${1 / view.zoom})`}>
                   <rect height={18} width={p.user.name.length * 12 + 28} rx={4} fill={p.user.color} />
                   <text x={6} y={13} fontSize={11} fill="#fff" fontFamily={TEXT_FONT} fontWeight={600}>
@@ -804,7 +832,12 @@ export function DesignCanvas({ board, onApi, onZoom, onAddArtboard }: Props) {
           {/* 내 선택 영역 + 핸들 */}
           {selBounds && !editing && (
             <g className="my-selection">
-              <rect x={selBounds.x} y={selBounds.y} width={selBounds.w} height={selBounds.h} fill="none" className="sel-outline" strokeWidth={1.5 / view.zoom} />
+              {selectedShapes.length === 1 && isLine(selectedShapes[0]) ? (
+                // 선 · 화살표 하나: 상자 없이 선을 따라 얇게 강조하고 끝점(과 휘기) 손잡이만
+                <path d={linePath(lineGeom(selectedShapes[0]))} fill="none" className="sel-outline" strokeWidth={1.5 / view.zoom} />
+              ) : (
+                <rect x={selBounds.x} y={selBounds.y} width={selBounds.w} height={selBounds.h} fill="none" className="sel-outline" strokeWidth={1.5 / view.zoom} />
+              )}
               {selectedShapes.length === 1 && !readOnly && !selectedShapes[0].locked && (
                 <Handles shape={selectedShapes[0]} size={handleSize} />
               )}
@@ -861,16 +894,30 @@ function penPatch(points: number[]): Partial<Shape> {
 
 function Handles({ shape, size }: { shape: Shape; size: number }) {
   if (isLine(shape)) {
+    const g = lineGeom(shape);
+    // 화살표: 가운데 손잡이를 끌면 휜다 (선이 너무 짧으면 끝점과 겹치므로 숨김)
+    const showBend = shape.type === 'arrow' && Math.hypot(shape.w, shape.h) > size * 5;
+    // 보이는 점보다 넓은 투명 영역으로 잡기 쉽게
+    const grip = (h: Handle, x: number, y: number, dot: React.ReactNode, tip: string) => (
+      <g key={h} data-handle={h} className={`handle-grip${h === 'bend' ? ' is-bend' : ''}`}>
+        <title>{tip}</title>
+        {/* 휘기 손잡이는 선 한가운데라 선을 잡아 옮기는 자리를 너무 가리지 않게 조금만 */}
+        <circle cx={x} cy={y} r={h === 'bend' ? size * 0.95 : size * 1.3} className="handle-hit" />
+        {dot}
+      </g>
+    );
     return (
       <>
-        {(
-          [
-            ['start', shape.x, shape.y],
-            ['end', shape.x + shape.w, shape.y + shape.h],
-          ] as const
-        ).map(([h, x, y]) => (
-          <circle key={h} data-handle={h} cx={x} cy={y} r={size / 1.6} className="handle handle-round" strokeWidth={size / 6} />
-        ))}
+        {showBend &&
+          grip(
+            'bend',
+            g.mx,
+            g.my,
+            <circle cx={g.mx} cy={g.my} r={size / 2.1} className={`handle handle-bend${g.curved ? ' is-curved' : ''}`} strokeWidth={size / 6} />,
+            g.curved ? '끌어서 휘기 · 두 번 눌러 곧게' : '끌어서 휘기',
+          )}
+        {grip('start', g.x1, g.y1, <circle cx={g.x1} cy={g.y1} r={size / 1.6} className="handle handle-round" strokeWidth={size / 5} />, '시작점 · Shift: 45° 단위')}
+        {grip('end', g.x2, g.y2, <circle cx={g.x2} cy={g.y2} r={size / 1.6} className="handle handle-round" strokeWidth={size / 5} />, '끝점 · Shift: 45° 단위')}
       </>
     );
   }

@@ -1230,6 +1230,33 @@ button.doc-emoji:hover:not(:disabled) {
 .handle-round {
   cursor: crosshair;
 }
+.handle-hit {
+  fill: transparent;
+  stroke: none;
+}
+.handle-grip:hover .handle-round,
+.handle-round:hover {
+  fill: color-mix(in srgb, var(--accent) 22%, #fff);
+}
+/* 화살표 휘기 손잡이: 곧을 때는 옅게, 휘었으면 진하게 */
+.handle-bend {
+  fill: color-mix(in srgb, var(--accent) 35%, #fff);
+  stroke: #fff;
+}
+.handle-grip {
+  cursor: crosshair;
+}
+.handle-grip.is-bend {
+  cursor: grab;
+}
+.handle-bend.is-curved,
+.handle-grip:hover .handle-bend,
+.handle-bend:hover {
+  fill: var(--accent);
+}
+.handle-grip.is-bend:active {
+  cursor: grabbing;
+}
 .marquee {
   fill: color-mix(in srgb, var(--accent) 10%, transparent);
   stroke: var(--accent);
@@ -1433,6 +1460,10 @@ button.doc-emoji:hover:not(:disabled) {
   font-size: 12px;
   color: var(--text-3);
   font-weight: 600;
+  white-space: nowrap;
+}
+.insp-grid label .input {
+  min-width: 0;
 }
 .insp-buttons {
   display: flex;

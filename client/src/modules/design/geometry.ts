@@ -9,14 +9,95 @@ export interface Box {
 
 export const isLine = (s: Pick<Shape, 'type'>) => s.type === 'line' || s.type === 'arrow';
 
-/** 음수 크기(선/화살표)를 정규화한 경계 상자 */
-export function boundsOf(s: Pick<Shape, 'x' | 'y' | 'w' | 'h'>): Box {
+type Geo = Pick<Shape, 'x' | 'y' | 'w' | 'h'> & Partial<Pick<Shape, 'type' | 'bend'>>;
+
+/**
+ * 선/화살표의 모양. 화살표는 가운데를 끌어 휠 수 있다 (2차 곡선).
+ *  · (x1,y1)→(x2,y2): 양 끝
+ *  · (mx,my): 곡선의 가운데 = 휘기 손잡이 자리
+ *  · (cx,cy): 곡선 조절점 (가운데가 손잡이 위치를 지나도록 2배 거리)
+ */
+export interface LineGeom {
+  x1: number;
+  y1: number;
+  x2: number;
+  y2: number;
+  mx: number;
+  my: number;
+  cx: number;
+  cy: number;
+  curved: boolean;
+}
+
+export function lineGeom(s: Geo): LineGeom {
+  const x1 = s.x;
+  const y1 = s.y;
+  const x2 = s.x + s.w;
+  const y2 = s.y + s.h;
+  const bend = s.type === 'arrow' ? s.bend ?? 0 : 0;
+  const len = Math.hypot(s.w, s.h) || 1;
+  // 시작→끝 방향의 왼쪽 수직 방향
+  const nx = -s.h / len;
+  const ny = s.w / len;
+  const hx = (x1 + x2) / 2;
+  const hy = (y1 + y2) / 2;
+  return { x1, y1, x2, y2, mx: hx + nx * bend, my: hy + ny * bend, cx: hx + nx * bend * 2, cy: hy + ny * bend * 2, curved: bend !== 0 };
+}
+
+/** 포인터 위치로 휜 정도 구하기 (가운데 손잡이가 포인터를 따라가도록 수직 성분만) */
+export function bendAt(s: Geo, px: number, py: number): number {
+  const len = Math.hypot(s.w, s.h) || 1;
+  return (px - (s.x + s.w / 2)) * (-s.h / len) + (py - (s.y + s.h / 2)) * (s.w / len);
+}
+
+/** 끝을 back만큼 줄인 선 경로 (화살표 머리 아래로 선 끝이 삐져나오지 않게) */
+export function linePath(g: LineGeom, back = 0): string {
+  let { x2, y2 } = g;
+  if (back > 0) {
+    const tx = x2 - (g.curved ? g.cx : g.x1);
+    const ty = y2 - (g.curved ? g.cy : g.y1);
+    const tl = Math.hypot(tx, ty) || 1;
+    const k = Math.min(back, tl * 0.5) / tl;
+    x2 -= tx * k;
+    y2 -= ty * k;
+  }
+  const f = (v: number) => Math.round(v * 100) / 100;
+  return g.curved ? `M${f(g.x1)},${f(g.y1)} Q${f(g.cx)},${f(g.cy)} ${f(x2)},${f(y2)}` : `M${f(g.x1)},${f(g.y1)} L${f(x2)},${f(y2)}`;
+}
+
+/** 끝점에서의 진행 방향 (화살표 머리 각도) */
+export const endAngle = (g: LineGeom) => Math.atan2(g.y2 - (g.curved ? g.cy : g.y1), g.x2 - (g.curved ? g.cx : g.x1));
+
+/** 2차 곡선이 한 축에서 차지하는 범위 */
+function quadRange(a: number, c: number, b: number): [number, number] {
+  let lo = Math.min(a, b);
+  let hi = Math.max(a, b);
+  const den = a - 2 * c + b;
+  if (den !== 0) {
+    const t = (a - c) / den;
+    if (t > 0 && t < 1) {
+      const v = (1 - t) * (1 - t) * a + 2 * (1 - t) * t * c + t * t * b;
+      lo = Math.min(lo, v);
+      hi = Math.max(hi, v);
+    }
+  }
+  return [lo, hi];
+}
+
+/** 음수 크기(선/화살표)를 정규화한 경계 상자 — 휜 화살표는 곡선이 지나는 곳까지 */
+export function boundsOf(s: Geo): Box {
+  if (s.type === 'arrow' && s.bend) {
+    const g = lineGeom(s);
+    const [x1, x2] = quadRange(g.x1, g.cx, g.x2);
+    const [y1, y2] = quadRange(g.y1, g.cy, g.y2);
+    return { x: x1, y: y1, w: x2 - x1, h: y2 - y1 };
+  }
   const x = Math.min(s.x, s.x + s.w);
   const y = Math.min(s.y, s.y + s.h);
   return { x, y, w: Math.abs(s.w), h: Math.abs(s.h) };
 }
 
-export function unionBounds(shapes: Pick<Shape, 'x' | 'y' | 'w' | 'h'>[]): Box | null {
+export function unionBounds(shapes: Geo[]): Box | null {
   if (shapes.length === 0) return null;
   let x1 = Infinity;
   let y1 = Infinity;
@@ -39,7 +120,7 @@ export const intersects = (a: Box, b: Box) => a.x < b.x + b.w && a.x + a.w > b.x
 
 export const snapTo = (v: number, on: boolean, step = 8) => (on ? Math.round(v / step) * step : v);
 
-export type Handle = 'nw' | 'n' | 'ne' | 'e' | 'se' | 's' | 'sw' | 'w' | 'start' | 'end';
+export type Handle = 'nw' | 'n' | 'ne' | 'e' | 'se' | 's' | 'sw' | 'w' | 'start' | 'end' | 'bend';
 
 /** 핸들을 끌어 크기를 바꾼 새 상자 */
 export function resizeBox(orig: Box, handle: Handle, px: number, py: number, keepRatio: boolean): Box {
