@@ -226,14 +226,19 @@ export class TemplateRoom extends DurableObject<Env> {
     if (!user || !role || !templateId) return new Response('잘못된 요청', { status: 400 });
     if (!this.templateId) this.setMetaValue('templateId', templateId);
 
+    // 기다려야 하는 일은 연결을 받기 전에 끝낸다.
+    // 받은 뒤에 기다리면 그사이 들어온 사람의 접속 알림이 welcome보다 먼저 도착하고,
+    // welcome의 (오래된) 접속자 목록이 그것을 덮어써 서로 보이지 않게 된다.
+    const requests: JoinRequest[] = role === 'viewer' ? [] : await this.directory.pendingRequestsFor(templateId);
+
     const pair = new WebSocketPair();
     const [client, server] = Object.values(pair);
     this.ctx.acceptWebSocket(server, [user.id]);
     const a: Attachment = { sid: newId(10), user, role, view: { module: 'overview', itemId: null }, viewport: null, selection: [], idle: false, synced: false, aw: [], notes: {} };
     server.serializeAttachment(a);
 
+    // 연결 받기 → 접속자 목록 → welcome → 다른 사람에게 알림까지 한 번에 (중간에 await 없음)
     const others = this.sockets().filter((s) => s.a.sid !== a.sid);
-    const requests: JoinRequest[] = role === 'viewer' ? [] : await this.directory.pendingRequestsFor(templateId);
     this.send(server, {
       t: 'welcome',
       sid: a.sid,

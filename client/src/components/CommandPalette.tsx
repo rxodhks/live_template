@@ -145,7 +145,7 @@ function Palette_() {
       }
       if (!ws.isPrivate)
         list.push({ id: 'chat', group: '작업', label: ws.chatOpen ? '채팅 닫기' : '채팅 열기', icon: <MessageSquare size={16} />, run: () => ws.setChatOpen(!ws.chatOpen) });
-      for (const p of uniqueUsers(others))
+      for (const p of uniqueUsers(others, me?.id))
         list.push({
           id: `follow:${p.socketId}`,
           group: '함께 작업 중',

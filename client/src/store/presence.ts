@@ -65,10 +65,11 @@ export function pickUserPresence(others: Record<string, RemotePresence>, userId:
 
 export const useUserPresence = (userId: string | null) => usePresence((s) => pickUserPresence(s.others, userId));
 
-/** 같은 사용자의 여러 탭을 하나로 묶은 온라인 사용자 목록 */
-export function uniqueUsers(others: Record<string, RemotePresence>): RemotePresence[] {
+/** 같은 사용자의 여러 탭을 하나로 묶은 온라인 사용자 목록 (meId를 주면 내 다른 탭은 뺀다) */
+export function uniqueUsers(others: Record<string, RemotePresence>, meId?: string): RemotePresence[] {
   const byUser = new Map<string, RemotePresence>();
   for (const p of Object.values(others)) {
+    if (p.user.id === meId) continue;
     const existing = byUser.get(p.user.id);
     if (!existing || (existing.idle && !p.idle)) byUser.set(p.user.id, p);
   }
