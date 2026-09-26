@@ -15,6 +15,7 @@ import { toHtmlDocument, toMarkdown } from '../../lib/markdown';
 import { Avatar, Button, EmptyState, IconButton, Menu, Spinner } from '../../components/ui';
 import { useViewers } from '../../components/Cursors';
 import { DocEditor } from './DocEditor';
+import { useDocEnv } from './blocks/useDocEnv';
 
 const DOC_EMOJIS = ['📄', '📝', '📘', '🧭', '🗓️', '📊', '💡', '✅', '🚀', '📌', '🔍', '🎯'];
 
@@ -66,6 +67,7 @@ function DocView({ item }: { item: YItem }) {
   const viewers = useViewers(ws.view);
   const [editor, setEditor] = useState<Editor | null>(null);
   const [titleDraft, setTitleDraft] = useState<string | null>(null);
+  const env = useDocEnv({ uploads: true });
 
   const commitTitle = () => {
     if (titleDraft === null) return;
@@ -79,7 +81,7 @@ function DocView({ item }: { item: YItem }) {
   };
 
   const exportMd = () => editor && downloadText(`${title || 'document'}.md`, toMarkdown(editor.getJSON(), title), 'text/markdown;charset=utf-8');
-  const exportHtml = () => editor && downloadText(`${title || 'document'}.html`, toHtmlDocument(title, editor.getHTML()), 'text/html;charset=utf-8');
+  const exportHtml = async () => editor && downloadText(`${title || 'document'}.html`, await toHtmlDocument(title, editor.getHTML()), 'text/html;charset=utf-8');
 
   return (
     <div className="docs-module">
@@ -100,7 +102,7 @@ function DocView({ item }: { item: YItem }) {
           width={220}
           items={[
             { label: 'Markdown으로 내보내기', icon: <Download size={14} />, onSelect: exportMd },
-            { label: 'HTML로 내보내기', icon: <Download size={14} />, onSelect: exportHtml },
+            { label: 'HTML로 내보내기', icon: <Download size={14} />, onSelect: () => void exportHtml() },
             {
               label: 'Markdown 복사',
               icon: <Copy size={14} />,
@@ -124,6 +126,7 @@ function DocView({ item }: { item: YItem }) {
         user={me}
         readOnly={!ws.canEdit}
         docKey={id}
+        env={env}
         onEditor={setEditor}
         onLocalEdit={() => {
           ws.action('✏️ 문서 작성 중');

@@ -1,4 +1,4 @@
-import { useEffect, useRef } from 'react';
+import { useEffect, useMemo, useRef } from 'react';
 import { EditorContent, useEditor, useEditorState, type Editor } from '@tiptap/react';
 import { StarterKit } from '@tiptap/starter-kit';
 import { Collaboration, isChangeOrigin } from '@tiptap/extension-collaboration';
@@ -8,6 +8,7 @@ import { Highlight } from '@tiptap/extension-highlight';
 import { TextAlign } from '@tiptap/extension-text-align';
 import { TableKit } from '@tiptap/extension-table';
 import { CharacterCount, Placeholder } from '@tiptap/extensions';
+import 'katex/dist/katex.min.css';
 import type * as Y from 'yjs';
 import type { Awareness } from 'y-protocols/awareness';
 import {
@@ -33,11 +34,16 @@ import {
   Columns3,
   Rows3,
   Trash2,
+  Plus,
 } from 'lucide-react';
 import type { PublicUser } from '@shared/types';
 import { IconButton, promptDialog } from '../../components/ui';
 import { CursorLayer } from '../../components/Cursors';
 import { cx } from '../../lib/util';
+import { blockExtensions } from './blocks/extensions';
+import { BlockHandle } from './blocks/BlockHandle';
+import { BubbleToolbar } from './blocks/BubbleToolbar';
+import { type DocEnv, EMPTY_ENV } from './blocks/env';
 
 interface Props {
   fragment: Y.XmlFragment;
@@ -54,19 +60,37 @@ interface Props {
   header?: React.ReactNode;
   /** 페이지 커서 공유 여부 (비밀 노트도 같은 방식) */
   cursors?: boolean;
+  /** 멘션할 사람 · 페이지, 이미지 올리기 허용 등 */
+  env?: DocEnv;
 }
 
 /** TipTap(ProseMirror) + Yjs 실시간 문서 편집기 */
-export function DocEditor({ fragment, awareness, user, readOnly, placeholder, docKey, onLocalEdit, onSelectText, onEditor, header, cursors = true }: Props) {
+export function DocEditor({ fragment, awareness, user, readOnly, placeholder, docKey, onLocalEdit, onSelectText, onEditor, header, cursors = true, env = EMPTY_ENV }: Props) {
   const cb = useRef({ onLocalEdit, onSelectText });
   cb.current = { onLocalEdit, onSelectText };
+  // 편집기는 문서마다 한 번만 만들어지므로, 바뀌는 값은 항상 최신을 읽도록 감싼다
+  const envRef = useRef(env);
+  envRef.current = env;
+  const stableEnv = useMemo<DocEnv>(
+    () => ({
+      get uploads() {
+        return envRef.current.uploads;
+      },
+      users: () => envRef.current.users(),
+      pages: () => envRef.current.pages(),
+      openPage: (m, id) => envRef.current.openPage(m, id),
+      subscribe: (fn) => envRef.current.subscribe(fn),
+    }),
+    [],
+  );
 
   const editor = useEditor(
     {
       editable: !readOnly,
       extensions: [
         // trailingNode는 문서를 열기만 해도 빈 문단을 추가해 동시 편집 시 문단이 늘어나므로 끈다
-        StarterKit.configure({ undoRedo: false, trailingNode: false, link: { openOnClick: false, autolink: true } }),
+        // 코드 블록은 문법 색이 들어간 것으로 바꿔 쓴다 (같은 이름 · 속성)
+        StarterKit.configure({ undoRedo: false, trailingNode: false, codeBlock: false, link: { openOnClick: false, autolink: true } }),
         Collaboration.configure({ fragment }),
         CollaborationCaret.configure({
           provider: { awareness },
@@ -74,13 +98,20 @@ export function DocEditor({ fragment, awareness, user, readOnly, placeholder, do
         }),
         TaskList,
         TaskItem.configure({ nested: true }),
-        Highlight,
+        Highlight.configure({ multicolor: true }),
         TextAlign.configure({ types: ['heading', 'paragraph'] }),
         TableKit.configure({ table: { resizable: false } }),
         CharacterCount,
         Placeholder.configure({
-          placeholder: ({ node }) => (node.type.name === 'heading' ? '제목' : placeholder ?? "내용을 입력하세요. '/' 대신 마크다운 단축키(#, -, [ ])를 쓸 수 있어요."),
+          includeChildren: true,
+          placeholder: ({ node }) =>
+            node.type.name === 'heading'
+              ? `제목 ${node.attrs.level}`
+              : node.type.name === 'detailsSummary'
+                ? '토글 제목'
+                : (placeholder ?? "'/'를 입력해 블록 추가 · '@'로 사람 · 페이지 멘션"),
         }),
+        ...blockExtensions(stableEnv),
       ],
       onUpdate: ({ editor, transaction }) => {
         // 원격 변경·초기 렌더링은 제외하고, 내가 직접 편집한 경우만 활동으로 본다
@@ -124,11 +155,13 @@ export function DocEditor({ fragment, awareness, user, readOnly, placeholder, do
   return (
     <div className="doc-editor">
       {editor && !readOnly && <DocToolbar editor={editor} />}
+      {editor && !readOnly && <BubbleToolbar editor={editor} />}
       <div className="cursor-host" ref={hostRef}>
         <div className="doc-scroll page-scroll" ref={scrollRef}>
           <div className="doc-page" ref={pageRef}>
             {header}
             <EditorContent editor={editor} className="doc-content" />
+            {editor && !readOnly && <BlockHandle editor={editor} />}
           </div>
         </div>
         {cursors && <CursorLayer hostRef={hostRef} scrollRef={scrollRef} anchorRef={pageRef} />}
@@ -213,6 +246,24 @@ function DocToolbar({ editor }: { editor: Editor }) {
       <T label="다시 실행" onClick={() => chain().redo().run()} disabled={!s.canRedo}>
         <Redo2 size={15} />
       </T>
+      <span className="tb-sep" />
+      <button
+        type="button"
+        className="tb-add"
+        onMouseDown={(e) => e.preventDefault()}
+        onClick={() => {
+          // 빈 줄이면 그 자리에서, 아니면 다음 줄에서 '/' 블록 메뉴를 연다
+          const { $from } = editor.state.selection;
+          if ($from.parent.isTextblock && $from.parent.content.size === 0) editor.chain().focus().insertContent('/').run();
+          else {
+            const after = $from.after();
+            editor.chain().focus().insertContentAt(after, { type: 'paragraph' }).setTextSelection(after + 1).insertContent('/').run();
+          }
+        }}
+        data-tip="블록 추가 (또는 빈 줄에서 / 입력)"
+      >
+        <Plus size={14} /> 블록
+      </button>
       <span className="tb-sep" />
       <select
         className="tb-select"

@@ -10,6 +10,7 @@ import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
 import * as Y from 'yjs';
+import { CLIENT_VERSION } from '../../shared/protocol.ts';
 
 const workerDir = path.resolve(import.meta.dirname, '..');
 const persistDir = fs.mkdtempSync(path.join(os.tmpdir(), 'lt-worker-'));
@@ -66,7 +67,7 @@ const sha256 = (s: string) => crypto.createHash('sha256').update(s).digest('hex'
 async function api<T = any>(method: string, url: string, token?: string, body?: unknown): Promise<{ status: number; data: T }> {
   const res = await fetch(`${base}/api${url}`, {
     method,
-    headers: { 'content-type': 'application/json', ...(token ? { authorization: `Bearer ${token}` } : {}) },
+    headers: { 'content-type': 'application/json', 'x-lt-client': String(CLIENT_VERSION), ...(token ? { authorization: `Bearer ${token}` } : {}) },
     body: body === undefined ? undefined : JSON.stringify(body),
   });
   return { status: res.status, data: (await res.json()) as T };
@@ -114,7 +115,7 @@ class Client {
   private seq = 0;
 
   constructor(templateId: string, token: string) {
-    this.ws = new WebSocket(`${base.replace('http', 'ws')}/api/templates/${templateId}/ws`, ['lt', token]);
+    this.ws = new WebSocket(`${base.replace('http', 'ws')}/api/templates/${templateId}/ws?cv=${CLIENT_VERSION}`, ['lt', token]);
     this.ws.onmessage = (e) => {
       const m = JSON.parse(String(e.data));
       this.messages.push(m);
@@ -175,9 +176,9 @@ class Client {
 }
 
 /** 실시간 연결이 거절되는지 (환영 메시지 없이 닫힘) */
-function wsRejected(id: string, token: string): Promise<boolean> {
+function wsRejected(id: string, token: string, clientVersion: number | null = CLIENT_VERSION): Promise<boolean> {
   return new Promise((resolve) => {
-    const ws = new WebSocket(`${base.replace('http', 'ws')}/api/templates/${id}/ws`, ['lt', token]);
+    const ws = new WebSocket(`${base.replace('http', 'ws')}/api/templates/${id}/ws${clientVersion === null ? '' : `?cv=${clientVersion}`}`, ['lt', token]);
     const timer = setTimeout(() => {
       ws.close();
       resolve(false);
@@ -632,6 +633,26 @@ describe('실시간 협업', () => {
     assert.equal((await api('GET', `/templates/${templateId}`, guest.token)).status, 404, '내보내진 뒤에는 볼 수 없다');
     a.close();
     g.close();
+  });
+});
+
+describe('예전 화면 차단', () => {
+  it('배포 전에 열어 둔 예전 화면은 실시간 연결을 받지 않고 새로고침을 안내한다', async () => {
+    const id = templateId;
+    // 지금 화면: 연결 · 조회 모두 된다
+    assert.equal(await wsRejected(id, owner.token), false);
+    assert.equal((await api('GET', `/templates/${id}`, owner.token)).status, 200);
+    // 버전을 보내지 않는 예전 화면: 연결 거절, 조회는 403 + 새로고침 안내 (예전 화면은 403에서 안내 문구를 보여 준다)
+    assert.equal(await wsRejected(id, owner.token, null), true);
+    const old = await raw('GET', `/api/templates/${id}`, { headers: { authorization: `Bearer ${owner.token}` } });
+    assert.equal(old.status, 403);
+    assert.equal(old.data.reason, 'outdated');
+    assert.match(old.data.error, /새로고침/);
+    // 버전이 낮은 화면: 426
+    assert.equal(await wsRejected(id, owner.token, CLIENT_VERSION - 1), true);
+    const lower = await raw('GET', `/api/templates/${id}`, { headers: { authorization: `Bearer ${owner.token}`, 'x-lt-client': String(CLIENT_VERSION - 1) } });
+    assert.equal(lower.status, 426);
+    assert.equal(lower.data.reason, 'outdated');
   });
 });
 

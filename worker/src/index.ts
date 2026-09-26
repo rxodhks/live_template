@@ -2,6 +2,7 @@ import type { AuthConfig, InviteOptions, OAuthProvider, PublicUser, Role, ShareU
 import { type AuthOutcome, Directory, SESSION_TTL_MS, TRASH_TTL_MS, hasRole } from './directory';
 import { TemplateRoom } from './room';
 import type { Env } from './env';
+import { CLIENT_VERSION, CLIENT_VERSION_HEADER, CLIENT_VERSION_PARAM } from '../../shared/protocol';
 import {
   COOKIE,
   OAUTH_PROVIDERS,
@@ -59,6 +60,16 @@ function tokenOf(req: Request): string | null {
     if (name === 'lt' && token) return token;
   }
   return readCookie(req, COOKIE.session);
+}
+
+/**
+ * 예전 화면(배포 전에 열어 둔 탭)은 새 블록을 모르고 문서에서 지워 버릴 수 있어 실시간 연결을 받지 않는다.
+ * 버전을 아예 보내지 않는 예전 화면은 403에서만 '접근 불가'로 멈추고 안내 문구를 보여 주므로 403으로 알린다.
+ */
+function requireCurrentClient(req: Request): void {
+  const raw = req.headers.get(CLIENT_VERSION_HEADER) ?? new URL(req.url).searchParams.get(CLIENT_VERSION_PARAM);
+  if ((Number(raw) || 0) >= CLIENT_VERSION) return;
+  throw new HttpError(raw === null ? 403 : 426, '마당이 새 버전으로 업데이트되었습니다. 페이지를 새로고침한 뒤 이어서 작업해 주세요.', { reason: 'outdated' });
 }
 
 const clientIp = (req: Request) => req.headers.get('cf-connecting-ip') ?? 'local';
@@ -307,6 +318,8 @@ route('POST', '/api/templates/:id/share', (c) => upload(c, 'shared'));
 route('POST', '/api/templates/:id/backup', (c) => upload(c, 'private'));
 
 route('GET', '/api/templates/:id', async (c) => {
+  // 실시간 연결이 거절된 화면은 이 요청으로 까닭을 확인한다 — 예전 화면도 여기서 새로고침 안내를 받는다
+  requireCurrentClient(c.req);
   const { template } = await access(c);
   return json({ template });
 });
@@ -398,6 +411,7 @@ route('GET', '/api/me/requests', async (c) => {
 /* 실시간 연결 */
 route('GET', '/api/templates/:id/ws', async (c) => {
   if (c.req.headers.get('upgrade')?.toLowerCase() !== 'websocket') throw new HttpError(426, 'WebSocket 연결이 필요합니다.');
+  requireCurrentClient(c.req);
   const { user, role, templateId } = await access(c);
   const headers = new Headers(c.req.headers);
   headers.set('x-lt-user', encodeURIComponent(JSON.stringify(user)));

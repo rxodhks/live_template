@@ -8,6 +8,7 @@ import './styles/pages.css';
 import './styles/modules.css';
 import './styles/spaces.css';
 import './styles/auth.css';
+import './styles/docblocks.css';
 
 applyTheme(useSession.getState().theme);
 

@@ -24,6 +24,8 @@ export class RoomConnection {
   sid: string | null = null;
   role: Role | null = null;
   deniedReason: string | null = null;
+  /** 서버가 이 화면이 예전 버전이라며 연결을 거절했다 (새로고침하면 된다) */
+  outdated = false;
 
   /** 같은 방에 있는 다른 연결들 (다른 사람 또는 내 다른 탭) */
   private others = new Set<string>();
@@ -201,7 +203,8 @@ export class RoomConnection {
     try {
       await api('GET', `/templates/${this.templateId}`);
     } catch (err) {
-      if (err instanceof ApiError && [401, 403, 404].includes(err.status)) return this.deny(err.message);
+      if (err instanceof ApiError && err.data.reason === 'outdated') this.outdated = true;
+      if (err instanceof ApiError && [401, 403, 404, 426].includes(err.status)) return this.deny(err.message);
     }
     this.scheduleRetry();
   }
