@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react';
 import type * as Y from 'yjs';
-import type { Shape, ShapeType } from '@shared/schema';
+import type { PageUnit, Shape, ShapeType } from '@shared/schema';
 import { newId } from '../../lib/util';
 import { STICKY_COLORS } from './store';
 import { boundsOf, contains } from './geometry';
@@ -145,7 +145,7 @@ export function copyShapes(map: ShapeMap, source: Shape[], offset: number, creat
   return list;
 }
 
-/** 새 아트보드 (크기는 CSS px) — 다른 도형을 가리지 않게 맨 뒤에 */
-export function newFrame(map: ShapeMap, box: { x: number; y: number; w: number; h: number }, name: string, preset: string, createdBy: string): Shape {
-  return { ...defaultShape('frame', box.x, box.y, minZ(map) - 1, createdBy), w: box.w, h: box.h, name, preset };
+/** 새 아트보드 (크기는 CSS px, unit은 크기를 정한 단위) — 다른 도형을 가리지 않게 맨 뒤에 */
+export function newFrame(map: ShapeMap, box: { x: number; y: number; w: number; h: number }, name: string, preset: string, unit: PageUnit, createdBy: string): Shape {
+  return { ...defaultShape('frame', box.x, box.y, minZ(map) - 1, createdBy), w: box.w, h: box.h, name, preset, unit };
 }

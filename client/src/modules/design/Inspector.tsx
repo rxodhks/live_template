@@ -17,7 +17,7 @@ import {
   Trash2,
   Unlock,
 } from 'lucide-react';
-import { SHAPE_LABEL, type Shape, type YItem } from '@shared/schema';
+import { PAGE_UNITS, SHAPE_LABEL, type PageUnit, type Shape, type YItem } from '@shared/schema';
 import { useWorkspace } from '../../workspace/context';
 import { useYField } from '../../hooks/useY';
 import { useSession } from '../../store/session';
@@ -27,9 +27,10 @@ import { Button, IconButton } from '../../components/ui';
 import { BOARD_BACKGROUNDS, PALETTE, STICKY_COLORS, useDesign } from './store';
 import { copyShapes, deleteShapes, maxZ, minZ, sortedShapes, updateShapes, useShapes, withFrameChildren, type ShapeMap } from './ops';
 import { boundsOf, isLine } from './geometry';
+import { frameSize, frameSizeText, framePreset, useBoardUnit } from './units';
 import { exportFrame, exportPng, exportSvg } from './export';
 import { pageSetupDialog } from '../docs/page/PageSetupDialog';
-import { ALL_PRESETS, describePage, pagePx } from '../docs/page/pageSizes';
+import { describePage, UNIT_DECIMALS, UNIT_STEP, fromPx, roundTo, storePx, toPx } from '../docs/page/pageSizes';
 
 function Swatches({ value, colors, onChange, allowNone, disabled }: { value?: string; colors: string[]; onChange: (c: string) => void; allowNone?: boolean; disabled?: boolean }) {
   return (
@@ -64,8 +65,8 @@ const polar = (len: number, deg: number): Partial<Shape> => {
   return { w: Math.round(Math.cos(a) * len * 10) / 10, h: Math.round(Math.sin(a) * len * 10) / 10 };
 };
 
-function NumberInput({ value, onChange, disabled, min, step = 1 }: { value: number; onChange: (v: number) => void; disabled?: boolean; min?: number; step?: number }) {
-  return (
+function NumberInput({ value, onChange, disabled, min, step = 1, suffix }: { value: number; onChange: (v: number) => void; disabled?: boolean; min?: number; step?: number; suffix?: string }) {
+  const input = (
     <input
       type="number"
       className="input input-xs"
@@ -75,9 +76,54 @@ function NumberInput({ value, onChange, disabled, min, step = 1 }: { value: numb
       disabled={disabled}
       onChange={(e) => {
         const v = Number(e.target.value);
-        if (Number.isFinite(v)) onChange(min !== undefined ? Math.max(min, v) : v);
+        if (e.target.value !== '' && Number.isFinite(v)) onChange(min !== undefined ? Math.max(min, v) : v);
       }}
     />
+  );
+  return suffix ? (
+    <span className="insp-num">
+      {input}
+      <span className="insp-num-unit">{suffix}</span>
+    </span>
+  ) : (
+    input
+  );
+}
+
+/** 길이 입력: 저장은 px, 보여 주고 입력받는 것은 고른 단위 (칸 안에 단위 표시) */
+function LengthInput({ px, unit, onChange, disabled, minPx, label }: { px: number; unit: PageUnit; onChange: (px: number) => void; disabled?: boolean; minPx?: number; label: string }) {
+  const d = UNIT_DECIMALS[unit];
+  return (
+    <span className="insp-num">
+      <input
+        type="number"
+        className="input input-xs"
+        aria-label={`${label} (${unit})`}
+        value={roundTo(fromPx(px, unit), d)}
+        step={UNIT_STEP[unit]}
+        min={minPx !== undefined ? roundTo(fromPx(minPx, unit), d) : undefined}
+        disabled={disabled}
+        onChange={(e) => {
+          const v = Number(e.target.value);
+          if (e.target.value === '' || !Number.isFinite(v)) return;
+          const next = roundTo(toPx(v, unit), 2);
+          onChange(minPx !== undefined ? Math.max(minPx, next) : next);
+        }}
+      />
+      <span className="insp-num-unit">{unit}</span>
+    </span>
+  );
+}
+
+function UnitSelect({ unit, onChange }: { unit: PageUnit; onChange: (u: PageUnit) => void }) {
+  return (
+    <select className="input input-xs insp-unit" value={unit} onChange={(e) => onChange(e.target.value as PageUnit)} aria-label="크기 단위" data-tip="크기 단위 — 이 브라우저에서 이 보드에 기억">
+      {PAGE_UNITS.map((u) => (
+        <option key={u} value={u}>
+          {u}
+        </option>
+      ))}
+    </select>
   );
 }
 
@@ -96,6 +142,7 @@ export function Inspector({ board }: { board: YItem }) {
   const byId = new Map(shapes.map((s) => [s.id, s]));
   const selected = selection.map((id) => byId.get(id)).filter((s): s is Shape => !!s);
   const first = selected[0];
+  const [unit, setUnit] = useBoardUnit(board, shapes);
 
   const apply = (patch: Partial<Shape>, label = '🎨 스타일 변경') => {
     if (readOnly) return;
@@ -125,6 +172,9 @@ export function Inspector({ board }: { board: YItem }) {
               />
             ))}
           </div>
+        </Row>
+        <Row label="크기 단위">
+          <UnitSelect unit={unit} onChange={setUnit} />
         </Row>
         <div className="insp-toggles">
           <button className={cx('chip-toggle', showGrid && 'is-on')} onClick={toggleGrid}>
@@ -196,11 +246,13 @@ export function Inspector({ board }: { board: YItem }) {
   /** 아트보드 크기 바꾸기 (위치 그대로) */
   const resizeFrame = async () => {
     if (!frame || readOnly) return;
-    const unit = { preset: frame.preset ?? 'custom', width: Math.round(frame.w), height: Math.round(frame.h), unit: 'px' as const, margin: 0, fontSize: 16 };
-    const r = await pageSetupDialog({ mode: 'edit', kind: 'artboard', initial: unit });
+    // 지금 크기를 아트보드의 단위로 보여 주고, 고른 단위를 함께 저장한다
+    const size = frameSize(frame);
+    const initial = { preset: framePreset(frame)?.id ?? 'custom', width: size.w, height: size.h, unit: size.unit, margin: 0, fontSize: 16 };
+    const r = await pageSetupDialog({ mode: 'edit', kind: 'artboard', initial });
     if (!r?.page) return;
-    const px = pagePx(r.page);
-    updateShapes(map, { [frame.id]: { w: Math.round(px.width), h: Math.round(px.height), preset: r.page.preset } });
+    const pg = r.page;
+    updateShapes(map, { [frame.id]: { w: storePx(pg.width, pg.unit), h: storePx(pg.height, pg.unit), preset: pg.preset, unit: pg.unit } });
     ws.action(`▢ 아트보드 크기 · ${describePage(r.page)}`);
   };
 
@@ -214,7 +266,10 @@ export function Inspector({ board }: { board: YItem }) {
       {frame && (
         <>
           <p className="insp-help">
-            {ALL_PRESETS.find((p) => p.id === frame.preset)?.name ?? '직접 입력'} · {Math.round(frame.w)} × {Math.round(frame.h)} px — 안에 그린 도형은 아트보드와 함께 움직입니다. 이름표를 두 번 누르면 이름을 바꿉니다.
+            <b>
+              {framePreset(frame)?.name ?? '직접 입력'} · {frameSizeText(frame)}
+            </b>{' '}
+            — 안에 그린 도형은 아트보드와 함께 움직입니다. 이름표를 두 번 누르면 이름을 바꿉니다.
           </p>
           <div className="insp-buttons">
             <Button size="sm" icon={<Ruler size={14} />} disabled={readOnly || frame.locked} onClick={() => void resizeFrame()}>
@@ -243,7 +298,7 @@ export function Inspector({ board }: { board: YItem }) {
           <Row label="선 색">
             <Swatches value={first.stroke} colors={PALETTE} onChange={(c) => apply({ stroke: c }, '🎨 선 색 변경')} allowNone={!isLine(first) && first.type !== 'pen'} disabled={readOnly} />
           </Row>
-          <Row label={`선 굵기 ${first.strokeWidth}`}>
+          <Row label={`선 굵기 ${first.strokeWidth}px`}>
             <input type="range" min={0} max={16} value={first.strokeWidth} disabled={readOnly} onChange={(e) => apply({ strokeWidth: Number(e.target.value) }, '선 굵기 변경')} />
           </Row>
         </>
@@ -252,7 +307,7 @@ export function Inspector({ board }: { board: YItem }) {
         <input type="range" min={0.1} max={1} step={0.05} value={first.opacity ?? 1} disabled={readOnly} onChange={(e) => apply({ opacity: Number(e.target.value) }, '불투명도 변경')} />
       </Row>
       {(first.type === 'rect' || first.type === 'sticky') && (
-        <Row label={`모서리 ${first.radius ?? 0}`}>
+        <Row label={`모서리 ${first.radius ?? 0}px`}>
           <input type="range" min={0} max={48} value={first.radius ?? 0} disabled={readOnly} onChange={(e) => apply({ radius: Number(e.target.value) }, '모서리 변경')} />
         </Row>
       )}
@@ -265,7 +320,7 @@ export function Inspector({ board }: { board: YItem }) {
           </Row>
           <Row label="크기">
             <div className="insp-inline">
-              <NumberInput value={first.fontSize ?? 18} min={8} onChange={(v) => apply({ fontSize: Math.min(v, 160) }, '글자 크기 변경')} disabled={readOnly} />
+              <NumberInput value={first.fontSize ?? 18} min={8} suffix="px" onChange={(v) => apply({ fontSize: Math.min(v, 160) }, '글자 크기 변경')} disabled={readOnly} />
               <span className="insp-seg">
                 {(['left', 'center', 'right'] as const).map((a) => (
                   <IconButton key={a} size="sm" label={a === 'left' ? '왼쪽' : a === 'center' ? '가운데' : '오른쪽'} active={(first.align ?? 'center') === a} disabled={readOnly} onClick={() => apply({ align: a }, '정렬 변경')}>
@@ -281,31 +336,35 @@ export function Inspector({ board }: { board: YItem }) {
 
       {b && (
         <>
-          <h4>위치 · 크기</h4>
+          <h4 className="insp-h4-row">
+            <span>위치 · 크기</span>
+            <UnitSelect unit={unit} onChange={setUnit} />
+          </h4>
           <div className="insp-grid">
             <label>
-              X <NumberInput value={b.x} disabled={readOnly || first.locked} onChange={(v) => apply({ x: first.x + (v - b.x) }, '위치 변경')} />
+              X <LengthInput label="X" px={b.x} unit={unit} disabled={readOnly || first.locked} onChange={(v) => apply({ x: first.x + (v - b.x) }, '위치 변경')} />
             </label>
             <label>
-              Y <NumberInput value={b.y} disabled={readOnly || first.locked} onChange={(v) => apply({ y: first.y + (v - b.y) }, '위치 변경')} />
+              Y <LengthInput label="Y" px={b.y} unit={unit} disabled={readOnly || first.locked} onChange={(v) => apply({ y: first.y + (v - b.y) }, '위치 변경')} />
             </label>
             {!isLine(first) ? (
+              // 아트보드는 입력한 단위를 기억해 이름표에 그 단위로 표시
               <>
                 <label>
-                  W <NumberInput value={b.w} min={4} disabled={readOnly || first.locked} onChange={(v) => apply({ w: v }, '크기 변경')} />
+                  W <LengthInput label="W" px={b.w} unit={unit} minPx={4} disabled={readOnly || first.locked} onChange={(v) => apply(frame ? { w: v, unit } : { w: v }, '크기 변경')} />
                 </label>
                 <label>
-                  H <NumberInput value={b.h} min={4} disabled={readOnly || first.locked} onChange={(v) => apply({ h: v }, '크기 변경')} />
+                  H <LengthInput label="H" px={b.h} unit={unit} minPx={4} disabled={readOnly || first.locked} onChange={(v) => apply(frame ? { h: v, unit } : { h: v }, '크기 변경')} />
                 </label>
               </>
             ) : (
               // 선 · 화살표는 시작점을 기준으로 길이와 각도(위쪽이 +)
               <>
                 <label>
-                  길이 <NumberInput value={Math.hypot(first.w, first.h)} min={1} disabled={readOnly || first.locked} onChange={(v) => apply(polar(v, lineAngle(first)), '길이 변경')} />
+                  길이 <LengthInput label="길이" px={Math.hypot(first.w, first.h)} unit={unit} minPx={1} disabled={readOnly || first.locked} onChange={(v) => apply(polar(v, lineAngle(first)), '길이 변경')} />
                 </label>
                 <label>
-                  각도 <NumberInput value={lineAngle(first)} disabled={readOnly || first.locked} onChange={(v) => apply(polar(Math.hypot(first.w, first.h), v), '각도 변경')} />
+                  각도 <NumberInput value={lineAngle(first)} suffix="°" disabled={readOnly || first.locked} onChange={(v) => apply(polar(Math.hypot(first.w, first.h), v), '각도 변경')} />
                 </label>
               </>
             )}

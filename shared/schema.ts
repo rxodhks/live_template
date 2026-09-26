@@ -142,9 +142,10 @@ export interface Shape {
   points?: number[];
   /** arrow: 곡선 가운데가 시작→끝 직선에서 수직으로 벗어난 거리 (0 또는 없으면 직선) */
   bend?: number;
-  /** frame(아트보드): 이름 · 고른 형식(iphone-16, a4 …) */
+  /** frame(아트보드): 이름 · 고른 형식(iphone-16, a4 …) · 크기를 정한 단위 (크기 자체는 늘 CSS px) */
   name?: string;
   preset?: string;
+  unit?: PageUnit;
   z: number;
   locked?: boolean;
   createdBy?: string;
@@ -336,6 +337,8 @@ export interface NewBoard {
   id: string;
   name: string;
   background?: string;
+  /** 속성 패널의 기본 크기 단위 (A4 보드는 mm처럼 처음 고른 형식의 단위) */
+  unit?: PageUnit;
   shapes?: Shape[];
   createdBy: string;
   createdAt?: number;
@@ -348,6 +351,7 @@ export function addBoard(doc: Y.Doc, b: NewBoard): YItem {
     map.set('id', b.id);
     map.set('name', b.name);
     map.set('background', b.background ?? '');
+    if (b.unit) map.set('unit', b.unit);
     map.set('createdAt', b.createdAt ?? Date.now());
     map.set('createdBy', b.createdBy);
     const shapes = new Y.Map<Shape>();

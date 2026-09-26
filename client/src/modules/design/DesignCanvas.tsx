@@ -16,7 +16,7 @@ import { ShapeView } from './ShapeView';
 import { type Box, type Handle, bendAt, boundsOf, contains, intersects, isLine, lineGeom, lineHeight, linePath, resizeBox, snapAngle, snapTo, unionBounds, wrapText, TEXT_FONT } from './geometry';
 import { DEFAULT_SIZE, copyShapes, defaultShape, deleteShapes, insertShapes, maxZ, newFrame, updateShapes, useShapes, withFrameChildren, type ShapeMap } from './ops';
 import { promptDialog } from '../../components/ui';
-import { pagePx } from '../docs/page/pageSizes';
+import { storePx } from '../docs/page/pageSizes';
 
 type Drag =
   | { kind: 'pan'; sx: number; sy: number; orig: Viewport }
@@ -171,15 +171,15 @@ export function DesignCanvas({ board, onApi, onZoom, onAddArtboard }: Props) {
   /** 새 아트보드: 기존 아트보드 오른쪽에 나란히 (없으면 화면 가운데), 그리고 그 아트보드로 화면을 맞춘다 */
   const addFrame = useCallback(
     (page: PageSetup, name: string) => {
-      const px = pagePx(page);
-      const w = Math.round(px.width);
-      const h = Math.round(px.height);
+      // mm · in 같은 단위로 정한 크기는 반올림하지 않고 저장해 이름표에 그 값이 그대로 보이게
+      const w = storePx(page.width, page.unit);
+      const h = storePx(page.height, page.unit);
       const frames = Array.from(map.values()).filter((x) => x.type === 'frame');
       const v = viewRef.current;
       const el = wrapRef.current;
       const x = frames.length ? Math.max(...frames.map((f) => boundsOf(f).x + boundsOf(f).w)) + 80 : Math.round(((el?.clientWidth ?? 800) / 2 - v.x) / v.zoom - w / 2);
       const y = frames.length ? Math.min(...frames.map((f) => boundsOf(f).y)) : Math.round(((el?.clientHeight ?? 600) / 2 - v.y) / v.zoom - h / 2);
-      const frame = newFrame(map, { x, y, w, h }, name, page.preset, me.id);
+      const frame = newFrame(map, { x, y, w, h }, name, page.preset, page.unit, me.id);
       insertShapes(map, [frame]);
       useDesign.getState().setSelection([frame.id]);
       useDesign.getState().setTool('select');

@@ -1465,6 +1465,56 @@ button.doc-emoji:hover:not(:disabled) {
 .insp-grid label .input {
   min-width: 0;
 }
+/* 단위가 칸 안 오른쪽에 붙는 숫자 입력 (210 mm) */
+.insp-num {
+  position: relative;
+  display: flex;
+  flex: 1;
+  min-width: 0;
+}
+.insp-num .input {
+  width: 100%;
+  padding-right: 26px;
+  -moz-appearance: textfield;
+  appearance: textfield;
+}
+.insp-num .input::-webkit-inner-spin-button,
+.insp-num .input::-webkit-outer-spin-button {
+  -webkit-appearance: none;
+  margin: 0;
+}
+.insp-num-unit {
+  position: absolute;
+  right: 7px;
+  top: 50%;
+  transform: translateY(-50%);
+  font-size: 11px;
+  font-weight: 500;
+  color: var(--text-3);
+  pointer-events: none;
+}
+.insp-inline .insp-num {
+  flex: none;
+  width: 72px;
+}
+.inspector h4.insp-h4-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+}
+.insp-unit {
+  width: auto;
+  height: 24px;
+  padding: 0 4px 0 6px;
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--text-2);
+}
+.insp-control .insp-unit {
+  height: 28px;
+  min-width: 80px;
+}
 .insp-buttons {
   display: flex;
   align-items: center;
