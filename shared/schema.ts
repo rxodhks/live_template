@@ -67,6 +67,7 @@ export const CODE_LANGUAGES: CodeLanguage[] = [
   { id: 'swift', name: 'Swift', ext: 'swift', cm: 'Swift', color: '#f05138' },
   { id: 'php', name: 'PHP', ext: 'php', cm: 'PHP', color: '#4f5d95' },
   { id: 'ruby', name: 'Ruby', ext: 'rb', cm: 'Ruby', color: '#cc342d' },
+  { id: 'lua', name: 'Lua', ext: 'lua', cm: 'Lua', color: '#000080' },
   { id: 'sql', name: 'SQL', ext: 'sql', cm: 'SQL', color: '#e38c00' },
   { id: 'html', name: 'HTML', ext: 'html', cm: 'HTML', color: '#e34c26' },
   { id: 'css', name: 'CSS', ext: 'css', cm: 'CSS', color: '#663399' },

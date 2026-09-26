@@ -677,7 +677,8 @@ textarea.input {
 
 .toast-viewport {
   position: fixed;
-  top: calc(var(--topbar-h) + 10px);
+  /* 편집 화면의 도구 줄(실행 · 미리보기 버튼 등)을 가리지 않도록 그 아래에 띄운다 */
+  top: calc(var(--topbar-h) + 46px + 10px);
   right: 14px;
   z-index: 950;
   display: flex;

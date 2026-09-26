@@ -209,9 +209,22 @@ npm run deploy         # 화면 빌드 + wrangler deploy
 ## 기능별 도구
 
 **💻 코딩**
-- 24개 언어 문법 강조(JavaScript, TypeScript, Python, Java, C/C++, C#, Go, Rust, Kotlin, Swift, PHP, Ruby, SQL, HTML, CSS, …)
+- 25개 언어 문법 강조(JavaScript, TypeScript, Python, Java, C/C++, C#, Go, Rust, Kotlin, Swift, PHP, Ruby, Lua, SQL, HTML, CSS, …)
 - 파일마다 언어 선택·변경. 언어를 바꾸면 확장자도 따라감(`main.js → main.py`), 확장자로 새 파일 언어 자동 선택
-- JavaScript 실행(격리된 샌드박스, 5초 제한, 콘솔 출력), HTML 실시간 미리보기(CSS/JS 파일 자동 연결)
+- **사이트 안에서 실행** (모두 브라우저 안 격리된 샌드박스 — 서버 비용 없음)
+
+  | 언어 | 방법 | 특징 |
+  |---|---|---|
+  | JavaScript · TypeScript | 변환(sucrase) 후 실행 · 5초 제한 | 템플릿의 다른 JS/TS 파일 `import` 가능, 오류에 파일 · 줄 번호 |
+  | Python | Pyodide(CPython 3.14) · 15초 제한 | 표준 라이브러리 포함, 다른 `.py` 파일 `import`, `input()`은 ‘입력’ 칸, numpy 등은 필요할 때 CDN에서 |
+  | SQL | sql.js(SQLite) | 문장마다 결과 표, `schema` · `seed` · `init`으로 시작하는 `.sql` 파일을 먼저 실행 |
+  | Ruby · PHP · Lua | ruby.wasm 3.4 · php-wasm 8.4 · wasmoon(Lua 5.4) | 다른 파일 불러오기(`require_relative` · `require` · `require`), 표준 입력 |
+  | JSX · TSX | React 19 컴포넌트 미리보기 | `export default` 컴포넌트(또는 `App`)를 그림, 다른 컴포넌트 파일 · CSS 불러오기 |
+  | HTML · CSS | 실시간 미리보기 | 연결한 CSS · SCSS · JS · TS 파일을 합쳐 보여 줌 |
+  | Markdown | 문서 미리보기 | |
+  | JSON · YAML · SCSS | 형식 검사 · 정리 / CSS로 변환 | JSON 정리 결과 파일에 적용, SCSS → `.css` 파일로 저장 |
+
+  실행 환경 파일(파이썬 약 13MB 등)은 처음 실행할 때 한 번만 내려받아 브라우저 저장소에 보관합니다. C · C++ · Java · Go · Rust · Kotlin · Swift · C# · Shell은 서버 실행 환경이 필요해 아직 지원하지 않습니다.
 - 멀티 파일, 자동 완성, 괄호 매칭, 찾기, 줄바꿈/들여쓰기 설정, 파일 다운로드
 
 **📝 문서**
@@ -266,7 +279,10 @@ npm run deploy         # 화면 빌드 + wrangler deploy
 
 ### 코드 실행 격리
 
-팀원이 작성한 JavaScript는 `sandbox="allow-scripts"` iframe(origin 없음) 안의 Web Worker에서 실행됩니다. 이 앱의 IndexedDB·localStorage·토큰에 접근할 수 없고, 5초 후 강제 종료됩니다.
+팀원이 작성한 코드(JavaScript · TypeScript · Python · SQL · Ruby · PHP · Lua)는 `sandbox="allow-scripts"` iframe(origin 없음) 안의 Web Worker에서 실행됩니다. 이 앱의 IndexedDB·localStorage·로그인 정보에 접근할 수 없고, 제한 시간(5~15초)이 지나거나 ‘중지’하면 iframe째 없애 강제 종료합니다.
+
+- 실행 환경 파일은 빌드할 때 `/runtimes/<이름>-<해시>/`로 함께 배포합니다(`client/build/runtimes.ts`). 30MB인 Ruby는 클라우드플레어 정적 파일 한도(25MiB) 때문에 gzip으로 올리고 브라우저에서 풉니다.
+- 격리된 iframe 안에서는 브라우저 캐시가 재사용되지 않으므로, 이 앱이 파일을 받아 Cache Storage에 보관했다가 샌드박스로 넘깁니다. 새 버전이 배포되면 예전 파일은 지웁니다.
 
 ## 프로젝트 구조
 
@@ -304,5 +320,5 @@ client/src/
 - **저장 용량**: 개인 공간까지 클라우드에 저장하고 버전 기록을 보관하므로, 사용자가 많아지면 무료 요금제의 저장 공간(5GB) · 쓰기 한도를 살펴야 합니다. 다음 단계로 내 데이터 내보내기(파일 백업)를 제안합니다.
 - **로그인**: 외부 로그인(구글·깃허브)은 배포된 주소에서만 동작합니다 (로컬은 이메일 개발 모드). 인증 메일은 Resend 무료 한도(하루 100통)를 넘으면 그날은 보내지 못하니, 사용자가 늘면 유료 요금제나 클라우드플레어 Email Service로 옮기세요. 모바일 앱은 같은 로그인 API를 쓰되 앱 전용 로그인 흐름(딥 링크)을 추가해야 합니다.
 - **알림 범위**: 실시간 알림은 열어 둔 템플릿 기준입니다. 대시보드는 60초마다(또는 창으로 돌아올 때) 목록·접속자·참여 요청 수를 새로 고칩니다.
-- **실행 가능한 언어**: 브라우저에서 실행되는 것은 JavaScript와 HTML 미리보기입니다. Python 등은 Pyodide 연동이 다음 후보입니다.
+- **실행 가능한 언어**: 컴파일 언어(C · C++ · Java · Go · Rust · Kotlin · Swift · C# · Shell)는 서버 실행 환경(예: 클라우드플레어 Containers / Sandbox SDK, Workers 유료 요금제 필요)이 있어야 합니다. 실행 중 인터넷 요청(파이썬 `requests` 등)과 파일 업로드는 지원하지 않습니다.
 - **추가 로드맵**: 디자인 코멘트 핀, @멘션 알림, 이미지 업로드(R2), 계정 탈퇴 화면.

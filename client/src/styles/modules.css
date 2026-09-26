@@ -620,6 +620,121 @@
   background: #fff;
   width: 100%;
 }
+@media (prefers-color-scheme: dark) {
+  .code-preview.is-doc {
+    background: #0d1117;
+  }
+}
+:root[data-theme='dark'] .code-preview.is-doc {
+  background: #0d1117;
+}
+
+/* 실행 환경 준비 상태 · 입력 · 결과 표 · 정리된 결과 */
+.out-status {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 4px 0 6px;
+  color: var(--text-2);
+  font-family: var(--font);
+  font-size: 12.5px;
+}
+.tab-count {
+  font-size: 10.5px;
+  font-weight: 700;
+  padding: 0 6px;
+  border-radius: 999px;
+  background: var(--accent-soft);
+  color: var(--accent-text);
+}
+.code-input {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  padding: 8px 12px 10px;
+  min-height: 0;
+}
+.code-input textarea {
+  flex: 1;
+  min-height: 60px;
+  resize: none;
+  padding: 8px 10px;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  background: var(--surface-2);
+  color: var(--text);
+  font-family: var(--mono);
+  font-size: 12.5px;
+  line-height: 1.6;
+}
+.code-input textarea:focus {
+  outline: none;
+  border-color: var(--accent);
+  background: var(--surface);
+}
+.out-table-wrap {
+  margin: 6px 0 10px;
+}
+.out-table-note {
+  color: var(--text-3);
+  font-size: 11.5px;
+  margin-bottom: 4px;
+}
+.out-table-scroll {
+  overflow: auto;
+  max-height: 320px;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+}
+.out-table {
+  border-collapse: collapse;
+  font-size: 12px;
+  min-width: 100%;
+}
+.out-table th,
+.out-table td {
+  padding: 4px 10px;
+  border-bottom: 1px solid var(--border);
+  text-align: left;
+  white-space: nowrap;
+}
+.out-table th {
+  position: sticky;
+  top: 0;
+  background: var(--surface-2);
+  font-weight: 700;
+  color: var(--text-2);
+}
+.out-table tr:last-child td {
+  border-bottom: 0;
+}
+.out-table .is-null {
+  color: var(--text-3);
+  font-style: italic;
+}
+.out-formatted {
+  margin-top: 8px;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  overflow: hidden;
+}
+.out-formatted-head {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 5px 10px;
+  background: var(--surface-2);
+  font-family: var(--font);
+  font-size: 12px;
+}
+.out-formatted pre {
+  margin: 0;
+  padding: 8px 10px;
+  max-height: 300px;
+  overflow: auto;
+  white-space: pre;
+}
 .statusbar {
   display: flex;
   align-items: center;
