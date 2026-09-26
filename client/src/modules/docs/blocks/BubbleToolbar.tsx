@@ -48,7 +48,9 @@ export function BubbleToolbar({ editor }: { editor: Editor }) {
       <BubbleMenu
         editor={editor}
         className="bubble-toolbar"
-        options={{ placement: 'top', offset: 8, flip: true, shift: { padding: 8 } }}
+        // 배율로 줄인 페이지 안에 들어가면 막대도 작아지므로 화면 맨 위에 띄운다
+        appendTo={() => document.body}
+        options={{ strategy: 'fixed', placement: 'top', offset: 8, flip: true, shift: { padding: 8 } }}
         shouldShow={({ editor: e, state, from, to }) =>
           e.isEditable && from !== to && !(state.selection instanceof NodeSelection) && !e.isActive('codeBlock') && !e.isActive('image')
         }

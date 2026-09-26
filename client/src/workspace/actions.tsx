@@ -9,10 +9,13 @@ import {
   getDocs,
   getFiles,
   languageFromFilename,
+  readPageSetup,
   type Shape,
   type YItem,
 } from '@shared/schema';
 import { newId } from '../lib/util';
+import { lastPageSetup, pageSetupDialog } from '../modules/docs/page/PageSetupDialog';
+import { describePage } from '../modules/docs/page/pageSizes';
 import { errorMessage } from '../lib/api';
 import { updateTemplate } from '../lib/templateOps';
 import { confirmDialog, promptDialog } from '../components/ui';
@@ -118,16 +121,20 @@ export async function createCodeFile(ws: WorkspaceValue, me: PublicUser, opts: C
 
 export async function createDocument(ws: WorkspaceValue, me: PublicUser, opts: CreateOptions = {}): Promise<void> {
   if (!guard(ws)) return;
+  // 먼저 문서 크기(A4 · 기기 화면 · 직접 입력 · 자유 형식)를 고른다
+  const count = getDocs(ws.doc).size;
+  const fallback = count === 0 ? '제목 없는 문서' : `제목 없는 문서 ${count + 1}`;
+  const chosen = await pageSetupDialog({ mode: 'create', initial: lastPageSetup(), title: '' });
+  if (!chosen) return;
   const added = !currentFeatures(ws).includes('docs');
   const features = await ensureFeature(ws, 'docs', { quiet: true });
   if (!features) return;
   const id = newId();
-  const count = getDocs(ws.doc).size;
-  const title = count === 0 ? '제목 없는 문서' : `제목 없는 문서 ${count + 1}`;
-  addDocument(ws.doc, { id, title, emoji: '📄', createdBy: me.id, blocks: [{ type: 'heading', level: 1, text: '' }] });
+  const title = chosen.title || fallback;
+  addDocument(ws.doc, { id, title, emoji: '📄', createdBy: me.id, page: chosen.page, blocks: [{ type: 'heading', level: 1, text: '' }] });
   placeNewPage(ws.doc, features, 'docs', id, opts.sectionId);
-  ws.report({ type: 'docs.create', targetId: id, targetName: title });
-  toast.success('문서를 만들었습니다', `${title}${areaNote(added, 'docs')}`);
+  ws.report({ type: 'docs.create', targetId: id, targetName: title, detail: describePage(chosen.page) });
+  toast.success('문서를 만들었습니다', `${title} · ${describePage(chosen.page)}${areaNote(added, 'docs')}`);
   ws.go('docs', id);
 }
 
@@ -232,6 +239,9 @@ export function duplicateItem(ws: WorkspaceValue, module: ItemModule, id: string
       map.set('emoji', item.get('emoji') ?? '📄');
       map.set('createdAt', Date.now());
       map.set('createdBy', me.id);
+      // 페이지 크기도 그대로
+      const page = readPageSetup(item.get('page'));
+      if (page) map.set('page', page);
       const src = item.get('content') as Y.XmlFragment;
       const frag = new Y.XmlFragment();
       map.set('content', frag);

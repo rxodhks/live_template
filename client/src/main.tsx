@@ -9,6 +9,7 @@ import './styles/modules.css';
 import './styles/spaces.css';
 import './styles/auth.css';
 import './styles/docblocks.css';
+import './styles/docpage.css';
 
 applyTheme(useSession.getState().theme);
 

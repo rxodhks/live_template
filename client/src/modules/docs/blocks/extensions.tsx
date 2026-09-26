@@ -18,6 +18,7 @@ import { TableOfContents } from './nodes/Toc';
 import { CodeBlock } from './nodes/CodeBlock';
 import { DocMention } from './nodes/MentionChip';
 import { ToggleCommands } from './nodes/Toggle';
+import { PageBreak } from './nodes/PageBreak';
 
 /* ───────────── '/' 블록 메뉴 ───────────── */
 
@@ -151,6 +152,7 @@ export function blockExtensions(env: DocEnv): AnyExtension[] {
     Column,
     Columns,
     TableOfContents,
+    PageBreak,
     CodeBlock,
     Mathematics.configure({
       katexOptions: { throwOnError: false, strict: false },

@@ -3,19 +3,22 @@ import { useNavigate } from 'react-router-dom';
 import type * as Y from 'yjs';
 import type { Editor } from '@tiptap/react';
 import { useEditorState } from '@tiptap/react';
-import { Copy, Download, FilePlus2, FileText, MoreHorizontal, Printer, Trash2 } from 'lucide-react';
-import { getDocs, type YItem } from '@shared/schema';
+import { Copy, Download, FilePlus2, FileText, Infinity as InfinityIcon, MoreHorizontal, Printer, Ruler, Trash2 } from 'lucide-react';
+import { getDocs, readPageSetup, type YItem } from '@shared/schema';
 import { useWorkspace, viewPath } from '../../workspace/context';
 import { createDocument, deleteItem, duplicateItem } from '../../workspace/actions';
 import { useYField, useYItems } from '../../hooks/useY';
 import { useSession } from '../../store/session';
 import { toast } from '../../store/toasts';
-import { copyText, downloadText } from '../../lib/util';
+import { copyText, cx, downloadText } from '../../lib/util';
 import { toHtmlDocument, toMarkdown } from '../../lib/markdown';
 import { Avatar, Button, EmptyState, IconButton, Menu, Spinner } from '../../components/ui';
 import { useViewers } from '../../components/Cursors';
 import { DocEditor } from './DocEditor';
 import { useDocEnv } from './blocks/useDocEnv';
+import { pageSetupDialog } from './page/PageSetupDialog';
+import { describePage } from './page/pageSizes';
+import type { Zoom } from './page/usePagedLayout';
 
 const DOC_EMOJIS = ['📄', '📝', '📘', '🧭', '🗓️', '📊', '💡', '✅', '🚀', '📌', '🔍', '🎯'];
 
@@ -68,6 +71,35 @@ function DocView({ item }: { item: YItem }) {
   const [editor, setEditor] = useState<Editor | null>(null);
   const [titleDraft, setTitleDraft] = useState<string | null>(null);
   const env = useDocEnv({ uploads: true });
+  const page = readPageSetup(useYField<unknown>(item, 'page'));
+  const [pages, setPages] = useState(0);
+  const [zoom, setZoom] = useState<Zoom>(() => {
+    try {
+      const v = localStorage.getItem('lt.doc.zoom');
+      return v && v !== 'fit' && Number(v) > 0 ? Number(v) : 'fit';
+    } catch {
+      return 'fit';
+    }
+  });
+  const changeZoom = (z: Zoom) => {
+    setZoom(z);
+    try {
+      localStorage.setItem('lt.doc.zoom', String(z));
+    } catch {
+      /* 무시 */
+    }
+  };
+
+  /** 페이지 크기 바꾸기 (모든 사람에게 적용) */
+  const editPage = async () => {
+    if (!ws.canEdit) return;
+    const r = await pageSetupDialog({ mode: 'edit', initial: page });
+    if (!r) return;
+    if (r.page) item.set('page', r.page);
+    else item.delete('page');
+    ws.action(`페이지 설정 · ${describePage(r.page)}`);
+    toast.success('페이지 설정을 바꿨습니다', describePage(r.page));
+  };
 
   const commitTitle = () => {
     if (titleDraft === null) return;
@@ -81,7 +113,7 @@ function DocView({ item }: { item: YItem }) {
   };
 
   const exportMd = () => editor && downloadText(`${title || 'document'}.md`, toMarkdown(editor.getJSON(), title), 'text/markdown;charset=utf-8');
-  const exportHtml = async () => editor && downloadText(`${title || 'document'}.html`, await toHtmlDocument(title, editor.getHTML()), 'text/html;charset=utf-8');
+  const exportHtml = async () => editor && downloadText(`${title || 'document'}.html`, await toHtmlDocument(title, editor.getHTML(), page), 'text/html;charset=utf-8');
 
   return (
     <div className="docs-module">
@@ -96,6 +128,27 @@ function DocView({ item }: { item: YItem }) {
           </span>
         )}
         <span className="toolbar-spacer" />
+        <button
+          type="button"
+          className={cx('page-chip', page && 'is-paged')}
+          onClick={() => void editPage()}
+          disabled={!ws.canEdit}
+          data-tip={ws.canEdit ? '페이지 설정 (크기 · 방향 · 여백)' : '페이지 크기'}
+        >
+          {page ? <FileText size={13} /> : <InfinityIcon size={13} />}
+          <span>{page ? describePage(page).split(' · ')[0] : '자유 형식'}</span>
+          {page && pages > 0 && <span className="page-chip-count">{pages}쪽</span>}
+        </button>
+        {page && (
+          <select className="zoom-select" value={String(zoom)} onChange={(e) => changeZoom(e.target.value === 'fit' ? 'fit' : Number(e.target.value))} aria-label="화면 배율" data-tip="화면 배율">
+            <option value="fit">맞춤</option>
+            {[50, 75, 100, 125, 150, 200].map((z) => (
+              <option key={z} value={z}>
+                {z}%
+              </option>
+            ))}
+          </select>
+        )}
         <DocStats editor={editor} />
         <Menu
           align="end"
@@ -108,7 +161,8 @@ function DocView({ item }: { item: YItem }) {
               icon: <Copy size={14} />,
               onSelect: async () => editor && (await copyText(toMarkdown(editor.getJSON(), title))) && toast.success('Markdown을 복사했습니다'),
             },
-            { label: '인쇄 / PDF 저장', icon: <Printer size={14} />, onSelect: () => window.print() },
+            { label: '페이지 설정…', icon: <Ruler size={14} />, disabled: !ws.canEdit, hint: page ? describePage(page).split(' · ')[0] : '자유 형식', onSelect: () => void editPage() },
+            { label: page ? `인쇄 / PDF 저장 (${describePage(page).split(' · ')[0]})` : '인쇄 / PDF 저장', icon: <Printer size={14} />, onSelect: () => window.print() },
             { divider: true, label: '' },
             { label: '문서 복제', icon: <Copy size={14} />, disabled: !ws.canEdit, onSelect: () => duplicateItem(ws, 'docs', id, me) },
             { label: '문서 삭제', icon: <Trash2 size={14} />, danger: true, disabled: !ws.canEdit, onSelect: () => void deleteItem(ws, 'docs', id) },
@@ -127,6 +181,9 @@ function DocView({ item }: { item: YItem }) {
         readOnly={!ws.canEdit}
         docKey={id}
         env={env}
+        page={page}
+        zoom={zoom}
+        onPages={setPages}
         onEditor={setEditor}
         onLocalEdit={() => {
           ws.action('✏️ 문서 작성 중');

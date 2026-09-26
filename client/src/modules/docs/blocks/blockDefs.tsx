@@ -21,6 +21,7 @@ import {
   Minus,
   Quote,
   Radical,
+  SeparatorHorizontal,
   Sigma,
   Table,
   Type,
@@ -71,6 +72,7 @@ export const BLOCKS: BlockDef[] = [
 
   { key: 'columns2', label: '2단', group: '레이아웃', icon: <Columns2 size={s} />, keywords: ['columns', 'column', '2', '단', '나란히', '레이아웃'], insert: (e) => void e.chain().focus().insertColumns(2).run() },
   { key: 'columns3', label: '3단', group: '레이아웃', icon: <Columns3 size={s} />, keywords: ['columns', 'column', '3', '단', '나란히', '레이아웃'], insert: (e) => void e.chain().focus().insertColumns(3).run() },
+  { key: 'page-break', label: '페이지 나누기', hint: 'Ctrl+Enter', group: '레이아웃', icon: <SeparatorHorizontal size={s} />, keywords: ['page break', 'break', 'page', '페이지', '쪽', '나누기', '새 페이지'], insert: (e) => void e.chain().focus().setPageBreak().run() },
   { key: 'toc', label: '목차', group: '레이아웃', icon: <ListTree size={s} />, keywords: ['toc', 'table of contents', 'outline', '목차', '차례'], insert: (e) => void e.chain().focus().insertTableOfContents().run() },
 
   { key: 'math', label: '수식 블록', group: '고급', icon: <Sigma size={s} />, keywords: ['math', 'latex', 'equation', 'katex', '수식', '수학'], insert: (e) => insertMath(e, 'block') },

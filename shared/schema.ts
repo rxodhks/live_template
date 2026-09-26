@@ -250,11 +250,60 @@ function blockToXml(block: SeedBlock): Y.XmlElement {
   }
 }
 
+/* ───────────── 문서 페이지 크기 (A4 · 기기 화면 · 직접 입력) ───────────── */
+
+export type PageUnit = 'px' | 'mm' | 'cm' | 'in' | 'pt';
+export const PAGE_UNITS: PageUnit[] = ['px', 'mm', 'cm', 'in', 'pt'];
+
+/** 1단위 = 몇 CSS 픽셀 (화면 기준 96dpi) */
+export const PX_PER_UNIT: Record<PageUnit, number> = { px: 1, in: 96, cm: 96 / 2.54, mm: 96 / 25.4, pt: 96 / 72 };
+
+/**
+ * 문서의 페이지 설정 (문서 항목의 'page' 값). 없으면 끝없이 이어지는 자유 형식 문서.
+ * 너비 · 높이 · 여백은 unit 단위, 가로 방향이면 이미 너비 > 높이로 저장한다.
+ */
+export interface PageSetup {
+  /** 고른 형식 (a4, iphone-16 …) — 직접 입력이면 'custom' */
+  preset: string;
+  width: number;
+  height: number;
+  unit: PageUnit;
+  margin: number;
+  /** 본문 글자 크기 (CSS px) */
+  fontSize: number;
+}
+
+const clampNum = (v: unknown, min: number, max: number, fallback: number) => {
+  const n = Number(v);
+  return Number.isFinite(n) ? Math.min(max, Math.max(min, n)) : fallback;
+};
+
+/** 문서에 저장된 값을 믿을 수 있는 형태로 (다른 사람이 보낸 값일 수 있다) */
+export function readPageSetup(raw: unknown): PageSetup | null {
+  if (!raw || typeof raw !== 'object') return null;
+  const r = raw as Record<string, unknown>;
+  const unit = PAGE_UNITS.includes(r.unit as PageUnit) ? (r.unit as PageUnit) : 'px';
+  const k = PX_PER_UNIT[unit];
+  // 화면 기준 가로 · 세로 120px ~ 8000px 사이
+  const width = clampNum(r.width, 120 / k, 8000 / k, 794 / k);
+  const height = clampNum(r.height, 120 / k, 8000 / k, 1123 / k);
+  return {
+    preset: typeof r.preset === 'string' ? r.preset.slice(0, 40) : 'custom',
+    width,
+    height,
+    unit,
+    margin: clampNum(r.margin, 0, Math.min(width, height) / 3, 0),
+    fontSize: clampNum(r.fontSize, 8, 96, 15),
+  };
+}
+
 export interface NewDocument {
   id: string;
   title: string;
   emoji?: string;
   blocks?: SeedBlock[];
+  /** 페이지 크기 (없으면 자유 형식) */
+  page?: PageSetup | null;
   createdBy: string;
   createdAt?: number;
 }
@@ -268,6 +317,7 @@ export function addDocument(doc: Y.Doc, d: NewDocument): YItem {
     map.set('emoji', d.emoji ?? '📄');
     map.set('createdAt', d.createdAt ?? Date.now());
     map.set('createdBy', d.createdBy);
+    if (d.page) map.set('page', d.page);
     const fragment = new Y.XmlFragment();
     map.set('content', fragment);
     const blocks = d.blocks?.length ? d.blocks : [{ type: 'paragraph', text: '' } as SeedBlock];

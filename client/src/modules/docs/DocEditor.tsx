@@ -44,6 +44,9 @@ import { blockExtensions } from './blocks/extensions';
 import { BlockHandle } from './blocks/BlockHandle';
 import { BubbleToolbar } from './blocks/BubbleToolbar';
 import { type DocEnv, EMPTY_ENV } from './blocks/env';
+import type { PageSetup } from '@shared/schema';
+import { type PageBreakMark, type Zoom, usePagedLayout } from './page/usePagedLayout';
+import { pageCss } from './page/pageSizes';
 
 interface Props {
   fragment: Y.XmlFragment;
@@ -62,10 +65,16 @@ interface Props {
   cursors?: boolean;
   /** 멘션할 사람 · 페이지, 이미지 올리기 허용 등 */
   env?: DocEnv;
+  /** 페이지 크기 (없으면 끝없이 이어지는 자유 형식) */
+  page?: PageSetup | null;
+  /** 크기가 정해진 문서의 화면 배율 */
+  zoom?: Zoom;
+  /** 쪽 수가 바뀌면 */
+  onPages?: (pages: number) => void;
 }
 
 /** TipTap(ProseMirror) + Yjs 실시간 문서 편집기 */
-export function DocEditor({ fragment, awareness, user, readOnly, placeholder, docKey, onLocalEdit, onSelectText, onEditor, header, cursors = true, env = EMPTY_ENV }: Props) {
+export function DocEditor({ fragment, awareness, user, readOnly, placeholder, docKey, onLocalEdit, onSelectText, onEditor, header, cursors = true, env = EMPTY_ENV, page = null, zoom = 'fit', onPages }: Props) {
   const cb = useRef({ onLocalEdit, onSelectText });
   cb.current = { onLocalEdit, onSelectText };
   // 편집기는 문서마다 한 번만 만들어지므로, 바뀌는 값은 항상 최신을 읽도록 감싼다
@@ -151,23 +160,66 @@ export function DocEditor({ fragment, awareness, user, readOnly, placeholder, do
   const hostRef = useRef<HTMLDivElement>(null);
   const scrollRef = useRef<HTMLDivElement>(null);
   const pageRef = useRef<HTMLDivElement>(null);
+  const layout = usePagedLayout(page, zoom, editor, scrollRef, pageRef);
+  const pages = layout?.pages ?? 0;
+  useEffect(() => onPages?.(pages), [pages]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  // 크기가 정해진 문서: 정해진 너비 · 여백 · 글자 크기, 넓으면 배율로 줄인다 (구조는 같게 두어 편집기가 다시 만들어지지 않게)
+  const pageStyle = layout
+    ? ({
+        width: layout.width,
+        minHeight: layout.minHeight,
+        padding: layout.margin,
+        transform: layout.scale !== 1 ? `scale(${layout.scale})` : undefined,
+        '--doc-font-size': `${page!.fontSize}px`,
+      } as React.CSSProperties)
+    : undefined;
 
   return (
     <div className="doc-editor">
       {editor && !readOnly && <DocToolbar editor={editor} />}
       {editor && !readOnly && <BubbleToolbar editor={editor} />}
       <div className="cursor-host" ref={hostRef}>
-        <div className="doc-scroll page-scroll" ref={scrollRef}>
-          <div className="doc-page" ref={pageRef}>
-            {header}
-            <EditorContent editor={editor} className="doc-content" />
-            {editor && !readOnly && <BlockHandle editor={editor} />}
+        <div className={cx('doc-scroll page-scroll', layout && 'is-paged')} ref={scrollRef}>
+          <div className={cx('doc-stage', layout && 'is-paged')} style={layout ? { width: layout.width * layout.scale, height: layout.stageHeight } : undefined}>
+            <div className={cx('doc-page', layout && 'is-paged')} ref={pageRef} style={pageStyle}>
+              <div className="doc-header">{header}</div>
+              <EditorContent editor={editor} className="doc-content" />
+              {layout && <PageGuides breaks={layout.breaks} />}
+              {editor && !readOnly && <BlockHandle editor={editor} />}
+            </div>
           </div>
         </div>
         {cursors && <CursorLayer hostRef={hostRef} scrollRef={scrollRef} anchorRef={pageRef} />}
       </div>
+      {page && <style>{printCss(page)}</style>}
     </div>
   );
+}
+
+/** 인쇄할 때 쪽이 나뉘는 위치 */
+function PageGuides({ breaks }: { breaks: PageBreakMark[] }) {
+  return (
+    <div className="page-guides" aria-hidden>
+      {breaks.map((b, i) => (
+        <div key={i} className={cx('page-guide', b.manual && 'is-manual')} style={{ top: b.y }}>
+          <span>{i + 2}쪽</span>
+        </div>
+      ))}
+    </div>
+  );
+}
+
+/** 인쇄 · PDF 저장: 페이지 크기 · 여백 그대로, 화면용 배율 · 안내선은 빼고 */
+function printCss(page: PageSetup): string {
+  return `@media print {
+  ${pageCss(page)}
+  .doc-scroll.is-paged, .doc-stage.is-paged { width: auto !important; height: auto !important; margin: 0 !important; padding: 0 !important; overflow: visible !important; }
+  .doc-page.is-paged { width: auto !important; min-height: 0 !important; padding: 0 !important; transform: none !important; box-shadow: none !important; border: 0 !important; }
+  .page-guides { display: none !important; }
+  .doc-content .ProseMirror > * { break-inside: avoid; }
+  .doc-content .ProseMirror > [data-page-break] { break-after: page; height: 0 !important; margin: 0 !important; border: 0 !important; visibility: hidden; }
+}`;
 }
 
 function T({ label, active, onClick, children, disabled }: { label: string; active?: boolean; onClick: () => void; children: React.ReactNode; disabled?: boolean }) {

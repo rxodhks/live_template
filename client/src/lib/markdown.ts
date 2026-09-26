@@ -1,5 +1,7 @@
 import type { JSONContent } from '@tiptap/core';
+import type { PageSetup } from '@shared/schema';
 import { DOC_COLORS, DOC_COLOR_CSS } from '../modules/docs/blocks/colors';
+import { pageCss, toPx } from '../modules/docs/page/pageSizes';
 
 /* TipTap JSON → Markdown (내보내기용) */
 
@@ -87,6 +89,8 @@ function block(node: JSONContent, indent = ''): string {
     }
     case 'embed':
       return `[${node.attrs?.provider ?? '임베드'}: ${node.attrs?.url || node.attrs?.src}](${node.attrs?.url || node.attrs?.src})`;
+    case 'pageBreak':
+      return '<div style="page-break-after: always"></div>';
     case 'blockMath':
       return `$$\n${node.attrs?.latex ?? ''}\n$$`;
     case 'tableOfContents': {
@@ -171,8 +175,12 @@ async function finishHtml(bodyHtml: string): Promise<string> {
   return dom.body.innerHTML;
 }
 
-export async function toHtmlDocument(title: string, bodyHtml: string): Promise<string> {
+export async function toHtmlDocument(title: string, bodyHtml: string, page?: PageSetup | null): Promise<string> {
   const body = await finishHtml(bodyHtml);
+  // 크기가 정해진 문서: 본문 너비 · 글자 크기 · 인쇄 크기를 그대로
+  const paged = page
+    ? `body { max-width: ${Math.round(toPx(page.width - 2 * page.margin, page.unit))}px; font-size: ${page.fontSize}px; }\n${pageCss(page)}\n.doc-content > *, body > * { break-inside: avoid; }`
+    : '';
   return `<!doctype html>
 <html lang="ko">
 <head>
@@ -196,6 +204,8 @@ details > [data-type="detailsContent"] { padding-left: 20px; }
 .doc-columns { display: grid; grid-auto-flow: column; grid-auto-columns: minmax(0, 1fr); gap: 24px; }
 figure.doc-image { margin: 16px 0; text-align: center; } figure.doc-image[data-align="left"] { text-align: left; } figure.doc-image[data-align="right"] { text-align: right; }
 figure.doc-image img { max-width: 100%; border-radius: 6px; } figcaption { font-size: 13px; color: #6b7280; margin-top: 6px; }
+div[data-page-break] { break-after: page; height: 0; }
+${paged}
 nav[data-toc] { background: #f6f8fa; border-radius: 8px; padding: 10px 14px; } nav[data-toc] ol { list-style: none; padding: 0; margin: 6px 0 0; }
 .mention { background: #eeeefd; color: #4f46e5; border-radius: 4px; padding: 0 3px; }
 </style>

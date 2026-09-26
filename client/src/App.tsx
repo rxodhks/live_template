@@ -11,6 +11,7 @@ import { useUI } from './store/ui';
 import { ToastViewport } from './components/Toasts';
 import { TooltipHost } from './components/Tooltip';
 import { ConfirmHost, PromptHost } from './components/ui';
+import { PageSetupHost } from './modules/docs/page/PageSetupDialog';
 import { BootScreen, LoginPage, SignupPage } from './pages/Auth';
 import { PrivacyPage, TermsPage } from './pages/Legal';
 import { Dashboard } from './pages/Dashboard';
@@ -76,6 +77,7 @@ export function App() {
       <TooltipHost />
       <ConfirmHost />
       <PromptHost />
+      <PageSetupHost />
       <NarrowScreenNotice />
     </BrowserRouter>
   );
