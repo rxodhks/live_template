@@ -100,8 +100,9 @@ function PersonalBanner() {
 
 function Collaborators() {
   const ws = useWorkspace();
+  const me = useSession((s) => s.user)!;
   const others = usePresence((s) => s.others);
-  const people = uniqueUsers(others);
+  const people = uniqueUsers(others, me.id);
   const navigate = useNavigate();
   const setShareOpen = useUI((s) => s.setShareOpen);
   useTick(5000);

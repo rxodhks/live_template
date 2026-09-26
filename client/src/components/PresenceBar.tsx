@@ -21,7 +21,8 @@ export function PresenceBar() {
   const ws = useWorkspace();
   const me = useSession((s) => s.user)!;
   const others = usePresence((s) => s.others);
-  const people = uniqueUsers(others);
+  // 내 다른 탭은 '다른 사람'이 아니므로 뺀다
+  const people = uniqueUsers(others, me.id);
   const stack = people.slice(0, STACK_MAX);
   const extra = people.length - stack.length;
   const total = people.length + 1;

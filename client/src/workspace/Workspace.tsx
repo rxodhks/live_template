@@ -133,6 +133,9 @@ function WorkspaceInner({ entry }: { entry: TemplateEntry }) {
   chatOpenRef.current = chatOpen;
   const entryRef = useRef(entry);
   entryRef.current = entry;
+  // useNavigate()는 주소가 바뀔 때마다 새 함수가 된다 — 실시간 이벤트 구독이 이동할 때마다 다시 걸리지 않도록 ref로 쓴다
+  const navigateRef = useRef(navigate);
+  navigateRef.current = navigate;
 
   /* ── 연결: 개인 공간은 브라우저만, 협업 공간은 실시간 방 ── */
   const [conn, setConn] = useState<{ doc: Y.Doc; provider: DocProvider; room: RoomConnection | null } | null>(null);
@@ -251,16 +254,17 @@ function WorkspaceInner({ entry }: { entry: TemplateEntry }) {
         if (m.reason === 'deleted')
           toast.show({ kind: 'danger', title: '템플릿이 휴지통으로 이동했습니다', message: `${m.by ?? '소유자'} 님이 ‘${name}’ 템플릿을 삭제했습니다. 소유자는 30일 안에 복원할 수 있습니다.` });
         else if (m.reason === 'removed') toast.warning('템플릿에서 제외되었습니다', `‘${name}’ 템플릿에 더 이상 접근할 수 없습니다.`);
-        navigate('/', { replace: true });
+        navigateRef.current('/', { replace: true });
       }),
     ];
+    // 연결이 바뀌거나 템플릿을 떠날 때만 정리한다 (페이지 이동마다 접속자 목록이 비워지면 안 된다)
     return () => {
       offs.forEach((off) => off());
       presence.clear();
       useLive.getState().clear();
       connection.setStatus('online');
     };
-  }, [conn, tid, navigate]);
+  }, [conn, tid]);
 
   /* ── 개인 공간: 비밀 노트 목록 ── */
   const reloadLocalNotes = useRef<() => void>(() => {});
