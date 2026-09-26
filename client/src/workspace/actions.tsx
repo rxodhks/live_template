@@ -9,10 +9,13 @@ import {
   getDocs,
   getFiles,
   languageFromFilename,
+  readPageSetup,
   type Shape,
   type YItem,
 } from '@shared/schema';
 import { newId } from '../lib/util';
+import { lastPageSetup, pageSetupDialog } from '../modules/docs/page/PageSetupDialog';
+import { ALL_PRESETS, describePage, pagePx } from '../modules/docs/page/pageSizes';
 import { errorMessage } from '../lib/api';
 import { updateTemplate } from '../lib/templateOps';
 import { confirmDialog, promptDialog } from '../components/ui';
@@ -118,21 +121,28 @@ export async function createCodeFile(ws: WorkspaceValue, me: PublicUser, opts: C
 
 export async function createDocument(ws: WorkspaceValue, me: PublicUser, opts: CreateOptions = {}): Promise<void> {
   if (!guard(ws)) return;
+  // 먼저 문서 크기(A4 · 기기 화면 · 직접 입력 · 자유 형식)를 고른다
+  const count = getDocs(ws.doc).size;
+  const fallback = count === 0 ? '제목 없는 문서' : `제목 없는 문서 ${count + 1}`;
+  const chosen = await pageSetupDialog({ mode: 'create', initial: lastPageSetup(), title: '' });
+  if (!chosen) return;
   const added = !currentFeatures(ws).includes('docs');
   const features = await ensureFeature(ws, 'docs', { quiet: true });
   if (!features) return;
   const id = newId();
-  const count = getDocs(ws.doc).size;
-  const title = count === 0 ? '제목 없는 문서' : `제목 없는 문서 ${count + 1}`;
-  addDocument(ws.doc, { id, title, emoji: '📄', createdBy: me.id, blocks: [{ type: 'heading', level: 1, text: '' }] });
+  const title = chosen.title || fallback;
+  addDocument(ws.doc, { id, title, emoji: '📄', createdBy: me.id, page: chosen.page, blocks: [{ type: 'heading', level: 1, text: '' }] });
   placeNewPage(ws.doc, features, 'docs', id, opts.sectionId);
-  ws.report({ type: 'docs.create', targetId: id, targetName: title });
-  toast.success('문서를 만들었습니다', `${title}${areaNote(added, 'docs')}`);
+  ws.report({ type: 'docs.create', targetId: id, targetName: title, detail: describePage(chosen.page) });
+  toast.success('문서를 만들었습니다', `${title} · ${describePage(chosen.page)}${areaNote(added, 'docs')}`);
   ws.go('docs', id);
 }
 
 export async function createBoard(ws: WorkspaceValue, me: PublicUser, opts: CreateOptions = {}): Promise<void> {
   if (!guard(ws)) return;
+  // 자유 캔버스 또는 정해진 크기(iPhone · A4 · 슬라이드 …)의 아트보드로 시작
+  const chosen = await pageSetupDialog({ mode: 'create', kind: 'board', initial: lastPageSetup('board'), title: '' });
+  if (!chosen) return;
   const added = !currentFeatures(ws).includes('design');
   const features = await ensureFeature(ws, 'design', { quiet: true });
   if (!features) return;
@@ -140,11 +150,34 @@ export async function createBoard(ws: WorkspaceValue, me: PublicUser, opts: Crea
   const names = new Set(Array.from(getBoards(ws.doc).values()).map((b) => b.get('name')));
   let n = getBoards(ws.doc).size + 1;
   while (names.has(`보드 ${n}`)) n++;
-  const name = `보드 ${n}`;
-  addBoard(ws.doc, { id, name, createdBy: me.id });
+  const name = chosen.title || `보드 ${n}`;
+  const page = chosen.page;
+  const size = page ? pagePx(page) : null;
+  const preset = page ? ALL_PRESETS.find((p) => p.id === page.preset) : undefined;
+  const shapes: Shape[] = size
+    ? [
+        {
+          id: newId(),
+          type: 'frame',
+          x: 0,
+          y: 0,
+          w: Math.round(size.width),
+          h: Math.round(size.height),
+          fill: '#ffffff',
+          stroke: 'transparent',
+          strokeWidth: 0,
+          opacity: 1,
+          z: 0,
+          name: preset?.name ?? '아트보드',
+          preset: page!.preset,
+          createdBy: me.id,
+        },
+      ]
+    : [];
+  addBoard(ws.doc, { id, name, createdBy: me.id, shapes });
   placeNewPage(ws.doc, features, 'design', id, opts.sectionId);
-  ws.report({ type: 'design.create', targetId: id, targetName: name });
-  toast.success('보드를 만들었습니다', `${name}${areaNote(added, 'design')}`);
+  ws.report({ type: 'design.create', targetId: id, targetName: name, detail: page ? describePage(page) : '자유 캔버스' });
+  toast.success('보드를 만들었습니다', `${name} · ${page ? describePage(page) : '자유 캔버스'}${areaNote(added, 'design')}`);
   ws.go('design', id);
 }
 
@@ -232,6 +265,9 @@ export function duplicateItem(ws: WorkspaceValue, module: ItemModule, id: string
       map.set('emoji', item.get('emoji') ?? '📄');
       map.set('createdAt', Date.now());
       map.set('createdBy', me.id);
+      // 페이지 크기도 그대로
+      const page = readPageSetup(item.get('page'));
+      if (page) map.set('page', page);
       const src = item.get('content') as Y.XmlFragment;
       const frag = new Y.XmlFragment();
       map.set('content', frag);

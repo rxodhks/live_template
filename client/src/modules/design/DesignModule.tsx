@@ -11,6 +11,8 @@ import { useViewers } from '../../components/Cursors';
 import { DesignCanvas, type CanvasApi } from './DesignCanvas';
 import { DesignToolbar } from './DesignToolbar';
 import { Inspector } from './Inspector';
+import { lastPageSetup, pageSetupDialog } from '../docs/page/PageSetupDialog';
+import { ALL_PRESETS } from '../docs/page/pageSizes';
 
 export function DesignModule() {
   const ws = useWorkspace();
@@ -62,6 +64,15 @@ function BoardView({ board }: { board: YItem }) {
     api.current = a;
   }, []);
 
+  /** 아트보드 추가 — 크기(iPhone · A4 · 슬라이드 · 직접 입력)를 고른다 */
+  const addArtboard = useCallback(async () => {
+    if (!ws.canEdit) return;
+    const r = await pageSetupDialog({ mode: 'create', kind: 'artboard', initial: lastPageSetup('artboard'), title: '' });
+    if (!r?.page) return;
+    const preset = ALL_PRESETS.find((p) => p.id === r.page!.preset);
+    api.current?.addFrame(r.page, r.title || preset?.name || '아트보드');
+  }, [ws.canEdit]);
+
   useEffect(() => {
     try {
       localStorage.setItem('lt.design.inspector', inspector ? '1' : '0');
@@ -90,8 +101,8 @@ function BoardView({ board }: { board: YItem }) {
       </div>
       <div className="design-body">
         <div className="design-stage">
-          <DesignToolbar readOnly={!ws.canEdit} onUndo={() => api.current?.undo()} onRedo={() => api.current?.redo()} />
-          <DesignCanvas board={board} onApi={onApi} onZoom={setZoom} />
+          <DesignToolbar readOnly={!ws.canEdit} onUndo={() => api.current?.undo()} onRedo={() => api.current?.redo()} onAddArtboard={() => void addArtboard()} />
+          <DesignCanvas board={board} onApi={onApi} onZoom={setZoom} onAddArtboard={() => void addArtboard()} />
           <div className="zoom-controls">
             <IconButton label="축소 (-)" size="sm" onClick={() => api.current?.zoomBy(1 / 1.2)}>
               <Minus size={14} />

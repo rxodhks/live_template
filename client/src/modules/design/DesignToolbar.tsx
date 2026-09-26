@@ -1,4 +1,4 @@
-import { ArrowUpRight, Circle, Diamond, Hand, Minus, MousePointer2, Pencil, Redo2, Square, StickyNote, Type, Undo2 } from 'lucide-react';
+import { ArrowUpRight, Circle, Diamond, Frame, Hand, Minus, MousePointer2, Pencil, Redo2, Square, StickyNote, Type, Undo2 } from 'lucide-react';
 import { useDesign, type Tool } from './store';
 import { IconButton } from '../../components/ui';
 
@@ -16,7 +16,7 @@ const TOOLS: { tool: Tool; label: string; key: string; icon: React.ReactNode }[]
 ];
 
 /** 캔버스 위에 떠 있는 도구 모음 */
-export function DesignToolbar({ readOnly, onUndo, onRedo }: { readOnly: boolean; onUndo: () => void; onRedo: () => void }) {
+export function DesignToolbar({ readOnly, onUndo, onRedo, onAddArtboard }: { readOnly: boolean; onUndo: () => void; onRedo: () => void; onAddArtboard: () => void }) {
   const tool = useDesign((s) => s.tool);
   const setTool = useDesign((s) => s.setTool);
   return (
@@ -34,6 +34,10 @@ export function DesignToolbar({ readOnly, onUndo, onRedo }: { readOnly: boolean;
           </IconButton>
         </span>
       ))}
+      <span className="tb-sep" />
+      <IconButton label="아트보드 추가 (F) — iPhone · A4 · 슬라이드 등 정해진 크기" disabled={readOnly} onClick={onAddArtboard}>
+        <Frame size={17} />
+      </IconButton>
       <span className="tb-sep" />
       <IconButton label="실행 취소 (내 변경만)" disabled={readOnly} onClick={onUndo}>
         <Undo2 size={17} />

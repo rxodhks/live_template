@@ -1,0 +1,389 @@
+/* ───────────────────────── 문서 크기 (A4 · 기기 화면 …) ───────────────────────── */
+
+/* 크기가 정해진 문서: 종이처럼 */
+.doc-scroll.is-paged {
+  overflow-x: auto;
+}
+.doc-stage.is-paged {
+  position: relative;
+  margin: 32px auto 96px;
+}
+.doc-page.is-paged {
+  max-width: none;
+  margin: 0;
+  border-radius: 3px;
+  border: 1px solid var(--border);
+  box-shadow: 0 1px 2px rgb(16 24 40 / 0.06), 0 8px 28px rgb(16 24 40 / 0.1);
+  transform-origin: 0 0;
+  box-sizing: border-box;
+}
+.doc-page.is-paged .doc-content .ProseMirror {
+  font-size: var(--doc-font-size, 15.5px);
+  min-height: 0;
+}
+.doc-page.is-paged .doc-title-row {
+  margin-bottom: 0.9em;
+  font-size: var(--doc-font-size, 15.5px);
+}
+.doc-page.is-paged .doc-title {
+  font-size: max(22px, calc(var(--doc-font-size, 15.5px) * 1.9));
+}
+.doc-page.is-paged .doc-emoji {
+  font-size: max(22px, calc(var(--doc-font-size, 15.5px) * 1.9));
+  width: 1.6em;
+  height: 1.6em;
+}
+/* 좁은 화면(휴대폰 크기)에서는 긴 단어 · 표가 넘치지 않게 */
+.doc-page.is-paged .doc-content .ProseMirror {
+  overflow-wrap: anywhere;
+}
+
+/* 쪽이 나뉘는 위치 */
+.page-guides {
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+}
+.page-guide {
+  position: absolute;
+  left: 0;
+  right: 0;
+  height: 0;
+  border-top: 1px dashed color-mix(in srgb, var(--text-3) 55%, transparent);
+}
+.page-guide.is-manual {
+  border-top-color: var(--accent);
+}
+.page-guide span {
+  position: absolute;
+  right: -1px;
+  top: -9px;
+  transform: translateX(100%);
+  padding: 1px 7px;
+  border-radius: 0 6px 6px 0;
+  background: var(--surface-2);
+  border: 1px solid var(--border);
+  font-size: 11px;
+  font-weight: 650;
+  color: var(--text-3);
+  white-space: nowrap;
+}
+
+/* 페이지 나누기 블록 */
+.doc-content .ProseMirror .page-break {
+  position: relative;
+  height: 22px;
+  margin: 10px 0;
+  border: 0;
+  cursor: default;
+}
+.doc-content .ProseMirror .page-break::before {
+  content: '';
+  position: absolute;
+  left: 0;
+  right: 0;
+  top: 50%;
+  border-top: 2px dashed var(--border-strong);
+}
+.doc-content .ProseMirror .page-break::after {
+  content: '페이지 나누기';
+  position: absolute;
+  left: 50%;
+  top: 50%;
+  transform: translate(-50%, -50%);
+  padding: 0 10px;
+  background: var(--surface);
+  font-size: 11.5px;
+  font-weight: 650;
+  color: var(--text-3);
+}
+.doc-content .ProseMirror .page-break.ProseMirror-selectednode::before {
+  border-top-color: var(--accent);
+}
+
+/* 툴바: 페이지 크기 · 배율 */
+.page-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  height: 28px;
+  padding: 0 9px;
+  border-radius: 7px;
+  border: 1px solid var(--border);
+  background: var(--surface);
+  font-size: 12.5px;
+  font-weight: 600;
+  color: var(--text-2);
+  white-space: nowrap;
+}
+.page-chip:hover:not(:disabled) {
+  border-color: var(--border-strong);
+  color: var(--text);
+}
+.page-chip:disabled {
+  cursor: default;
+}
+.page-chip.is-paged {
+  color: var(--text);
+}
+.page-chip-count {
+  font-size: 11px;
+  font-weight: 700;
+  padding: 0 6px;
+  border-radius: 999px;
+  background: var(--accent-soft);
+  color: var(--accent-text);
+}
+.zoom-select {
+  height: 28px;
+  border-radius: 7px;
+  border: 1px solid var(--border);
+  background: var(--surface);
+  padding: 0 4px;
+  font-size: 12.5px;
+  color: var(--text-2);
+}
+
+/* ───────── 새 문서 · 페이지 설정 창 ───────── */
+.page-setup {
+  display: grid;
+  grid-template-columns: 150px minmax(0, 1fr) 250px;
+  gap: 16px;
+  min-height: 420px;
+}
+.ps-cats {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  border-right: 1px solid var(--border);
+  padding-right: 10px;
+}
+.ps-cat {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 8px 10px;
+  border-radius: 8px;
+  font-size: 13.5px;
+  font-weight: 600;
+  color: var(--text-2);
+  text-align: left;
+}
+.ps-cat:hover {
+  background: var(--surface-hover);
+  color: var(--text);
+}
+.ps-cat.is-active {
+  background: var(--accent-soft);
+  color: var(--accent-text);
+}
+.ps-main {
+  min-width: 0;
+  max-height: 460px;
+  overflow: auto;
+}
+.ps-hint {
+  font-size: 12.5px;
+  color: var(--text-3);
+  margin: 2px 0 10px;
+}
+.ps-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(118px, 1fr));
+  gap: 8px;
+}
+.ps-card {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 3px;
+  padding: 10px 8px 9px;
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  background: var(--surface);
+  text-align: center;
+}
+.ps-card:hover {
+  border-color: var(--border-strong);
+}
+.ps-card.is-selected {
+  border-color: var(--accent);
+  box-shadow: 0 0 0 2px color-mix(in srgb, var(--accent) 30%, transparent);
+}
+.ps-card b {
+  font-size: 12.5px;
+  color: var(--text);
+}
+.ps-card small {
+  font-size: 11px;
+  color: var(--text-3);
+}
+.ps-thumb {
+  width: 60px;
+  height: 60px;
+  display: grid;
+  place-items: center;
+  margin-bottom: 4px;
+}
+.ps-thumb span {
+  display: block;
+  border: 1.5px solid var(--text-3);
+  border-radius: 2px;
+  background: var(--surface-2);
+}
+.ps-card.is-selected .ps-thumb span {
+  border-color: var(--accent);
+  background: var(--accent-soft);
+}
+.ps-free {
+  height: 100%;
+  min-height: 260px;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 10px;
+  text-align: center;
+  color: var(--text-2);
+  padding: 20px;
+}
+.ps-free b {
+  color: var(--text);
+  font-size: 15px;
+}
+.ps-free p {
+  max-width: 340px;
+  font-size: 13px;
+  line-height: 1.6;
+}
+.ps-side {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  border-left: 1px solid var(--border);
+  padding-left: 16px;
+  min-width: 0;
+}
+.ps-preview {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  height: 180px;
+  border-radius: 10px;
+  background: var(--surface-2);
+}
+.ps-preview small {
+  font-size: 11.5px;
+  color: var(--text-3);
+}
+.ps-sheet {
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+  box-sizing: border-box;
+  background: var(--surface);
+  border: 1px solid var(--border-strong);
+  border-radius: 2px;
+  box-shadow: var(--shadow-sm);
+  overflow: hidden;
+}
+.ps-sheet.is-free {
+  padding: 10px;
+  border-bottom-style: dashed;
+  -webkit-mask-image: linear-gradient(to bottom, #000 70%, transparent);
+  mask-image: linear-gradient(to bottom, #000 70%, transparent);
+}
+.ps-sheet i {
+  display: block;
+  height: 3px;
+  flex: none;
+  border-radius: 2px;
+  background: var(--border-strong);
+}
+.ps-row {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 8px;
+}
+.ps-num {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  min-width: 0;
+}
+.ps-num > span:first-child {
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--text-2);
+}
+.ps-num-input {
+  position: relative;
+  display: block;
+}
+.ps-num-input .input {
+  width: 100%;
+  padding-right: 34px;
+}
+.ps-num-input em {
+  position: absolute;
+  right: 9px;
+  top: 50%;
+  transform: translateY(-50%);
+  font-style: normal;
+  font-size: 11.5px;
+  color: var(--text-3);
+  pointer-events: none;
+}
+.ps-num select.input {
+  width: 100%;
+}
+.ps-orient {
+  display: flex;
+  gap: 4px;
+}
+.ps-orient button {
+  flex: 1;
+  height: 34px;
+  display: grid;
+  place-items: center;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  color: var(--text-2);
+}
+.ps-orient button.is-active {
+  border-color: var(--accent);
+  color: var(--accent-text);
+  background: var(--accent-soft);
+}
+.ps-summary {
+  margin-right: auto;
+  font-size: 12.5px;
+  color: var(--text-3);
+}
+@media (max-width: 860px) {
+  .page-setup {
+    grid-template-columns: 1fr;
+  }
+  .ps-cats {
+    flex-direction: row;
+    flex-wrap: wrap;
+    border-right: 0;
+    padding-right: 0;
+  }
+  .ps-side {
+    border-left: 0;
+    padding-left: 0;
+  }
+}
+
+/*
+ * 블록 손잡이를 담는 상자(플러그인이 편집기 옆에 크기 없이 붙인다)에 페이지만 한 크기를 준다 —
+ * 배율로 줄인 페이지에서 floating-ui가 이 상자의 크기로 배율을 계산해야 손잡이가 제자리에 온다
+ * (pointer-events: none이라 클릭은 막지 않는다)
+ */
+.doc-content > div:not(.ProseMirror) {
+  right: 0;
+  bottom: 0;
+}

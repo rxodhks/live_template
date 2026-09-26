@@ -70,8 +70,10 @@ export function CursorLayer({ anchorRef, scrollRef, hostRef, xMode = 'fraction' 
       const anchor = anchorRef.current;
       if (!anchor) return;
       const r = anchor.getBoundingClientRect();
-      const x = xMode === 'fraction' ? (e.clientX - r.left) / Math.max(1, r.width) : e.clientX - r.left;
-      publishCursor({ x, y: e.clientY - r.top });
+      // 배율로 줄인 페이지(크기가 정해진 문서)에서도 같은 자리를 가리키도록 배율을 뺀 값으로 보낸다
+      const s = scaleOf(anchor, r);
+      const x = xMode === 'fraction' ? (e.clientX - r.left) / Math.max(1, r.width) : (e.clientX - r.left) / s;
+      publishCursor({ x, y: (e.clientY - r.top) / s });
     };
     const onLeave = () => publishCursor(null);
     host.addEventListener('pointermove', onMove);
@@ -116,18 +118,24 @@ export function CursorLayer({ anchorRef, scrollRef, hostRef, xMode = 'fraction' 
   if (!host || !anchor) return null;
   const hr = host.getBoundingClientRect();
   const ar = anchor.getBoundingClientRect();
+  const s = scaleOf(anchor, ar);
 
   return (
     <div className="cursor-layer" aria-hidden>
       {viewers.map((p) => {
         if (!p.cursor) return null;
-        const x = ar.left - hr.left + (xMode === 'fraction' ? p.cursor.x * ar.width : p.cursor.x);
-        const y = ar.top - hr.top + p.cursor.y;
+        const x = ar.left - hr.left + (xMode === 'fraction' ? p.cursor.x * ar.width : p.cursor.x * s);
+        const y = ar.top - hr.top + p.cursor.y * s;
         if (y < -20 || y > hr.height + 10 || x < -20 || x > hr.width + 10) return null;
         return <RemoteCursor key={p.socketId} presence={p} x={x} y={y} />;
       })}
     </div>
   );
+}
+
+/** 요소에 걸린 배율 (transform: scale) — 화면 크기 ÷ 원래 크기 */
+function scaleOf(el: HTMLElement, rect: DOMRect): number {
+  return el.offsetWidth ? rect.width / el.offsetWidth || 1 : 1;
 }
 
 /** 스크롤되는 일반 페이지 + 커서 레이어 */

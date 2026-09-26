@@ -18,6 +18,18 @@ import type {
   Viewport,
 } from './types';
 
+/**
+ * 화면(클라이언트) 호환 버전 — 문서에 예전 화면이 모르는 요소(새 블록 · 글자 색 등)가 생기면 올린다.
+ * 예전 화면은 모르는 블록을 만나면 문서에서 지워 버리므로(y-prosemirror), 서버는 이보다 낮은 화면의 연결을 받지 않고
+ * 새로고침을 안내한다.
+ *  1: 처음
+ *  2: 노션식 문서 블록 (토글 · 콜아웃 · 이미지 · 임베드 · 수식 · 다단 · 목차 · 멘션 · 글자 색 · 페이지 나누기), 디자인 아트보드
+ */
+export const CLIENT_VERSION = 2;
+/** 화면 버전을 싣는 요청 헤더 · 실시간 연결 주소의 쿼리 이름 */
+export const CLIENT_VERSION_HEADER = 'x-lt-client';
+export const CLIENT_VERSION_PARAM = 'cv';
+
 export interface PresencePatch {
   view?: PresenceView;
   viewport?: Viewport | null;

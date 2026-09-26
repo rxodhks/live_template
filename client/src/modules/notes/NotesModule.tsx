@@ -16,6 +16,7 @@ import { cx } from '../../lib/util';
 import { Avatar, Button, EmptyState, Field, IconButton, Modal, Spinner } from '../../components/ui';
 import { CursorPage, useViewers } from '../../components/Cursors';
 import { DocEditor } from '../docs/DocEditor';
+import { useDocEnv } from '../docs/blocks/useDocEnv';
 
 /** 편집이 없으면 자동으로 잠그는 시간 */
 const IDLE_LOCK_MS = 10 * 60 * 1000;
@@ -274,6 +275,8 @@ function UnlockedNote({ note, ticket }: { note: SecretNoteMeta; ticket: Unlocked
   /** 내가 비밀번호를 바꾸거나 지우는 중에는 "잠김" 알림을 띄우지 않는다 */
   const selfChange = useRef(false);
   const viewers = useViewers(ws.view);
+  // 비밀 노트는 암호문 크기 제한이 있어 이미지 파일 대신 주소로만 넣는다
+  const env = useDocEnv({ uploads: false });
   useTick(15_000);
 
   const lock = async (reason?: string) => {
@@ -373,6 +376,7 @@ function UnlockedNote({ note, ticket }: { note: SecretNoteMeta; ticket: Unlocked
           user={me}
           readOnly={!ws.canEdit}
           docKey={`note:${note.id}`}
+          env={env}
           placeholder="여기에 적은 내용은 암호화되어 저장되고, 비밀번호를 아는 멤버에게만 보입니다."
           onLocalEdit={() => {
             lastEdit.current = Date.now();

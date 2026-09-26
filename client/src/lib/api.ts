@@ -3,6 +3,8 @@
  * 화면과 서버가 같은 주소에서 제공되므로 상대 경로(/api)를 쓰고, 로그인은 쿠키(HttpOnly)로 유지된다.
  */
 
+import { CLIENT_VERSION, CLIENT_VERSION_HEADER, CLIENT_VERSION_PARAM } from '@shared/protocol';
+
 export const API_BASE = (import.meta.env.VITE_API_BASE ?? '').replace(/\/$/, '');
 
 export const apiUrl = (path: string): string => `${API_BASE}/api${path}`;
@@ -10,7 +12,8 @@ export const apiUrl = (path: string): string => `${API_BASE}/api${path}`;
 /** 실시간 연결 주소 (http → ws) */
 export function wsUrl(path: string): string {
   const base = API_BASE || window.location.origin;
-  return `${base.replace(/^http/, 'ws')}/api${path}`;
+  // 화면 버전을 함께 보낸다 — 서버가 예전 화면을 알아보고 새로고침을 안내한다
+  return `${base.replace(/^http/, 'ws')}/api${path}${path.includes('?') ? '&' : '?'}${CLIENT_VERSION_PARAM}=${CLIENT_VERSION}`;
 }
 
 /** 다른 사람에게 보낼 앱 링크 */
@@ -36,7 +39,7 @@ export async function api<T>(method: 'GET' | 'POST' | 'PATCH' | 'DELETE', path: 
     res = await fetch(apiUrl(path), {
       method,
       credentials: 'same-origin',
-      headers: body !== undefined ? { 'content-type': 'application/json' } : {},
+      headers: { [CLIENT_VERSION_HEADER]: String(CLIENT_VERSION), ...(body !== undefined ? { 'content-type': 'application/json' } : {}) },
       body: body !== undefined ? JSON.stringify(body) : undefined,
     });
   } catch {

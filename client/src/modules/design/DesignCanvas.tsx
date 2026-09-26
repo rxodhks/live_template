@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
 import * as Y from 'yjs';
-import { SHAPE_LABEL, type Shape, type YItem } from '@shared/schema';
+import { SHAPE_LABEL, type PageSetup, type Shape, type YItem } from '@shared/schema';
 import type { Viewport } from '@shared/types';
 import { useWorkspace } from '../../workspace/context';
 import { useSession } from '../../store/session';
@@ -10,11 +10,13 @@ import { useYField } from '../../hooks/useY';
 import { RemoteCursor, useViewers, ACTION_BUBBLE_MS } from '../../components/Cursors';
 import { useLive, type RemotePen } from '../../store/live';
 import type { LivePen } from '@shared/protocol';
-import { isTypingTarget, newId, throttle } from '../../lib/util';
+import { isTypingTarget, throttle } from '../../lib/util';
 import { useDesign, type Tool } from './store';
 import { ShapeView } from './ShapeView';
-import { type Box, type Handle, boundsOf, intersects, isLine, lineHeight, resizeBox, snapAngle, snapTo, unionBounds, wrapText, TEXT_FONT } from './geometry';
-import { DEFAULT_SIZE, defaultShape, deleteShapes, insertShapes, maxZ, updateShapes, useShapes, type ShapeMap } from './ops';
+import { type Box, type Handle, boundsOf, contains, intersects, isLine, lineHeight, resizeBox, snapAngle, snapTo, unionBounds, wrapText, TEXT_FONT } from './geometry';
+import { DEFAULT_SIZE, copyShapes, defaultShape, deleteShapes, insertShapes, maxZ, newFrame, updateShapes, useShapes, withFrameChildren, type ShapeMap } from './ops';
+import { promptDialog } from '../../components/ui';
+import { pagePx } from '../docs/page/pageSizes';
 
 type Drag =
   | { kind: 'pan'; sx: number; sy: number; orig: Viewport }
@@ -41,6 +43,8 @@ const MAX_ZOOM = 5;
 let clipboard: Shape[] = [];
 
 export interface CanvasApi {
+  /** 아트보드 추가 (정해진 크기, 기존 아트보드 오른쪽 또는 화면 가운데) */
+  addFrame(page: PageSetup, name: string): void;
   zoomBy(factor: number): void;
   zoomTo(zoom: number): void;
   fit(): void;
@@ -53,9 +57,13 @@ interface Props {
   board: YItem;
   onApi?: (api: CanvasApi) => void;
   onZoom?: (zoom: number) => void;
+  /** 아트보드 추가 창 열기 (F) */
+  onAddArtboard?: () => void;
 }
 
-export function DesignCanvas({ board, onApi, onZoom }: Props) {
+export function DesignCanvas({ board, onApi, onZoom, onAddArtboard }: Props) {
+  const onAddArtboardRef = useRef(onAddArtboard);
+  onAddArtboardRef.current = onAddArtboard;
   const ws = useWorkspace();
   const me = useSession((s) => s.user)!;
   const boardId = board.get('id') as string;
@@ -158,8 +166,35 @@ export function DesignCanvas({ board, onApi, onZoom }: Props) {
     if (!localStorage.getItem(`lt.vp.${boardId}`) && map.size > 0) requestAnimationFrame(fit);
   }, [boardId]); // eslint-disable-line react-hooks/exhaustive-deps
 
+  /** 새 아트보드: 기존 아트보드 오른쪽에 나란히 (없으면 화면 가운데), 그리고 그 아트보드로 화면을 맞춘다 */
+  const addFrame = useCallback(
+    (page: PageSetup, name: string) => {
+      const px = pagePx(page);
+      const w = Math.round(px.width);
+      const h = Math.round(px.height);
+      const frames = Array.from(map.values()).filter((x) => x.type === 'frame');
+      const v = viewRef.current;
+      const el = wrapRef.current;
+      const x = frames.length ? Math.max(...frames.map((f) => boundsOf(f).x + boundsOf(f).w)) + 80 : Math.round(((el?.clientWidth ?? 800) / 2 - v.x) / v.zoom - w / 2);
+      const y = frames.length ? Math.min(...frames.map((f) => boundsOf(f).y)) : Math.round(((el?.clientHeight ?? 600) / 2 - v.y) / v.zoom - h / 2);
+      const frame = newFrame(map, { x, y, w, h }, name, page.preset, me.id);
+      insertShapes(map, [frame]);
+      useDesign.getState().setSelection([frame.id]);
+      useDesign.getState().setTool('select');
+      if (el) {
+        const pad = 80;
+        const zoom = Math.min(MAX_ZOOM, Math.max(MIN_ZOOM, Math.min((el.clientWidth - pad * 2) / w, (el.clientHeight - pad * 2) / h, 1)));
+        setView({ zoom, x: el.clientWidth / 2 - (x + w / 2) * zoom, y: el.clientHeight / 2 - (y + h / 2) * zoom });
+      }
+      ws.action(`▢ 아트보드 추가 · ${name}`);
+      ws.report({ type: 'design.shape.add', targetId: boardId, targetName: boardName, detail: `아트보드 ${name}` });
+    },
+    [map, me.id, ws, boardId, boardName],
+  );
+
   useEffect(() => {
     onApi?.({
+      addFrame,
       zoomBy: (f) => zoomAround(f),
       zoomTo: (z) => zoomAround(z / viewRef.current.zoom),
       fit,
@@ -167,7 +202,7 @@ export function DesignCanvas({ board, onApi, onZoom }: Props) {
       redo: () => undo.redo(),
       svg: () => svgRef.current,
     });
-  }, [onApi, zoomAround, fit, undo]);
+  }, [onApi, zoomAround, fit, undo, addFrame]);
 
   /* ── 선택 공유 & 정리 ── */
   useEffect(() => {
@@ -304,10 +339,9 @@ export function DesignCanvas({ board, onApi, onZoom }: Props) {
         setSelection(sel);
         if (readOnly) return;
         const orig = new Map<string, { x: number; y: number }>();
-        for (const id of sel) {
-          const s = byId.get(id);
-          if (s && !s.locked) orig.set(id, { x: s.x, y: s.y });
-        }
+        // 아트보드를 옮기면 안에 그린 도형도 함께
+        const picked = sel.map((id) => byId.get(id)).filter((s): s is Shape => !!s);
+        for (const s of withFrameChildren(shapes, picked)) if (!s.locked) orig.set(s.id, { x: s.x, y: s.y });
         if (orig.size) beginDrag({ kind: 'move', start: p, orig, moved: false }, e.pointerId);
         return;
       }
@@ -432,7 +466,8 @@ export function DesignCanvas({ board, onApi, onZoom }: Props) {
       case 'marquee': {
         const box = { x: Math.min(d.start.x, p.x), y: Math.min(d.start.y, p.y), w: Math.abs(p.x - d.start.x), h: Math.abs(p.y - d.start.y) };
         setMarquee(box);
-        const hit = shapes.filter((s) => intersects(boundsOf(s), box)).map((s) => s.id);
+        // 아트보드는 통째로 감쌌을 때만 (안쪽에서 끌면 안의 도형만 고른다)
+        const hit = shapes.filter((s) => (s.type === 'frame' ? contains(box, boundsOf(s)) : intersects(boundsOf(s), box))).map((s) => s.id);
         setSelection(Array.from(new Set([...d.base, ...hit])));
         return;
       }
@@ -497,7 +532,8 @@ export function DesignCanvas({ board, onApi, onZoom }: Props) {
   const onDoubleClick = (e: React.MouseEvent) => {
     // 터치는 직접 더블 탭을 감지하므로 브라우저의 dblclick은 무시
     if (lastPointerType.current === 'touch') return;
-    openAt(e.target as Element, e.clientX, e.clientY);
+    // 첫 클릭의 끌기에서 캔버스가 포인터를 잡고 있었으면 e.target이 캔버스 전체가 되므로, 실제로 누른 곳의 요소를 찾는다
+    openAt(document.elementFromPoint(e.clientX, e.clientY) ?? (e.target as Element), e.clientX, e.clientY);
   };
 
   /** 도형의 글자를 편집하거나, 빈 곳이면 새 텍스트 상자를 만든다 */
@@ -505,6 +541,11 @@ export function DesignCanvas({ board, onApi, onZoom }: Props) {
     if (readOnly) return;
     const shapeId = target.closest('[data-shape-id]')?.getAttribute('data-shape-id');
     const s = shapeId ? byId.get(shapeId) : undefined;
+    // 아트보드 이름표를 두 번 누르면 이름 바꾸기
+    if (s?.type === 'frame' && !s.locked) {
+      void promptDialog({ title: '아트보드 이름', label: '이름', initial: s.name ?? '', confirmText: '바꾸기' }).then((v) => v && updateShapes(map, { [s.id]: { name: v.slice(0, 60) } }));
+      return;
+    }
     if (s && TEXT_TYPES.has(s.type) && !s.locked) {
       setSelection([s.id]);
       setEditing(s.id);
@@ -571,7 +612,7 @@ export function DesignCanvas({ board, onApi, onZoom }: Props) {
         return;
       }
       if (mod && key === 'c') {
-        clipboard = sel.map((id) => map.get(id)).filter((s): s is Shape => !!s);
+        clipboard = withFrameChildren(shapesRef.current, sel.map((id) => map.get(id)).filter((s): s is Shape => !!s));
         return;
       }
       if (e.key === 'Escape') {
@@ -598,7 +639,7 @@ export function DesignCanvas({ board, onApi, onZoom }: Props) {
       }
       if (mod && key === 'd') {
         e.preventDefault();
-        pasteShapes(sel.map((id) => map.get(id)).filter((s): s is Shape => !!s), 20);
+        pasteShapes(withFrameChildren(shapesRef.current, sel.map((id) => map.get(id)).filter((s): s is Shape => !!s)), 20);
         return;
       }
       if ((e.key === 'Delete' || e.key === 'Backspace') && sel.length) {
@@ -627,6 +668,11 @@ export function DesignCanvas({ board, onApi, onZoom }: Props) {
         reorder(sel, e.key === ']' ? 'up' : 'down');
         return;
       }
+      if (!mod && !e.altKey && key === 'f') {
+        e.preventDefault();
+        onAddArtboardRef.current?.();
+        return;
+      }
       if (!mod && !e.altKey && TOOL_KEYS[key]) st.setTool(TOOL_KEYS[key]);
     };
     const onKeyUp = (e: KeyboardEvent) => {
@@ -642,9 +688,8 @@ export function DesignCanvas({ board, onApi, onZoom }: Props) {
 
   const pasteShapes = (source: Shape[], offset: number) => {
     if (!source.length) return;
-    let z = maxZ(map);
-    const copies = source.map((s) => ({ ...s, id: newId(), x: s.x + offset, y: s.y + offset, z: ++z, locked: false, createdBy: me.id }));
-    insertShapes(map, copies);
+    // 아트보드는 맨 뒤, 안의 도형은 원래 순서대로 맨 앞에
+    const copies = copyShapes(map, source, offset, me.id);
     setSelection(copies.map((s) => s.id));
     clipboard = copies;
     ws.action(`📋 도형 ${copies.length}개 복제`);
@@ -789,7 +834,7 @@ export function DesignCanvas({ board, onApi, onZoom }: Props) {
       {shapes.length === 0 && !readOnly && (
         <div className="canvas-hint">
           <b>빈 보드입니다</b>
-          <span>위 도구에서 도형을 고르거나, 빈 곳을 더블클릭해 텍스트를 추가하세요.</span>
+          <span>위 도구에서 도형을 고르거나, 빈 곳을 더블클릭해 텍스트를 추가하세요. 정해진 크기(iPhone · A4 · 슬라이드…)로 그리려면 아트보드(F)를 추가하세요.</span>
         </div>
       )}
     </div>

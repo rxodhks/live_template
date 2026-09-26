@@ -15,6 +15,7 @@ const ICON: Record<Shape['type'], string> = {
   text: 'T',
   sticky: '🗒',
   pen: '✎',
+  frame: '▢',
 };
 
 /** 탐색기에 붙는 레이어 목록 (위가 앞) */
@@ -44,7 +45,7 @@ function LayerList({ map }: { map: ShapeMap }) {
             onClick={(e) => setSelection(e.shiftKey ? Array.from(new Set([...selection, s.id])) : [s.id])}
           >
             <span className="layer-icon">{ICON[s.type]}</span>
-            <span className="layer-name">{s.text?.split('\n')[0]?.slice(0, 24) || SHAPE_LABEL[s.type]}</span>
+            <span className="layer-name">{(s.type === 'frame' ? s.name : s.text?.split('\n')[0])?.slice(0, 24) || SHAPE_LABEL[s.type]}</span>
             {remoteSel.has(s.id) && <span className="layer-remote" style={{ background: remoteSel.get(s.id) }} data-tip="다른 사람이 선택함" />}
             {s.locked && <Lock size={11} className="muted" />}
           </button>

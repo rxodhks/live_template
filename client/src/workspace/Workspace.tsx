@@ -2,7 +2,7 @@ import { Suspense, lazy, useCallback, useEffect, useMemo, useRef, useState } fro
 import { useLocation, useNavigate, useParams } from 'react-router-dom';
 import * as Y from 'yjs';
 import { IndexeddbPersistence } from 'y-indexeddb';
-import { ShieldAlert, SearchX } from 'lucide-react';
+import { RefreshCw, ShieldAlert, SearchX } from 'lucide-react';
 import type { ActivityInput, ChatMessage, CursorPoint, JoinRequest, SecretNoteMeta, TemplateEntry, TemplateSummary, ViewModule } from '@shared/types';
 import type { LivePen, PresencePatch } from '@shared/protocol';
 import { RoomConnection } from '../lib/room';
@@ -116,6 +116,7 @@ function WorkspaceInner({ entry }: { entry: TemplateEntry }) {
   const me = useSession((s) => s.user)!;
 
   const [error, setError] = useState<string | null>(null);
+  const [outdated, setOutdated] = useState(false);
   const [notes, setNotes] = useState<SecretNoteMeta[]>([]);
   const [chat, setChat] = useState<ChatMessage[]>([]);
   const [requests, setRequests] = useState<JoinRequest[]>([]);
@@ -188,7 +189,10 @@ function WorkspaceInner({ entry }: { entry: TemplateEntry }) {
     const offs = [
       room.onStatus((s) => {
         connection.setStatus(s === 'online' ? 'online' : s === 'connecting' ? 'connecting' : 'offline');
-        if (s === 'denied') setError(room.deniedReason ?? '템플릿에 접근할 수 없습니다.');
+        if (s === 'denied') {
+          setError(room.deniedReason ?? '템플릿에 접근할 수 없습니다.');
+          setOutdated(room.outdated);
+        }
         if (s !== 'online') usePresence.getState().clear();
       }),
       room.on('welcome', (m) => {
@@ -407,12 +411,18 @@ function WorkspaceInner({ entry }: { entry: TemplateEntry }) {
     return (
       <AppShell>
         <EmptyState
-          icon={<ShieldAlert size={36} />}
-          title="템플릿을 열 수 없습니다"
+          icon={outdated ? <RefreshCw size={36} /> : <ShieldAlert size={36} />}
+          title={outdated ? '새 버전이 나왔습니다' : '템플릿을 열 수 없습니다'}
           action={
-            <Button variant="primary" onClick={() => navigate('/')}>
-              대시보드로 이동
-            </Button>
+            outdated ? (
+              <Button variant="primary" icon={<RefreshCw size={15} />} onClick={() => window.location.reload()}>
+                새로고침
+              </Button>
+            ) : (
+              <Button variant="primary" onClick={() => navigate('/')}>
+                대시보드로 이동
+              </Button>
+            )
           }
         >
           {error}

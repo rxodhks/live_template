@@ -109,6 +109,15 @@ export const ShapeView = memo(function ShapeView({ shape, exporting, zoom = 1, h
         </>
       );
       break;
+    case 'frame':
+      // 아트보드: 흰 종이 + 위쪽 이름표. 안쪽을 누르면 빈 캔버스처럼(그리기 · 영역 선택), 이름표를 눌러 고른다
+      body = (
+        <>
+          {!exporting && <rect x={b.x} y={b.y} width={b.w} height={b.h} fill="rgba(15,23,42,0.08)" transform={`translate(0 ${2 / zoom})`} pointerEvents="none" />}
+          <rect x={b.x} y={b.y} width={b.w} height={b.h} fill={none(shape.fill) === 'none' ? '#ffffff' : shape.fill} stroke={exporting ? 'none' : 'rgba(15,23,42,0.14)'} strokeWidth={1 / zoom} pointerEvents="none" />
+        </>
+      );
+      break;
     case 'pen': {
       const pts = shape.points ?? [];
       let d = '';
@@ -121,6 +130,26 @@ export const ShapeView = memo(function ShapeView({ shape, exporting, zoom = 1, h
       );
       break;
     }
+  }
+
+  if (shape.type === 'frame') {
+    const size = 12 / zoom;
+    return (
+      <g opacity={shape.opacity ?? 1} className={exporting ? undefined : 'shape shape-frame'}>
+        {body}
+        {!exporting && (
+          <g {...data} className="frame-label">
+            <rect x={b.x} y={b.y - size * 1.9} width={Math.max(40 / zoom, b.w)} height={size * 1.8} fill="transparent" />
+            <text x={b.x} y={b.y - size * 0.55} fontSize={size} fontFamily={TEXT_FONT} fontWeight={600}>
+              {shape.name || '아트보드'}
+              <tspan fontWeight={400} className="frame-size">
+                {`  ${Math.round(b.w)} × ${Math.round(b.h)}`}
+              </tspan>
+            </text>
+          </g>
+        )}
+      </g>
+    );
   }
 
   return (

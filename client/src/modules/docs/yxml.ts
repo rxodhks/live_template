@@ -17,15 +17,17 @@ export interface OutlineEntry {
   text: string;
 }
 
-/** 문서의 제목(heading)들을 순서대로 */
+/** 문서의 제목(heading)들을 화면 순서대로 — 토글 · 콜아웃 · 단 안의 제목도 (화면의 h1~h4 순서와 같다) */
 export function outlineOf(fragment: Y.XmlFragment): OutlineEntry[] {
   const out: OutlineEntry[] = [];
-  let index = 0;
-  for (const node of fragment.toArray()) {
-    if (node instanceof Y.XmlElement && node.nodeName === 'heading') {
-      out.push({ index: index++, level: Number(node.getAttribute('level') ?? 1), text: xmlText(node) });
+  const walk = (parent: Y.XmlFragment | Y.XmlElement) => {
+    for (const node of parent.toArray()) {
+      if (!(node instanceof Y.XmlElement)) continue;
+      if (node.nodeName === 'heading') out.push({ index: out.length, level: Number(node.getAttribute('level') ?? 1), text: xmlText(node) });
+      else walk(node);
     }
-  }
+  };
+  walk(fragment);
   return out;
 }
 

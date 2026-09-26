@@ -493,6 +493,12 @@ interface PromptOptions {
   initial?: string;
   confirmText?: string;
   validate?: (v: string) => string | null;
+  /** 여러 줄 입력 (Ctrl/⌘ + Enter로 확인) */
+  multiline?: boolean;
+  /** 입력 칸 아래 안내 */
+  hint?: ReactNode;
+  /** 입력 칸 글꼴을 고정폭으로 (수식 · 코드) */
+  mono?: boolean;
 }
 type PromptRequest = PromptOptions & { resolve: (v: string | null) => void };
 let pushPrompt: ((r: PromptRequest) => void) | null = null;
@@ -544,15 +550,28 @@ export function PromptHost() {
       }
     >
       <Field label={req.label ?? '이름'} error={error}>
-        <input
-          className="input"
-          value={value}
-          placeholder={req.placeholder}
-          data-autofocus
-          onChange={(e) => setValue(e.target.value)}
-          onKeyDown={(e) => e.key === 'Enter' && submit()}
-        />
+        {req.multiline ? (
+          <textarea
+            className={cx('input', req.mono && 'is-mono')}
+            rows={4}
+            value={value}
+            placeholder={req.placeholder}
+            data-autofocus
+            onChange={(e) => setValue(e.target.value)}
+            onKeyDown={(e) => e.key === 'Enter' && (e.metaKey || e.ctrlKey) && submit()}
+          />
+        ) : (
+          <input
+            className={cx('input', req.mono && 'is-mono')}
+            value={value}
+            placeholder={req.placeholder}
+            data-autofocus
+            onChange={(e) => setValue(e.target.value)}
+            onKeyDown={(e) => e.key === 'Enter' && !e.nativeEvent.isComposing && submit()}
+          />
+        )}
       </Field>
+      {req.hint && <p className="muted small prompt-hint">{req.hint}</p>}
     </Modal>
   );
 }
