@@ -1,6 +1,7 @@
 import { memo } from 'react';
 import type { Shape } from '@shared/schema';
 import { type LineGeom, TEXT_FONT, boundsOf, endAngle, lineGeom, linePath, lineHeight, wrapText } from './geometry';
+import { frameSizeText } from './units';
 
 interface Props {
   shape: Shape;
@@ -148,7 +149,8 @@ export const ShapeView = memo(function ShapeView({ shape, exporting, zoom = 1, h
             <text x={b.x} y={b.y - size * 0.55} fontSize={size} fontFamily={TEXT_FONT} fontWeight={600}>
               {shape.name || '아트보드'}
               <tspan fontWeight={400} className="frame-size">
-                {`  ${Math.round(b.w)} × ${Math.round(b.h)}`}
+                {/* 아트보드를 정한 단위로 (A4 → 210 × 297 mm, iPhone → 393 × 852 px) */}
+                {`  ${frameSizeText(shape)}`}
               </tspan>
             </text>
           </g>

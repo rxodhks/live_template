@@ -15,7 +15,7 @@ import {
 } from '@shared/schema';
 import { newId } from '../lib/util';
 import { lastPageSetup, pageSetupDialog } from '../modules/docs/page/PageSetupDialog';
-import { ALL_PRESETS, describePage, pagePx } from '../modules/docs/page/pageSizes';
+import { ALL_PRESETS, describePage, storePx } from '../modules/docs/page/pageSizes';
 import { errorMessage } from '../lib/api';
 import { updateTemplate } from '../lib/templateOps';
 import { confirmDialog, promptDialog } from '../components/ui';
@@ -152,29 +152,31 @@ export async function createBoard(ws: WorkspaceValue, me: PublicUser, opts: Crea
   while (names.has(`보드 ${n}`)) n++;
   const name = chosen.title || `보드 ${n}`;
   const page = chosen.page;
-  const size = page ? pagePx(page) : null;
   const preset = page ? ALL_PRESETS.find((p) => p.id === page.preset) : undefined;
-  const shapes: Shape[] = size
+  const shapes: Shape[] = page
     ? [
         {
           id: newId(),
           type: 'frame',
           x: 0,
           y: 0,
-          w: Math.round(size.width),
-          h: Math.round(size.height),
+          // 고른 단위의 크기가 이름표에 그대로 보이도록 (A4 = 210 × 297 mm)
+          w: storePx(page.width, page.unit),
+          h: storePx(page.height, page.unit),
           fill: '#ffffff',
           stroke: 'transparent',
           strokeWidth: 0,
           opacity: 1,
           z: 0,
           name: preset?.name ?? '아트보드',
-          preset: page!.preset,
+          preset: page.preset,
+          unit: page.unit,
           createdBy: me.id,
         },
       ]
     : [];
-  addBoard(ws.doc, { id, name, createdBy: me.id, shapes });
+  // 속성 패널의 기본 단위도 고른 형식을 따른다 (A4 보드는 mm)
+  addBoard(ws.doc, { id, name, createdBy: me.id, shapes, unit: page?.unit ?? 'px' });
   placeNewPage(ws.doc, features, 'design', id, opts.sectionId);
   ws.report({ type: 'design.create', targetId: id, targetName: name, detail: page ? describePage(page) : '자유 캔버스' });
   toast.success('보드를 만들었습니다', `${name} · ${page ? describePage(page) : '자유 캔버스'}${areaNote(added, 'design')}`);

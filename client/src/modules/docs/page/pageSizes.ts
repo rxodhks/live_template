@@ -1,4 +1,4 @@
-import { PX_PER_UNIT, type PageSetup, type PageUnit } from '@shared/schema';
+import { PAGE_UNITS, PX_PER_UNIT, type PageSetup, type PageUnit } from '@shared/schema';
 
 /*
  * 문서 크기 형식 — 일러스트레이터 · 포토샵의 '새 문서'처럼 종이 · 기기 화면 · 발표 · SNS 크기를 고른다
@@ -132,6 +132,20 @@ export function convert(value: number, from: PageUnit, to: PageUnit): number {
 }
 
 export const toPx = (value: number, unit: PageUnit) => value * PX_PER_UNIT[unit];
+export const fromPx = (px: number, unit: PageUnit) => px / PX_PER_UNIT[unit];
+export const isPageUnit = (v: unknown): v is PageUnit => PAGE_UNITS.includes(v as PageUnit);
+
+/** 단위마다 보여 줄 소수 자리 · 입력 칸 증감 간격 */
+export const UNIT_DECIMALS: Record<PageUnit, number> = { px: 1, mm: 1, cm: 2, in: 2, pt: 1 };
+export const UNIT_STEP: Record<PageUnit, number> = { px: 1, mm: 1, cm: 0.1, in: 0.1, pt: 1 };
+
+export const roundTo = (v: number, decimals: number) => {
+  const k = 10 ** decimals;
+  return Math.round(v * k) / k;
+};
+
+/** 단위로 정한 크기를 저장할 px 값으로 (px 단위는 정수, 나머지는 소수 둘째 자리까지 — 다시 바꿔도 그 값이 되도록) */
+export const storePx = (value: number, unit: PageUnit) => (unit === 'px' ? Math.round(value) : roundTo(toPx(value, unit), 2));
 
 /** 형식을 방향에 맞춰 페이지 설정으로 */
 export function setupFromPreset(p: PagePreset, landscape = Boolean(p.landscape)): PageSetup {
