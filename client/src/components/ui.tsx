@@ -133,25 +133,30 @@ interface ModalProps {
 
 export function Modal({ title, description, onClose, children, footer, width = 480, icon }: ModalProps) {
   const ref = useRef<HTMLDivElement>(null);
+  // 부르는 쪽이 onClose를 매번 새로 만들어도 아래 효과(첫 입력 요소로 포커스)가 다시 돌지 않게 한다
+  // — 다시 돌면 글자를 입력할 때마다 포커스가 첫 입력 요소로 튄다
+  const onCloseRef = useRef(onClose);
+  onCloseRef.current = onClose;
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
       if (e.key === 'Escape') {
         e.stopPropagation();
-        onClose();
+        onCloseRef.current();
       }
     };
     window.addEventListener('keydown', onKey, true);
     const prev = document.activeElement as HTMLElement | null;
-    // 첫 입력 요소로 포커스
-    requestAnimationFrame(() => {
+    // 처음 열릴 때 한 번만 첫 입력 요소로 포커스
+    const frame = requestAnimationFrame(() => {
       const first = ref.current?.querySelector<HTMLElement>('[data-autofocus], input, textarea, select, button.btn-primary');
       first?.focus();
     });
     return () => {
+      cancelAnimationFrame(frame);
       window.removeEventListener('keydown', onKey, true);
       prev?.focus?.();
     };
-  }, [onClose]);
+  }, []);
 
   return createPortal(
     <div className="modal-backdrop" onMouseDown={(e) => e.target === e.currentTarget && onClose()}>

@@ -7,6 +7,8 @@ export interface OutputLine {
   text: string;
   /** SQL 결과 같은 표 */
   table?: { columns: string[]; rows: unknown[][]; total: number };
+  /** 미리보기 화면의 console · 오류 */
+  fromPreview?: boolean;
 }
 
 let lineSeq = 0;
@@ -16,8 +18,38 @@ export const line = (level: OutputLine['level'], text: string): OutputLine => ({
 
 const PREVIEW_CONSOLE = `<script>(function(){var p=function(l,a){try{parent.postMessage({__ltPreview:true,level:l,text:Array.prototype.map.call(a,function(x){try{return typeof x==='string'?x:JSON.stringify(x)}catch(e){return String(x)}}).join(' ')},'*')}catch(e){}};['log','info','warn','error'].forEach(function(l){var o=console[l];console[l]=function(){p(l,arguments);o&&o.apply(console,arguments)}});window.addEventListener('error',function(e){p('error',[e.message])});})();<\/script>`;
 
+/*
+ * 미리보기 멈춤 감지 — 미리보기 문서가 0.5초마다 신호를 보낸다.
+ * 무한 반복 등으로 신호가 끊기면 화면이 미리보기를 없애 멈춘 스크립트를 끝낸다.
+ * alert · confirm · prompt 창이 떠 있는 동안에는 신호가 끊겨도 기다린다.
+ */
+const PREVIEW_WATCHDOG = `<script>(function(){var b=function(m){try{parent.postMessage({__ltBeat:m||1},'*')}catch(e){}};b();setInterval(b,500);['alert','confirm','prompt'].forEach(function(k){var o=window[k];if(typeof o!=='function')return;window[k]=function(){b('modal');try{return o.apply(window,arguments)}finally{b()}}})})();<\/script>`;
+
+/** 미리보기 문서 맨 앞(head 안)에 멈춤 감지 신호를 넣는다 */
+export function withPreviewWatchdog(html: string): string {
+  if (/<head[^>]*>/i.test(html)) return html.replace(/<head[^>]*>/i, (m) => `${m}${PREVIEW_WATCHDOG}`);
+  if (/<!doctype[^>]*>/i.test(html)) return html.replace(/<!doctype[^>]*>/i, (m) => `${m}${PREVIEW_WATCHDOG}`);
+  return PREVIEW_WATCHDOG + html;
+}
+
 export function hasHtml(doc: Y.Doc): boolean {
   return Array.from(getFiles(doc).values()).some((f) => getLanguage(f.get('language') as string).id === 'html');
+}
+
+type PreviewFile = { id: string; name: string; lang: string; content: string };
+
+/** 미리보기에 쓸 HTML 파일: 지금 보고 있는 HTML → index.html → 첫 HTML 파일 */
+function pickHtml<T extends Omit<PreviewFile, 'content'>>(files: T[], preferredHtmlId?: string | null): T | undefined {
+  return (
+    files.find((f) => f.id === preferredHtmlId && f.lang === 'html') ??
+    files.find((f) => f.lang === 'html' && f.name.toLowerCase() === 'index.html') ??
+    files.find((f) => f.lang === 'html')
+  );
+}
+
+export function htmlEntryName(doc: Y.Doc): string | null {
+  const files = Array.from(getFiles(doc).values()).map((f) => ({ id: f.get('id') as string, name: String(f.get('name')), lang: getLanguage(f.get('language') as string).id }));
+  return pickHtml(files)?.name ?? null;
 }
 
 export interface PreviewExtras {
@@ -28,16 +60,13 @@ export interface PreviewExtras {
 }
 
 export function buildPreview(doc: Y.Doc, preferredHtmlId?: string | null, extras: PreviewExtras = {}): string | null {
-  const files = Array.from(getFiles(doc).values()).map((f) => ({
+  const files: PreviewFile[] = Array.from(getFiles(doc).values()).map((f) => ({
     id: f.get('id') as string,
     name: String(f.get('name')),
     lang: getLanguage(f.get('language') as string).id,
     content: String((f.get('content') as Y.Text).toString()),
   }));
-  const html =
-    files.find((f) => f.id === preferredHtmlId && f.lang === 'html') ??
-    files.find((f) => f.lang === 'html' && f.name.toLowerCase() === 'index.html') ??
-    files.find((f) => f.lang === 'html');
+  const html = pickHtml(files, preferredHtmlId);
   if (!html) return null;
   let out = html.content;
   const escapeRe = (s: string) => s.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');

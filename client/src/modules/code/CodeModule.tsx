@@ -1,7 +1,8 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState, type CSSProperties, type PointerEvent as ReactPointerEvent } from 'react';
 import { useNavigate } from 'react-router-dom';
 import * as Y from 'yjs';
 import {
+  AlertTriangle,
   Check,
   CheckCircle2,
   ChevronDown,
@@ -13,6 +14,7 @@ import {
   MoreHorizontal,
   Play,
   RefreshCw,
+  RotateCw,
   Square,
   Terminal,
   Trash2,
@@ -29,7 +31,7 @@ import { copyText, cx, downloadText, newId } from '../../lib/util';
 import { Avatar, Button, EmptyState, IconButton, InlineEdit, Menu, Spinner } from '../../components/ui';
 import { useViewers } from '../../components/Cursors';
 import { CodeEditor } from './CodeEditor';
-import { hasHtml, line, type OutputLine } from './runner';
+import { hasHtml, htmlEntryName, line, withPreviewWatchdog, type OutputLine } from './runner';
 import { buildHtmlPreview, buildMarkdownPreview, buildReactPreview, checkFile, execInfo, executeFile, unsupportedMessage } from './exec';
 
 export function CodeModule() {
@@ -83,13 +85,33 @@ function CodeWorkspace({ file }: { file: YItem }) {
   const [wrap, setWrap] = useState(() => localStorage.getItem('lt.code.wrap') === '1');
   const [tabSize, setTabSize] = useState(() => Number(localStorage.getItem('lt.code.tab')) || 2);
   const [pos, setPos] = useState({ line: 1, col: 1, selected: 0 });
-  const [panel, setPanel] = useState<null | 'output' | 'preview' | 'input'>(null);
+  // 아래 패널: 실행 결과(출력) · 표준 입력. 미리보기는 편집기 오른쪽에 따로 띄운다
+  const [panel, setPanel] = useState<null | 'output' | 'input'>(null);
   const [output, setOutput] = useState<OutputLine[]>([]);
   const [running, setRunning] = useState<null | (() => void)>(null);
   const [status, setStatus] = useState<string | null>(null);
   const [formatted, setFormatted] = useState<{ title: string; text: string } | null>(null);
-  const [preview, setPreview] = useState<string | null>(null);
+  // 미리보기 문서 — 바뀔 때마다 새 화면(iframe)으로 띄운다 (멈춘 화면은 새 문서를 불러오지 못한다)
+  const [preview, setPreview] = useState<{ html: string; v: number } | null>(null);
+  const previewSeq = useRef(0);
+  const [previewHung, setPreviewHung] = useState(false);
+  const frameRef = useRef<HTMLIFrameElement>(null);
   const [panelHeight, setPanelHeight] = useState(240);
+  // 오른쪽 미리보기 — 열림 여부는 템플릿마다, 너비(비율)는 이 기기에 기억한다.
+  // HTML · CSS · JS 같은 웹 파일끼리는 옮겨 다녀도 그대로 열려 있어 고치면서 바로 볼 수 있고, 파이썬 · SQL 등에서는 직접 열 때만 보인다
+  const previewOpenKey = `lt.code.preview.${ws.template.id}`;
+  const webFile = WEB_LANGS.has(lang.id);
+  const [previewOpen, setPreviewOpenState] = useState(() => webFile && readLocal(previewOpenKey) === '1');
+  const setPreviewOpen = (open: boolean) => {
+    setPreviewOpenState(open);
+    if (webFile) writeLocal(previewOpenKey, open ? '1' : null);
+  };
+  const [sideRatio, setSideRatio] = useState(() => {
+    const v = Number(readLocal('lt.code.previewWidth'));
+    return v >= SIDE_MIN_RATIO && v <= SIDE_MAX_RATIO ? v : SIDE_DEFAULT_RATIO;
+  });
+  const [resizing, setResizing] = useState(false);
+  const bodyRef = useRef<HTMLDivElement>(null);
   const htmlAvailable = hasHtml(ws.doc);
   const info = execInfo(lang.id);
   // 미리보기 종류: JSX/TSX는 React 컴포넌트, Markdown은 문서, 그 밖에는 HTML 파일이 있을 때 HTML 미리보기
@@ -114,6 +136,11 @@ function CodeWorkspace({ file }: { file: YItem }) {
     }
   }, [stdin, stdinKey]);
   const stdinLines = stdin.replace(/\n$/, '') ? stdin.replace(/\n$/, '').split('\n').length : 0;
+  const showPreview = previewOpen && previewKind !== null;
+
+  useEffect(() => {
+    if (!resizing) writeLocal('lt.code.previewWidth', sideRatio.toFixed(3));
+  }, [sideRatio, resizing]);
 
   useEffect(() => {
     try {
@@ -128,7 +155,7 @@ function CodeWorkspace({ file }: { file: YItem }) {
   useEffect(() => {
     const onMsg = (e: MessageEvent) => {
       const d = e.data as { __ltPreview?: boolean; level?: OutputLine['level']; text?: string };
-      if (d?.__ltPreview) setOutput((o) => [...o.slice(-300), line(d.level ?? 'log', `[미리보기] ${d.text ?? ''}`)]);
+      if (d?.__ltPreview) setOutput((o) => [...o.slice(-300), { ...line(d.level ?? 'log', `[미리보기] ${d.text ?? ''}`), fromPreview: true }]);
     };
     window.addEventListener('message', onMsg);
     return () => window.removeEventListener('message', onMsg);
@@ -136,7 +163,7 @@ function CodeWorkspace({ file }: { file: YItem }) {
 
   // 미리보기가 열려 있으면 파일이 바뀔 때마다 갱신 (다른 사람의 편집도 반영)
   useEffect(() => {
-    if (panel !== 'preview' || !previewKind) return;
+    if (!showPreview || !previewKind) return;
     const files = getFiles(ws.doc);
     let t: ReturnType<typeof setTimeout>;
     let alive = true;
@@ -150,7 +177,7 @@ function CodeWorkspace({ file }: { file: YItem }) {
             : previewKind === 'markdown'
               ? await buildMarkdownPreview((file.get('content') as Y.Text).toString())
               : await buildHtmlPreview(ws.doc, lang.id === 'html' ? fileId : null);
-        if (alive && my === seq) setPreview(html);
+        if (alive && my === seq) setPreview(html === null ? null : { html: withPreviewWatchdog(html), v: ++previewSeq.current });
       } catch (err) {
         if (alive) setOutput((o) => [...o.slice(-300), line('error', `미리보기를 만들지 못했습니다: ${err instanceof Error ? err.message : String(err)}`)]);
       }
@@ -166,7 +193,45 @@ function CodeWorkspace({ file }: { file: YItem }) {
       clearTimeout(t);
       files.unobserveDeep(schedule);
     };
-  }, [panel, ws.doc, fileId, lang.id, previewKind, file]);
+  }, [showPreview, ws.doc, fileId, lang.id, previewKind, file]);
+
+  // 미리보기 멈춤 감지: 신호가 4초 넘게 없으면 (무한 반복 등) 미리보기를 없애고 알린다
+  const previewVersion = showPreview ? preview?.v : undefined;
+  useEffect(() => {
+    if (previewVersion === undefined) return;
+    setPreviewHung(false);
+    let last = performance.now();
+    let modal = false;
+    const onBeat = (e: MessageEvent) => {
+      const beat = (e.data as { __ltBeat?: 1 | 'modal' })?.__ltBeat;
+      if (!beat || e.source !== frameRef.current?.contentWindow) return;
+      last = performance.now();
+      modal = beat === 'modal';
+    };
+    // 탭이 가려져 있으면 타이머가 느려지므로 다시 보일 때부터 센다
+    const onVisible = () => {
+      last = performance.now();
+    };
+    const timer = setInterval(() => {
+      if (document.visibilityState !== 'visible' || modal || performance.now() - last < PREVIEW_HANG_MS) return;
+      clearInterval(timer);
+      setPreviewHung(true);
+      setOutput((o) => [
+        ...o.slice(-300),
+        { ...line('warn', `[미리보기] ${PREVIEW_HANG_MS / 1000}초 넘게 응답이 없어 미리보기를 멈췄습니다. 끝나지 않는 반복(while (true) 등)이 있는지 확인해 보세요.`), fromPreview: true },
+      ]);
+    }, 500);
+    window.addEventListener('message', onBeat);
+    document.addEventListener('visibilitychange', onVisible);
+    return () => {
+      clearInterval(timer);
+      window.removeEventListener('message', onBeat);
+      document.removeEventListener('visibilitychange', onVisible);
+    };
+  }, [previewVersion]);
+
+  /** 미리보기를 처음부터 다시 불러온다 (스크립트 · 애니메이션 다시 시작) */
+  const reloadPreview = () => setPreview((p) => p && { ...p, v: ++previewSeq.current });
 
   useEffect(() => () => running?.(), [running]);
 
@@ -180,7 +245,9 @@ function CodeWorkspace({ file }: { file: YItem }) {
         setOutput([line('system', 'HTML 파일이 없어 미리보기를 만들 수 없습니다. index.html 파일을 만들고 이 파일을 연결해 보세요.')]);
         return;
       }
-      setPanel('preview');
+      // 이미 열려 있으면 처음부터 다시 불러온다 (스크립트 · 애니메이션 다시 시작)
+      if (showPreview) reloadPreview();
+      else setPreviewOpen(true);
       return;
     }
     if (info.mode === 'check' || info.mode === 'convert') {
@@ -268,6 +335,37 @@ function CodeWorkspace({ file }: { file: YItem }) {
 
   const content = () => (file.get('content') as Y.Text).toString();
 
+  const errorCount = output.filter((o) => o.level === 'error').length;
+  const previewLogs = output.filter((o) => o.fromPreview).length;
+  const previewErrors = output.filter((o) => o.fromPreview && o.level === 'error').length;
+  const previewTitle = previewKind === 'react' ? 'React 미리보기' : previewKind === 'markdown' ? 'Markdown 미리보기' : 'HTML 미리보기';
+  // CSS · JS 파일을 보고 있을 때는 어떤 HTML 파일을 보여 주는지 함께 적는다
+  const previewHtmlName = previewKind === 'html' && lang.id !== 'html' ? htmlEntryName(ws.doc) : null;
+
+  /** 미리보기 왼쪽 경계를 끌어 너비 조절 (iframe 위로 지나가도 끊기지 않게 포인터를 붙잡는다) */
+  const startSideResize = (e: ReactPointerEvent<HTMLDivElement>) => {
+    const body = bodyRef.current;
+    if (!body || e.button !== 0) return;
+    e.preventDefault();
+    const handle = e.currentTarget;
+    handle.setPointerCapture(e.pointerId);
+    setResizing(true);
+    const rect = body.getBoundingClientRect();
+    const move = (ev: PointerEvent) => {
+      const ratio = (rect.right - ev.clientX) / rect.width;
+      setSideRatio(Math.min(Math.max(ratio, SIDE_MIN_RATIO), SIDE_MAX_RATIO));
+    };
+    const up = () => {
+      handle.removeEventListener('pointermove', move);
+      handle.removeEventListener('pointerup', up);
+      handle.removeEventListener('pointercancel', up);
+      setResizing(false);
+    };
+    handle.addEventListener('pointermove', move);
+    handle.addEventListener('pointerup', up);
+    handle.addEventListener('pointercancel', up);
+  };
+
   return (
     <div className="code-module">
       <div className="module-toolbar">
@@ -318,7 +416,7 @@ function CodeWorkspace({ file }: { file: YItem }) {
           </Button>
         )}
         {previewKind === 'html' && info.mode !== 'preview' && (
-          <IconButton label="HTML 미리보기" active={panel === 'preview'} onClick={() => setPanel(panel === 'preview' ? null : 'preview')}>
+          <IconButton label={showPreview ? 'HTML 미리보기 닫기' : 'HTML 미리보기 (오른쪽)'} active={showPreview} onClick={() => setPreviewOpen(!showPreview)}>
             <Eye size={16} />
           </IconButton>
         )}
@@ -351,128 +449,176 @@ function CodeWorkspace({ file }: { file: YItem }) {
         />
       </div>
 
-      <div className="code-body">
-        <CodeEditor
-          file={file}
-          readOnly={!ws.canEdit}
-          wrap={wrap}
-          tabSize={tabSize}
-          onRun={run}
-          onCursor={(l, c, selected) => setPos({ line: l, col: c, selected })}
-        />
-        {panel && (
-          <div className="code-panel" style={{ height: panelHeight }}>
+      <div
+        ref={bodyRef}
+        className={cx('code-body', showPreview && 'has-side', resizing && 'is-resizing')}
+        style={{ '--side-w': `${(sideRatio * 100).toFixed(2)}%` } as CSSProperties}
+      >
+        <div className="code-main">
+          <CodeEditor
+            file={file}
+            readOnly={!ws.canEdit}
+            wrap={wrap}
+            tabSize={tabSize}
+            onRun={run}
+            onCursor={(l, c, selected) => setPos({ line: l, col: c, selected })}
+          />
+          {panel && (
+            <div className="code-panel" style={{ height: panelHeight }}>
+              <div
+                className="code-panel-resize"
+                onPointerDown={(e) => {
+                  const startY = e.clientY;
+                  const startH = panelHeight;
+                  const move = (ev: PointerEvent) => setPanelHeight(Math.min(Math.max(startH - (ev.clientY - startY), 120), window.innerHeight * 0.7));
+                  const up = () => {
+                    window.removeEventListener('pointermove', move);
+                    window.removeEventListener('pointerup', up);
+                  };
+                  window.addEventListener('pointermove', move);
+                  window.addEventListener('pointerup', up);
+                }}
+              />
+              <div className="code-panel-tabs">
+                <button className={cx(panel === 'output' && 'is-active')} onClick={() => setPanel('output')}>
+                  <Terminal size={13} /> 출력 {errorCount > 0 && <span className="dot-danger" />}
+                </button>
+                {info.stdin && (
+                  <button className={cx(panel === 'input' && 'is-active')} onClick={() => setPanel('input')}>
+                    <Keyboard size={13} /> 입력{stdinLines > 0 && <span className="tab-count">{stdinLines}</span>}
+                  </button>
+                )}
+                <span className="toolbar-spacer" />
+                {panel === 'output' && (
+                  <button
+                    onClick={() => {
+                      setOutput([]);
+                      setFormatted(null);
+                    }}
+                    className="muted"
+                  >
+                    지우기
+                  </button>
+                )}
+                {panel === 'input' && stdin && (
+                  <button onClick={() => setStdin('')} className="muted">
+                    비우기
+                  </button>
+                )}
+                <IconButton label="패널 닫기" size="sm" onClick={() => setPanel(null)}>
+                  <X size={14} />
+                </IconButton>
+              </div>
+              {panel === 'output' ? (
+                <div className="code-output" role="log">
+                  {status && (
+                    <div className="out-status">
+                      <Spinner size={12} /> {status}
+                    </div>
+                  )}
+                  {output.length === 0 && !status && (
+                    <div className="muted">{info.mode === 'preview' ? '미리보기의 console.log · 오류가 여기에 표시됩니다.' : '실행 결과가 여기에 표시됩니다. (Ctrl/⌘ + Enter)'}</div>
+                  )}
+                  {output.map((o) =>
+                    o.table ? (
+                      <OutputTable key={o.id} note={o.text} table={o.table} />
+                    ) : (
+                      <div key={o.id} className={`out-line out-${o.level}`}>
+                        {o.text}
+                      </div>
+                    ),
+                  )}
+                  {formatted && (
+                    <div className="out-formatted">
+                      <div className="out-formatted-head">
+                        <b>{formatted.title}</b>
+                        <span className="toolbar-spacer" />
+                        <button className="link small" onClick={async () => (await copyText(formatted.text)) && toast.success('복사했습니다')}>
+                          복사
+                        </button>
+                        {lang.id === 'json' && ws.canEdit && (
+                          <button className="link small" onClick={applyFormatted}>
+                            파일에 적용
+                          </button>
+                        )}
+                        {lang.id === 'scss' && ws.canEdit && (
+                          <button className="link small" onClick={saveCss}>
+                            CSS 파일로 저장
+                          </button>
+                        )}
+                      </div>
+                      <pre>{formatted.text}</pre>
+                    </div>
+                  )}
+                </div>
+              ) : (
+                <div className="code-stdin">
+                  <textarea
+                    value={stdin}
+                    onChange={(e) => setStdin(e.target.value)}
+                    spellCheck={false}
+                    aria-label="표준 입력"
+                    placeholder={'실행할 때 프로그램에 넣을 입력값을 한 줄에 하나씩 적으세요.\n예) 파이썬 input(), Ruby gets, Lua io.read(), PHP fgets(STDIN)'}
+                  />
+                  <p className="muted small">이 파일을 실행할 때마다 위 내용이 표준 입력으로 들어갑니다. 입력값은 이 기기에만 저장됩니다.</p>
+                </div>
+              )}
+            </div>
+          )}
+        </div>
+
+        {showPreview && (
+          <aside className="code-side" aria-label={previewTitle}>
             <div
-              className="code-panel-resize"
-              onPointerDown={(e) => {
-                const startY = e.clientY;
-                const startH = panelHeight;
-                const move = (ev: PointerEvent) => setPanelHeight(Math.min(Math.max(startH - (ev.clientY - startY), 120), window.innerHeight * 0.7));
-                const up = () => {
-                  window.removeEventListener('pointermove', move);
-                  window.removeEventListener('pointerup', up);
-                };
-                window.addEventListener('pointermove', move);
-                window.addEventListener('pointerup', up);
-              }}
+              className="code-side-resize"
+              role="separator"
+              aria-orientation="vertical"
+              aria-label="미리보기 너비 조절"
+              data-tip="끌어서 너비 조절 · 두 번 눌러 반반"
+              onPointerDown={startSideResize}
+              onDoubleClick={() => setSideRatio(SIDE_DEFAULT_RATIO)}
             />
-            <div className="code-panel-tabs">
-              <button className={cx(panel === 'output' && 'is-active')} onClick={() => setPanel('output')}>
-                <Terminal size={13} /> 출력 {output.filter((o) => o.level === 'error').length > 0 && <span className="dot-danger" />}
-              </button>
-              {previewKind && (
-                <button className={cx(panel === 'preview' && 'is-active')} onClick={() => setPanel('preview')}>
-                  <Eye size={13} /> 미리보기
-                </button>
-              )}
-              {info.stdin && (
-                <button className={cx(panel === 'input' && 'is-active')} onClick={() => setPanel('input')}>
-                  <Keyboard size={13} /> 입력{stdinLines > 0 && <span className="tab-count">{stdinLines}</span>}
-                </button>
-              )}
+            <div className="code-side-head">
+              <Eye size={14} />
+              <b>{previewTitle}</b>
+              {previewKind === 'html' && lang.id !== 'html' && previewHtmlName && <span className="muted small">{previewHtmlName}</span>}
               <span className="toolbar-spacer" />
-              {panel === 'output' && (
-                <button
-                  onClick={() => {
-                    setOutput([]);
-                    setFormatted(null);
-                  }}
-                  className="muted"
-                >
-                  지우기
+              {previewLogs > 0 && (
+                <button className={cx('side-console', previewErrors > 0 && 'has-error')} onClick={() => setPanel('output')} data-tip="미리보기의 console 출력을 아래 출력 패널에서 봅니다">
+                  <Terminal size={13} /> 콘솔 {previewLogs}
                 </button>
               )}
-              {panel === 'input' && stdin && (
-                <button onClick={() => setStdin('')} className="muted">
-                  비우기
-                </button>
-              )}
-              <IconButton label="패널 닫기" size="sm" onClick={() => setPanel(null)}>
+              <IconButton label="새로 고침" size="sm" onClick={reloadPreview}>
+                <RotateCw size={14} />
+              </IconButton>
+              <IconButton label="미리보기 닫기" size="sm" onClick={() => setPreviewOpen(false)}>
                 <X size={14} />
               </IconButton>
             </div>
-            {panel === 'output' ? (
-              <div className="code-output" role="log">
-                {status && (
-                  <div className="out-status">
-                    <Spinner size={12} /> {status}
-                  </div>
-                )}
-                {output.length === 0 && !status && <div className="muted">실행 결과가 여기에 표시됩니다. (Ctrl/⌘ + Enter)</div>}
-                {output.map((o) =>
-                  o.table ? (
-                    <OutputTable key={o.id} note={o.text} table={o.table} />
-                  ) : (
-                    <div key={o.id} className={`out-line out-${o.level}`}>
-                      {o.text}
-                    </div>
-                  ),
-                )}
-                {formatted && (
-                  <div className="out-formatted">
-                    <div className="out-formatted-head">
-                      <b>{formatted.title}</b>
-                      <span className="toolbar-spacer" />
-                      <button className="link small" onClick={async () => (await copyText(formatted.text)) && toast.success('복사했습니다')}>
-                        복사
-                      </button>
-                      {lang.id === 'json' && ws.canEdit && (
-                        <button className="link small" onClick={applyFormatted}>
-                          파일에 적용
-                        </button>
-                      )}
-                      {lang.id === 'scss' && ws.canEdit && (
-                        <button className="link small" onClick={saveCss}>
-                          CSS 파일로 저장
-                        </button>
-                      )}
-                    </div>
-                    <pre>{formatted.text}</pre>
-                  </div>
-                )}
-              </div>
-            ) : panel === 'input' ? (
-              <div className="code-input">
-                <textarea
-                  value={stdin}
-                  onChange={(e) => setStdin(e.target.value)}
-                  spellCheck={false}
-                  aria-label="표준 입력"
-                  placeholder={'실행할 때 프로그램에 넣을 입력값을 한 줄에 하나씩 적으세요.\n예) 파이썬 input(), Ruby gets, Lua io.read(), PHP fgets(STDIN)'}
-                />
-                <p className="muted small">이 파일을 실행할 때마다 위 내용이 표준 입력으로 들어갑니다. 입력값은 이 기기에만 저장됩니다.</p>
+            {preview && previewHung ? (
+              <div className="code-side-empty is-hung" role="alert">
+                <AlertTriangle size={22} />
+                <b>미리보기가 응답하지 않아 멈췄습니다</b>
+                <span className="muted small">끝나지 않는 반복(while (true) 등)이 있는지 확인해 보세요. 코드를 고치면 자동으로 다시 불러옵니다.</span>
+                <Button size="sm" icon={<RotateCw size={13} />} onClick={reloadPreview}>
+                  다시 불러오기
+                </Button>
               </div>
             ) : preview ? (
               <iframe
+                key={preview.v}
+                ref={frameRef}
                 className={cx('code-preview', previewKind === 'markdown' && 'is-doc')}
-                title={previewKind === 'react' ? 'React 미리보기' : previewKind === 'markdown' ? 'Markdown 미리보기' : 'HTML 미리보기'}
+                title={previewTitle}
                 sandbox="allow-scripts allow-modals"
-                srcDoc={preview}
+                srcDoc={preview.html}
               />
             ) : (
-              <div className="code-output muted">{previewKind ? '미리보기를 만드는 중…' : 'HTML 파일이 없습니다.'}</div>
+              <div className="code-side-empty muted">
+                <Spinner size={16} /> 미리보기를 만드는 중…
+              </div>
             )}
-          </div>
+          </aside>
         )}
       </div>
 
@@ -524,4 +670,27 @@ function OutputTable({ note, table }: { note: string; table: NonNullable<OutputL
       </div>
     </div>
   );
+}
+
+const PREVIEW_HANG_MS = 4000;
+/** 미리보기를 연 채로 옮겨 다니는 파일 (미리보기 화면에 바로 반영되는 것들) */
+const WEB_LANGS = new Set(['html', 'css', 'scss', 'javascript', 'typescript', 'jsx', 'tsx', 'markdown']);
+const SIDE_MIN_RATIO = 0.2;
+const SIDE_MAX_RATIO = 0.8;
+const SIDE_DEFAULT_RATIO = 0.5;
+
+function readLocal(key: string): string | null {
+  try {
+    return localStorage.getItem(key);
+  } catch {
+    return null;
+  }
+}
+function writeLocal(key: string, value: string | null) {
+  try {
+    if (value === null) localStorage.removeItem(key);
+    else localStorage.setItem(key, value);
+  } catch {
+    /* 무시 */
+  }
 }

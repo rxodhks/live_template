@@ -505,11 +505,143 @@
 .lang-select:hover {
   border-color: var(--border-strong);
 }
+/* 편집기(+ 아래 출력 패널) | 오른쪽 미리보기 */
 .code-body {
   flex: 1;
   min-height: 0;
   display: flex;
+}
+.code-module {
+  container: code-module / inline-size;
+}
+.code-main {
+  flex: 1;
+  min-width: 0;
+  min-height: 0;
+  display: flex;
   flex-direction: column;
+}
+.code-side {
+  position: relative;
+  flex: none;
+  width: var(--side-w, 50%);
+  min-width: 260px;
+  max-width: calc(100% - 280px);
+  display: flex;
+  flex-direction: column;
+  border-left: 1px solid var(--border);
+  background: var(--surface);
+}
+.code-side-resize {
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  left: -4px;
+  width: 8px;
+  cursor: col-resize;
+  z-index: 3;
+  touch-action: none;
+}
+.code-side-resize::after {
+  content: '';
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  left: 3px;
+  width: 2px;
+  background: transparent;
+  transition: background 0.12s;
+}
+.code-side-resize:hover::after,
+.code-body.is-resizing .code-side-resize::after {
+  background: var(--accent);
+}
+/* 끄는 동안에는 미리보기(iframe)가 포인터를 가로채지 않게 */
+.code-body.is-resizing {
+  cursor: col-resize;
+  user-select: none;
+}
+.code-body.is-resizing iframe {
+  pointer-events: none;
+}
+.code-side-head {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  min-height: 37px;
+  padding: 4px 6px 4px 12px;
+  border-bottom: 1px solid var(--border);
+  font-size: 12.5px;
+  color: var(--text-2);
+}
+.code-side-head b {
+  color: var(--text);
+  font-weight: 650;
+}
+.code-side-head .small {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.side-console {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  padding: 3px 8px;
+  border-radius: 6px;
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--text-2);
+  white-space: nowrap;
+}
+.side-console:hover {
+  background: var(--surface-2);
+  color: var(--text);
+}
+.side-console.has-error {
+  color: var(--danger);
+}
+.code-side-empty {
+  flex: 1;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  font-size: 13px;
+}
+.code-side-empty.is-hung {
+  flex-direction: column;
+  gap: 8px;
+  padding: 24px;
+  text-align: center;
+  color: var(--text-2);
+}
+.code-side-empty.is-hung > svg {
+  color: var(--warning);
+}
+.code-side-empty.is-hung b {
+  color: var(--text);
+}
+.code-side-empty.is-hung .small {
+  max-width: 320px;
+  line-height: 1.6;
+}
+/* 좁은 화면에서는 미리보기를 편집기 아래로 */
+@container code-module (max-width: 640px) {
+  .code-body.has-side {
+    flex-direction: column;
+  }
+  .code-side {
+    width: auto;
+    min-width: 0;
+    max-width: none;
+    height: 45%;
+    border-left: 0;
+    border-top: 1px solid var(--border);
+  }
+  .code-side-resize {
+    display: none;
+  }
 }
 .code-host {
   background: var(--surface);
@@ -647,7 +779,7 @@
   background: var(--accent-soft);
   color: var(--accent-text);
 }
-.code-input {
+.code-stdin {
   flex: 1;
   display: flex;
   flex-direction: column;
@@ -655,7 +787,7 @@
   padding: 8px 12px 10px;
   min-height: 0;
 }
-.code-input textarea {
+.code-stdin textarea {
   flex: 1;
   min-height: 60px;
   resize: none;
@@ -668,7 +800,7 @@
   font-size: 12.5px;
   line-height: 1.6;
 }
-.code-input textarea:focus {
+.code-stdin textarea:focus {
   outline: none;
   border-color: var(--accent);
   background: var(--surface);
