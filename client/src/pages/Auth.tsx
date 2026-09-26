@@ -22,11 +22,11 @@ import { LegalLinks } from './Legal';
  */
 
 const FEATURES = [
-  { icon: <MousePointer2 size={18} />, title: '실시간 커서와 행동 표시', text: '누가 어디서 무엇을 하는지 커서 옆에 바로 보입니다.' },
-  { icon: <Palette size={18} />, title: '디자인 캔버스', text: '도형·스티키 노트·펜으로 함께 그립니다.' },
-  { icon: <Code2 size={18} />, title: '코드 에디터', text: '24개 언어, 실행과 미리보기까지.' },
+  { icon: <MousePointer2 size={18} />, title: '실시간 커서와 행동 표시', text: '누가 어디서 무엇을 하는지 각 사용자의 커서에서 확인할 수 있습니다.' },
+  { icon: <Palette size={18} />, title: '디자인 캔버스', text: '다양한 디자인 툴을 이용한 작업이 가능합니다.' },
+  { icon: <Code2 size={18} />, title: '코드 에디터', text: '24개 언어, 실행과 미리보기까지. 간단한 작업을 수행할 수 있습니다.' },
   { icon: <FileText size={18} />, title: '문서 작성', text: '리치 텍스트 문서를 동시에 편집합니다.' },
-  { icon: <Lock size={18} />, title: '비밀 노트', text: '브라우저에서 AES-256으로 암호화 — 서버도 읽을 수 없습니다.' },
+  { icon: <Lock size={18} />, title: '비밀 노트', text: '개 혹은 협업자들만의 암호화된 노트를 사용할 수 있습니다.' },
 ];
 
 const PROVIDERS: { id: OAuthProvider; label: string; icon: ReactNode }[] = [
@@ -56,7 +56,7 @@ function AuthLayout({ children }: { children: ReactNode }) {
         </div>
         <p className="onboarding-tagline">내 방에서 시작해, 마당에서 함께.</p>
         <h1>
-          디자인 · 코딩 · 문서를
+          다양한 작업을
           <br />한 화면에서 <em>함께</em>.
         </h1>
         <p>템플릿 하나에 필요한 기능만 골라 담고, 혼자 시작해서 필요할 때 팀원을 초대해 실시간으로 함께 작업하세요. 모든 변경은 자동 저장됩니다.</p>
@@ -261,7 +261,7 @@ export function LoginPage() {
                 )
               )}
               <p className="auth-foot muted small">
-                <ShieldCheck size={13} /> 비밀번호 없이 로그인합니다. 이메일은 로그인 확인에만 쓰이고 다른 사용자에게는 표시되지 않습니다.
+                <ShieldCheck size={13} /> 비밀번호 없이 로그인합니다. 이메일은 로그인 확인에만 사용됩니다.
               </p>
             </>
           )}
@@ -274,7 +274,7 @@ export function LoginPage() {
           <div className="auth-head">
             <h2>메일을 확인해 주세요</h2>
             <p className="muted">
-              <b className="auth-email-addr">{sentTo}</b>로 6자리 인증 코드를 보냈습니다. 코드는 10분 동안 쓸 수 있습니다.
+              <b className="auth-email-addr">{sentTo}</b>로 6자리 인증 코드를 보냈습니다. 인증 코드의 유효 기간은 10분입니다.
             </p>
           </div>
           {devCode && (
