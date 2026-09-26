@@ -15,8 +15,12 @@ export interface PageSetupResult {
   title: string;
 }
 
+/** 어디에 쓰는 크기인지: 문서 · 새 디자인 보드 · 보드 안의 아트보드 */
+export type SizeKind = 'doc' | 'board' | 'artboard';
+
 interface Request {
   mode: 'create' | 'edit';
+  kind: SizeKind;
   initial: PageSetup | null;
   title?: string;
   resolve: (r: PageSetupResult | null) => void;
@@ -24,24 +28,57 @@ interface Request {
 
 let push: ((r: Request) => void) | null = null;
 
-const LAST_KEY = 'lt.doc.lastPage';
+const lastKey = (kind: SizeKind) => (kind === 'doc' ? 'lt.doc.lastPage' : `lt.${kind}.lastSize`);
 
-/** 마지막으로 고른 형식 (새 문서 창에서 처음 골라져 있는 값) */
-export function lastPageSetup(): PageSetup | null {
+/** 마지막으로 고른 형식 (창을 열 때 처음 골라져 있는 값) */
+export function lastPageSetup(kind: SizeKind = 'doc'): PageSetup | null {
   try {
-    const raw = localStorage.getItem(LAST_KEY);
+    const raw = localStorage.getItem(lastKey(kind));
     return raw ? (JSON.parse(raw) as PageSetup | null) : null;
   } catch {
     return null;
   }
 }
 
-export function pageSetupDialog(opts: { mode: 'create' | 'edit'; initial: PageSetup | null; title?: string }): Promise<PageSetupResult | null> {
+export function pageSetupDialog(opts: { mode: 'create' | 'edit'; kind?: SizeKind; initial: PageSetup | null; title?: string }): Promise<PageSetupResult | null> {
   return new Promise((resolve) => {
     if (!push) return resolve({ page: opts.initial, title: opts.title ?? '' });
-    push({ ...opts, resolve });
+    push({ kind: 'doc', ...opts, resolve });
   });
 }
+
+const TEXTS: Record<SizeKind, { create: string; edit: string; createDesc: string; editDesc: string; name: string; free: string; freeDesc: string; confirm: string }> = {
+  doc: {
+    create: '새 문서',
+    edit: '페이지 설정',
+    createDesc: '문서 크기를 고르세요. 만든 뒤에도 페이지 설정에서 바꿀 수 있습니다.',
+    editDesc: '바꾸면 이 문서를 보는 모든 사람에게 적용됩니다. 내용은 그대로입니다.',
+    name: '문서 이름',
+    free: '자유 형식',
+    freeDesc: '종이 크기 없이 아래로 끝없이 이어지는 문서입니다. 메모 · 회의록 · 위키처럼 화면에서 읽고 쓰는 문서에 알맞습니다.',
+    confirm: '만들기',
+  },
+  board: {
+    create: '새 디자인 보드',
+    edit: '보드 크기',
+    createDesc: '크기를 고르면 그 크기의 아트보드가 놓인 보드가 만들어집니다. 아트보드는 나중에 더 추가할 수 있습니다.',
+    editDesc: '',
+    name: '보드 이름',
+    free: '자유 캔버스',
+    freeDesc: '크기 제한 없는 무한 캔버스입니다. 화이트보드 · 브레인스토밍 · 흐름도에 알맞습니다. 필요하면 나중에 아트보드를 추가할 수 있습니다.',
+    confirm: '만들기',
+  },
+  artboard: {
+    create: '아트보드 추가',
+    edit: '아트보드 크기',
+    createDesc: '정해진 크기의 틀을 보드에 놓습니다. 안에 그린 도형은 아트보드와 함께 움직이고, 아트보드 크기 그대로 내보낼 수 있습니다.',
+    editDesc: '아트보드의 위치는 그대로 두고 크기만 바꿉니다.',
+    name: '아트보드 이름',
+    free: '',
+    freeDesc: '',
+    confirm: '추가',
+  },
+};
 
 export function PageSetupHost() {
   const [req, setReq] = useState<Request | null>(null);
@@ -76,14 +113,17 @@ const CATEGORY_ICONS: Record<string, React.ReactNode> = {
 
 const DEFAULT_CUSTOM: PageSetup = { preset: 'custom', width: 800, height: 1000, unit: 'px', margin: 40, fontSize: 16 };
 
-function categoryOf(page: PageSetup | null): string {
-  if (!page) return 'free';
+function categoryOf(page: PageSetup | null, kind: SizeKind = 'doc'): string {
+  if (!page) return kind === 'artboard' ? 'mobile' : 'free';
   return PAGE_CATEGORIES.find((c) => c.presets.some((p) => p.id === page.preset))?.id ?? 'custom';
 }
 
 function PageSetupDialog({ req, onDone }: { req: Request; onDone(r: PageSetupResult | null): void }) {
-  const [page, setPage] = useState<PageSetup | null>(req.initial);
-  const [category, setCategory] = useState(() => categoryOf(req.initial));
+  const t = TEXTS[req.kind];
+  const isDoc = req.kind === 'doc';
+  // 아트보드는 자유 형식이 없다 — 처음이면 iPhone 16
+  const [page, setPage] = useState<PageSetup | null>(() => req.initial ?? (req.kind === 'artboard' ? setupFromPreset(PAGE_CATEGORIES[1].presets[0]) : null));
+  const [category, setCategory] = useState(() => categoryOf(req.initial, req.kind));
   const [title, setTitle] = useState(req.title ?? '');
   // 입력 중인 숫자 (빈 칸 · 소수점 입력 중에도 되돌아가지 않게)
   const [drafts, setDrafts] = useState<Record<string, string>>({});
@@ -94,11 +134,11 @@ function PageSetupDialog({ req, onDone }: { req: Request; onDone(r: PageSetupRes
     if (px.w < 120 || px.h < 120) return '너비 · 높이는 120px(약 32mm) 이상이어야 합니다.';
     if (px.w > 8000 || px.h > 8000) return '너비 · 높이는 8000px(약 2.1m)까지 정할 수 있습니다.';
     if (px.m * 2 >= Math.min(px.w, px.h) - 40) return '여백이 너무 큽니다.';
-    if (page.fontSize < 8 || page.fontSize > 96) return '글자 크기는 8 ~ 96px 사이로 정해 주세요.';
+    if (isDoc && (page.fontSize < 8 || page.fontSize > 96)) return '글자 크기는 8 ~ 96px 사이로 정해 주세요.';
     return null;
-  }, [page, px]);
+  }, [page, px, isDoc]);
 
-  const pick = (next: PageSetup | null, cat = categoryOf(next)) => {
+  const pick = (next: PageSetup | null, cat = categoryOf(next, req.kind)) => {
     setPage(next);
     setCategory(cat);
     setDrafts({});
@@ -148,7 +188,7 @@ function PageSetupDialog({ req, onDone }: { req: Request; onDone(r: PageSetupRes
   const submit = () => {
     if (error) return;
     try {
-      localStorage.setItem(LAST_KEY, JSON.stringify(page));
+      localStorage.setItem(lastKey(req.kind), JSON.stringify(page));
     } catch {
       /* 무시 */
     }
@@ -158,8 +198,8 @@ function PageSetupDialog({ req, onDone }: { req: Request; onDone(r: PageSetupRes
   const cat = PAGE_CATEGORIES.find((c) => c.id === category);
   return (
     <Modal
-      title={req.mode === 'create' ? '새 문서' : '페이지 설정'}
-      description={req.mode === 'create' ? '문서 크기를 고르세요. 만든 뒤에도 페이지 설정에서 바꿀 수 있습니다.' : '바꾸면 이 문서를 보는 모든 사람에게 적용됩니다. 내용은 그대로입니다.'}
+      title={req.mode === 'create' ? t.create : t.edit}
+      description={req.mode === 'create' ? t.createDesc : t.editDesc}
       icon={<FileText size={18} />}
       width={900}
       onClose={() => onDone(null)}
@@ -170,16 +210,18 @@ function PageSetupDialog({ req, onDone }: { req: Request; onDone(r: PageSetupRes
             취소
           </Button>
           <Button variant="primary" onClick={submit} disabled={!!error}>
-            {req.mode === 'create' ? '만들기' : '적용'}
+            {req.mode === 'create' ? t.confirm : '적용'}
           </Button>
         </>
       }
     >
       <div className="page-setup">
         <nav className="ps-cats" aria-label="문서 종류">
-          <button type="button" className={cx('ps-cat', category === 'free' && 'is-active')} onClick={() => pick(null, 'free')}>
-            {CATEGORY_ICONS.free} 자유 형식
-          </button>
+          {t.free && (
+            <button type="button" className={cx('ps-cat', category === 'free' && 'is-active')} onClick={() => pick(null, 'free')}>
+              {CATEGORY_ICONS.free} {t.free}
+            </button>
+          )}
           {PAGE_CATEGORIES.map((c) => (
             <button
               key={c.id}
@@ -187,7 +229,7 @@ function PageSetupDialog({ req, onDone }: { req: Request; onDone(r: PageSetupRes
               className={cx('ps-cat', category === c.id && 'is-active')}
               onClick={() => {
                 setCategory(c.id);
-                if (categoryOf(page) !== c.id) pick(setupFromPreset(c.presets[0]), c.id);
+                if (categoryOf(page, req.kind) !== c.id) pick(setupFromPreset(c.presets[0]), c.id);
               }}
             >
               {CATEGORY_ICONS[c.id]} {c.name}
@@ -210,8 +252,8 @@ function PageSetupDialog({ req, onDone }: { req: Request; onDone(r: PageSetupRes
           {category === 'free' ? (
             <div className="ps-free">
               <InfinityIcon size={30} />
-              <b>자유 형식</b>
-              <p>종이 크기 없이 아래로 끝없이 이어지는 문서입니다. 메모 · 회의록 · 위키처럼 화면에서 읽고 쓰는 문서에 알맞습니다.</p>
+              <b>{t.free}</b>
+              <p>{t.freeDesc}</p>
             </div>
           ) : category === 'custom' ? (
             <div className="ps-free">
@@ -247,8 +289,12 @@ function PageSetupDialog({ req, onDone }: { req: Request; onDone(r: PageSetupRes
 
         <aside className="ps-side">
           {req.mode === 'create' && (
-            <Field label="문서 이름">
-              <input className="input" value={title} placeholder="제목 없는 문서" maxLength={80} onChange={(e) => setTitle(e.target.value)} onKeyDown={(e) => e.key === 'Enter' && !e.nativeEvent.isComposing && submit()} />
+            <Field label={t.name}>
+              <input
+                className="input"
+                value={title}
+                placeholder={req.kind === 'doc' ? '제목 없는 문서' : req.kind === 'board' ? '보드' : (ALL_PRESETS.find((p) => p.id === page?.preset)?.name ?? '아트보드')}
+                maxLength={80} onChange={(e) => setTitle(e.target.value)} onKeyDown={(e) => e.key === 'Enter' && !e.nativeEvent.isComposing && submit()} />
             </Field>
           )}
           <PagePreview page={page} />
@@ -312,10 +358,12 @@ function PageSetupDialog({ req, onDone }: { req: Request; onDone(r: PageSetupRes
                   </div>
                 </div>
               </div>
-              <div className="ps-row">
-                {numField('margin', '여백', page.unit)}
-                {numField('fontSize', '글자 크기', 'px')}
-              </div>
+              {isDoc && (
+                <div className="ps-row">
+                  {numField('margin', '여백', page.unit)}
+                  {numField('fontSize', '글자 크기', 'px')}
+                </div>
+              )}
               {page.unit !== 'px' && px && (
                 <p className="muted small">
                   화면 크기 {Math.round(px.w)} × {Math.round(px.h)} px (96dpi)

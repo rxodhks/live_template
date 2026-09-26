@@ -119,7 +119,7 @@ export function renameForLanguage(name: string, from: CodeLanguage, to: CodeLang
 
 /* ───────────────────────── 디자인 도형 ───────────────────────── */
 
-export type ShapeType = 'rect' | 'ellipse' | 'diamond' | 'line' | 'arrow' | 'text' | 'sticky' | 'pen';
+export type ShapeType = 'rect' | 'ellipse' | 'diamond' | 'line' | 'arrow' | 'text' | 'sticky' | 'pen' | 'frame';
 
 export interface Shape {
   id: string;
@@ -140,6 +140,9 @@ export interface Shape {
   align?: 'left' | 'center' | 'right';
   /** pen: 바운딩 박스 기준 0~1 정규화 좌표 [x0,y0,x1,y1,...] */
   points?: number[];
+  /** frame(아트보드): 이름 · 고른 형식(iphone-16, a4 …) */
+  name?: string;
+  preset?: string;
   z: number;
   locked?: boolean;
   createdBy?: string;
@@ -154,6 +157,7 @@ export const SHAPE_LABEL: Record<ShapeType, string> = {
   text: '텍스트',
   sticky: '스티키 노트',
   pen: '펜 드로잉',
+  frame: '아트보드',
 };
 
 /* ───────────────────────── 생성 헬퍼 (서버 시드 + 클라이언트 공용) ───────────────────────── */

@@ -12,6 +12,7 @@ import {
   Grid3x3,
   Lock,
   Magnet,
+  Ruler,
   Trash2,
   Unlock,
 } from 'lucide-react';
@@ -20,12 +21,14 @@ import { useWorkspace } from '../../workspace/context';
 import { useYField } from '../../hooks/useY';
 import { useSession } from '../../store/session';
 import { toast } from '../../store/toasts';
-import { cx, newId } from '../../lib/util';
+import { cx } from '../../lib/util';
 import { Button, IconButton } from '../../components/ui';
 import { BOARD_BACKGROUNDS, PALETTE, STICKY_COLORS, useDesign } from './store';
-import { deleteShapes, insertShapes, maxZ, minZ, sortedShapes, updateShapes, useShapes, type ShapeMap } from './ops';
+import { copyShapes, deleteShapes, maxZ, minZ, sortedShapes, updateShapes, useShapes, withFrameChildren, type ShapeMap } from './ops';
 import { boundsOf, isLine } from './geometry';
-import { exportPng, exportSvg } from './export';
+import { exportFrame, exportPng, exportSvg } from './export';
+import { pageSetupDialog } from '../docs/page/PageSetupDialog';
+import { ALL_PRESETS, describePage, pagePx } from '../docs/page/pageSizes';
 
 function Swatches({ value, colors, onChange, allowNone, disabled }: { value?: string; colors: string[]; onChange: (c: string) => void; allowNone?: boolean; disabled?: boolean }) {
   return (
@@ -166,9 +169,8 @@ export function Inspector({ board }: { board: YItem }) {
   };
 
   const duplicate = () => {
-    let z = maxZ(map);
-    const copies = selected.map((s) => ({ ...s, id: newId(), x: s.x + 20, y: s.y + 20, z: ++z, locked: false, createdBy: me.id }));
-    insertShapes(map, copies);
+    // 아트보드는 안의 도형까지, 아트보드는 맨 뒤로
+    const copies = copyShapes(map, withFrameChildren(shapes, selected), 20, me.id);
     setSelection(copies.map((s) => s.id));
     ws.report({ type: 'design.shape.add', targetId: boardId, targetName: name, detail: `복제 ${copies.length}개` });
   };
@@ -181,19 +183,53 @@ export function Inspector({ board }: { board: YItem }) {
     ws.report({ type: 'design.shape.delete', targetId: boardId, targetName: name, detail: `${ids.length}개` });
   };
 
+  const frame = selected.length === 1 && first.type === 'frame' ? first : null;
+  /** 아트보드 크기 바꾸기 (위치 그대로) */
+  const resizeFrame = async () => {
+    if (!frame || readOnly) return;
+    const unit = { preset: frame.preset ?? 'custom', width: Math.round(frame.w), height: Math.round(frame.h), unit: 'px' as const, margin: 0, fontSize: 16 };
+    const r = await pageSetupDialog({ mode: 'edit', kind: 'artboard', initial: unit });
+    if (!r?.page) return;
+    const px = pagePx(r.page);
+    updateShapes(map, { [frame.id]: { w: Math.round(px.width), h: Math.round(px.height), preset: r.page.preset } });
+    ws.action(`▢ 아트보드 크기 · ${describePage(r.page)}`);
+  };
+
   return (
     <aside className="inspector">
       <h3>
-        {selected.length === 1 ? SHAPE_LABEL[first.type] : `${selected.length}개 선택`}
+        {selected.length === 1 ? (frame ? frame.name || SHAPE_LABEL.frame : SHAPE_LABEL[first.type]) : `${selected.length}개 선택`}
         {allLocked && <Lock size={13} />}
       </h3>
+
+      {frame && (
+        <>
+          <p className="insp-help">
+            {ALL_PRESETS.find((p) => p.id === frame.preset)?.name ?? '직접 입력'} · {Math.round(frame.w)} × {Math.round(frame.h)} px — 안에 그린 도형은 아트보드와 함께 움직입니다. 이름표를 두 번 누르면 이름을 바꿉니다.
+          </p>
+          <div className="insp-buttons">
+            <Button size="sm" icon={<Ruler size={14} />} disabled={readOnly || frame.locked} onClick={() => void resizeFrame()}>
+              크기 바꾸기
+            </Button>
+          </div>
+          <h4>아트보드 내보내기</h4>
+          <div className="insp-buttons">
+            <Button size="sm" icon={<Download size={14} />} onClick={() => void exportFrame(frame, shapes, 'png').catch((e) => toast.error('PNG 내보내기 실패', String(e)))}>
+              PNG
+            </Button>
+            <Button size="sm" icon={<Download size={14} />} onClick={() => void exportFrame(frame, shapes, 'svg')}>
+              SVG
+            </Button>
+          </div>
+        </>
+      )}
 
       {canFill && (
         <Row label="채우기">
           <Swatches value={first.fill} colors={first.type === 'sticky' ? STICKY_COLORS : PALETTE} onChange={(c) => apply({ fill: c }, '🎨 채우기 색 변경')} allowNone disabled={readOnly} />
         </Row>
       )}
-      {first.type !== 'text' && first.type !== 'sticky' && (
+      {first.type !== 'text' && first.type !== 'sticky' && first.type !== 'frame' && (
         <>
           <Row label="선 색">
             <Swatches value={first.stroke} colors={PALETTE} onChange={(c) => apply({ stroke: c }, '🎨 선 색 변경')} allowNone={!isLine(first) && first.type !== 'pen'} disabled={readOnly} />

@@ -1668,3 +1668,17 @@ button.doc-emoji:hover:not(:disabled) {
   font-size: 34px;
   line-height: 1;
 }
+
+/* 아트보드(frame): 이름표 · 크기 */
+.shape-frame .frame-label {
+  cursor: pointer;
+}
+.shape-frame .frame-label text {
+  fill: var(--text-2);
+}
+.shape-frame .frame-label:hover text {
+  fill: var(--accent-text);
+}
+.shape-frame .frame-label .frame-size {
+  fill: var(--text-3);
+}

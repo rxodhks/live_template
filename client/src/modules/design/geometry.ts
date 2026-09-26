@@ -32,6 +32,9 @@ export function unionBounds(shapes: Pick<Shape, 'x' | 'y' | 'w' | 'h'>[]): Box |
   return { x: x1, y: y1, w: x2 - x1, h: y2 - y1 };
 }
 
+/** inner가 outer 안에 완전히 들어 있는지 */
+export const contains = (outer: Box, inner: Box) => inner.x >= outer.x && inner.y >= outer.y && inner.x + inner.w <= outer.x + outer.w && inner.y + inner.h <= outer.y + outer.h;
+
 export const intersects = (a: Box, b: Box) => a.x < b.x + b.w && a.x + a.w > b.x && a.y < b.y + b.h && a.y + a.h > b.y;
 
 export const snapTo = (v: number, on: boolean, step = 8) => (on ? Math.round(v / step) * step : v);
