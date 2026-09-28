@@ -278,8 +278,9 @@ route('POST', '/api/auth/claim', async (c) => {
 });
 
 route('GET', '/api/me', async (c) => {
-  const user = await requireUser(c);
-  const res = json({ user, account: await directory(c.env).account(user.id) });
+  const me = await directory(c.env).me(tokenOf(c.req));
+  if (!me) throw new HttpError(401, '로그인이 필요합니다.', { reason: 'login_required' });
+  const res = json(me);
   // 쓰는 동안은 로그인 쿠키도 계속 연장
   const session = readCookie(c.req, COOKIE.session);
   return session ? withCookies(res, [cookie(COOKIE.session, session, SESSION_TTL_S)]) : res;

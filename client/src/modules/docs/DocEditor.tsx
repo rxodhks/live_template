@@ -8,7 +8,6 @@ import { Highlight } from '@tiptap/extension-highlight';
 import { TextAlign } from '@tiptap/extension-text-align';
 import { TableKit } from '@tiptap/extension-table';
 import { CharacterCount, Placeholder } from '@tiptap/extensions';
-import 'katex/dist/katex.min.css';
 import type * as Y from 'yjs';
 import type { Awareness } from 'y-protocols/awareness';
 import {
