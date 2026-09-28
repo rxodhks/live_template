@@ -21,7 +21,8 @@ import {
   WrapText,
   X,
 } from 'lucide-react';
-import { CODE_LANGUAGES, addCodeFile, getFiles, getLanguage, renameForLanguage, type CodeLanguage, type YItem } from '@shared/schema';
+import { CODE_LANGUAGES, getFiles, getLanguage, renameForLanguage, type CodeLanguage, type YItem } from '@shared/schema';
+import { addCodeFile } from '@shared/create';
 import { useWorkspace, viewPath } from '../../workspace/context';
 import { createCodeFile, deleteItem, renameItem } from '../../workspace/actions';
 import { useYField, useYItems } from '../../hooks/useY';

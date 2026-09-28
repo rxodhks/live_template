@@ -27,7 +27,6 @@ import { useTemplates } from '../store/templates';
 import { useSession } from '../store/session';
 import { usePresence, uniqueUsers } from '../store/presence';
 import { useOptionalWorkspace, viewPath } from '../workspace/context';
-import { createBoard, createCodeFile, createDocument } from '../workspace/actions';
 import { Kbd } from './ui';
 import { cx } from '../lib/util';
 
@@ -120,9 +119,9 @@ function Palette_() {
       if (ws.canEdit) {
         // 꺼져 있는 영역이어도 만들 수 있다 (만들면 그 영역이 켜진다)
         const area = (m: 'code' | 'docs' | 'design') => (f.includes(m) ? undefined : '영역 추가');
-        list.push({ id: 'new-doc', group: '만들기', label: '새 문서', hint: area('docs'), icon: <FileText size={16} />, keywords: 'new document 문서 추가', run: () => void createDocument(ws, me) });
-        list.push({ id: 'new-board', group: '만들기', label: '새 디자인 보드', hint: area('design'), icon: <Palette size={16} />, keywords: 'new board canvas 디자인 추가', run: () => void createBoard(ws, me) });
-        list.push({ id: 'new-file', group: '만들기', label: '새 코드 파일', hint: area('code'), icon: <FilePlus2 size={16} />, keywords: 'new file 파일 추가 코딩', run: () => void createCodeFile(ws, me) });
+        list.push({ id: 'new-doc', group: '만들기', label: '새 문서', hint: area('docs'), icon: <FileText size={16} />, keywords: 'new document 문서 추가', run: () => void import('../workspace/actions').then((a) => a.createDocument(ws, me)) });
+        list.push({ id: 'new-board', group: '만들기', label: '새 디자인 보드', hint: area('design'), icon: <Palette size={16} />, keywords: 'new board canvas 디자인 추가', run: () => void import('../workspace/actions').then((a) => a.createBoard(ws, me)) });
+        list.push({ id: 'new-file', group: '만들기', label: '새 코드 파일', hint: area('code'), icon: <FilePlus2 size={16} />, keywords: 'new file 파일 추가 코딩', run: () => void import('../workspace/actions').then((a) => a.createCodeFile(ws, me)) });
         list.push({
           id: 'new-note',
           group: '만들기',

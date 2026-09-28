@@ -32,7 +32,7 @@ import { PresenceBar } from './PresenceBar';
 import { modKey } from '../lib/util';
 import { logout } from '../lib/auth';
 import { MODULE_NAMES } from '../workspace/viewLabel';
-import { itemsMap } from '../workspace/actions';
+import { itemsMap } from '../workspace/items';
 import { useYField } from '../hooks/useY';
 
 const THEME_ICON: Record<ThemePref, typeof Sun> = { light: Sun, dark: Moon, system: Monitor };

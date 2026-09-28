@@ -1,8 +1,6 @@
-import * as Y from 'yjs';
-import { IndexeddbPersistence, storeState } from 'y-indexeddb';
+import type * as Y from 'yjs';
 import type { ActivityInput, EncryptedNote, Feature, PublicUser, ShareUpload, TemplateEntry, TimelineEvent } from '@shared/types';
 import { ACTIVITY, COALESCE_WINDOW_MS } from '@shared/activity';
-import { seedTemplateDoc } from '@shared/seed';
 import { dispatchTimelineEvent, useTemplates } from '../store/templates';
 import { deleteDocDb, docDbName, idbAll, idbByTemplate, idbDelete, idbDeleteByTemplate, idbPut } from './idb';
 import { toB64 } from './crypto';
@@ -30,6 +28,7 @@ export async function createPersonalTemplate(
   input: { name: string; description: string; emoji: string; features: Feature[]; presetId: string },
   me: PublicUser,
 ): Promise<TemplateEntry> {
+  const [Y, { IndexeddbPersistence, storeState }, { seedTemplateDoc }] = await Promise.all([import('yjs'), import('y-indexeddb'), import('@shared/seed')]);
   const id = newId(16);
   const doc = new Y.Doc();
   const idb = new IndexeddbPersistence(docDbName(id), doc);
@@ -151,6 +150,8 @@ export const deleteLocalNote = (id: string) => idbDelete('notes', id);
 
 /** 이 브라우저에 있는 템플릿 전체(문서 · 기록 · 암호화된 노트)를 서버로 올릴 형태로 묶는다 */
 export async function buildShareUpload(entry: TemplateEntry, openDoc?: Y.Doc): Promise<ShareUpload> {
+  // yjs는 대시보드 첫 화면에 필요 없어 쓸 때 불러온다
+  const [Y, { IndexeddbPersistence }] = await Promise.all([import('yjs'), import('y-indexeddb')]);
   let state: Uint8Array;
   if (openDoc) state = Y.encodeStateAsUpdate(openDoc);
   else {
