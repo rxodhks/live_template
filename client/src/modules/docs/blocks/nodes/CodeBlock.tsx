@@ -1,8 +1,6 @@
 import { CodeBlockLowlight } from '@tiptap/extension-code-block-lowlight';
 import { NodeViewContent, NodeViewWrapper, ReactNodeViewRenderer, type ReactNodeViewProps } from '@tiptap/react';
-import { common, createLowlight } from 'lowlight';
-
-export const lowlight = createLowlight(common);
+import { lowlight, trackEditor, untrackEditor } from './lowlight';
 
 /** 코드 블록 언어 (표시 이름) — lowlight 기본 언어 중 자주 쓰는 것 */
 export const CODE_BLOCK_LANGUAGES: [id: string, name: string][] = [
@@ -36,6 +34,13 @@ export const CODE_BLOCK_LANGUAGES: [id: string, name: string][] = [
 
 /** 코드 블록: 문법 색 + 언어 선택 (노드 이름 · 속성은 기존 codeBlock과 같아 예전 문서와 호환) */
 export const CodeBlock = CodeBlockLowlight.extend({
+  // 문법을 늦게 불러오므로, 다 불러오면 이 편집기를 다시 칠할 수 있게 알려 둔다
+  onCreate() {
+    trackEditor(this.editor);
+  },
+  onDestroy() {
+    untrackEditor(this.editor);
+  },
   addNodeView() {
     return ReactNodeViewRenderer(CodeBlockView);
   },
