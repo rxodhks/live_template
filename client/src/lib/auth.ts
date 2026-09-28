@@ -45,17 +45,31 @@ function enter(user: PublicUser, account: AccountInfo | null, offline = false): 
   useSession.getState().setAuthed(user, account, offline);
 }
 
-/** 앱 시작: 로그인 상태 확인 */
+/**
+ * 앱 시작: 로그인 상태 확인
+ * 이 기기에 마지막 로그인 정보가 있으면 서버 확인을 기다리지 않고 바로 화면을 띄우고, 확인은 뒤에서 한다.
+ * (로그인이 풀렸으면 서버 응답을 받는 대로 로그인 화면으로 보낸다)
+ */
 export async function bootSession(): Promise<void> {
   // 로그아웃하면서 예약해 둔 이 기기 데이터 정리 (저장소를 열기 전에)
   await runDeviceClear();
+  const cached = readCache();
+  if (cached) enter(cached.user, cached.account);
   try {
     const me = await api<{ user: PublicUser; account: AccountInfo }>('GET', '/me');
+    if (cached && cached.user.id !== me.user.id) {
+      // 다른 계정으로 로그인되어 있다 — 이미 연 저장소 · 연결을 모두 닫기 위해 새로 불러온다
+      writeCache({ user: me.user, account: me.account });
+      window.location.reload();
+      return;
+    }
     enter(me.user, me.account);
   } catch (err) {
-    const cached = readCache();
-    // 네트워크 문제로 확인하지 못했을 때만 저장된 정보로 시작 (로그인이 풀린 경우는 다시 로그인)
-    if (cached && (err as { status?: number }).status === 0) enter(cached.user, cached.account, true);
+    const status = (err as { status?: number }).status;
+    // 서버에 닿지 못했을 때만 저장된 정보로 계속 쓴다
+    if (cached && (status === 0 || (status ?? 0) >= 500)) enter(cached.user, cached.account, true);
+    // 저장된 정보로 이미 시작했다면 로그인 만료 처리(setUnauthorizedHandler)가 안내하고 로그인 화면으로 보낸다
+    else if (cached && status === 401) writeCache(null);
     else {
       writeCache(null);
       useSession.getState().setAnon();
