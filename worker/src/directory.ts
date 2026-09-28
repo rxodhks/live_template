@@ -408,6 +408,12 @@ export class Directory extends DurableObject<Env> {
     if (token && token.length <= 100) this.sql.exec('DELETE FROM sessions WHERE hash = ?', await sha256Hex(token));
   }
 
+  /** 로그인 확인과 계정 정보를 한 번에 (앱 시작 때 Durable Object를 한 번만 부르도록) */
+  async me(token: string | null): Promise<{ user: PublicUser; account: AccountInfo } | null> {
+    const user = await this.authenticate(token);
+    return user ? { user, account: await this.account(user.id) } : null;
+  }
+
   async account(userId: string): Promise<AccountInfo> {
     const email = this.sql.exec<{ email: string | null }>('SELECT email FROM users WHERE id = ?', userId).toArray()[0]?.email ?? null;
     const providers = this.sql
