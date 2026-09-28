@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react';
+import { Suspense, lazy, useEffect, useState } from 'react';
 import { BrowserRouter, Navigate, Route, Routes, useLocation } from 'react-router-dom';
 import { Monitor, X } from 'lucide-react';
 import { isTypingTarget } from './lib/util';
@@ -11,13 +11,18 @@ import { useUI } from './store/ui';
 import { ToastViewport } from './components/Toasts';
 import { TooltipHost } from './components/Tooltip';
 import { ConfirmHost, PromptHost } from './components/ui';
-import { PageSetupHost } from './modules/docs/page/PageSetupDialog';
-import { BootScreen, LoginPage, SignupPage } from './pages/Auth';
-import { PrivacyPage, TermsPage } from './pages/Legal';
+import { BootScreen } from './pages/BootScreen';
 import { Dashboard } from './pages/Dashboard';
-import { JoinPage } from './pages/JoinPage';
 import { GlobalTimeline } from './pages/GlobalTimeline';
-import { Workspace } from './workspace/Workspace';
+
+// 처음 화면에 필요 없는 페이지는 들어갈 때 불러온다
+const LoginPage = lazy(() => import('./pages/Auth').then((m) => ({ default: m.LoginPage })));
+const SignupPage = lazy(() => import('./pages/Auth').then((m) => ({ default: m.SignupPage })));
+const PrivacyPage = lazy(() => import('./pages/Legal').then((m) => ({ default: m.PrivacyPage })));
+const TermsPage = lazy(() => import('./pages/Legal').then((m) => ({ default: m.TermsPage })));
+const JoinPage = lazy(() => import('./pages/JoinPage').then((m) => ({ default: m.JoinPage })));
+const Workspace = lazy(() => import('./workspace/Workspace').then((m) => ({ default: m.Workspace })));
+const PageSetupHost = lazy(() => import('./modules/docs/page/PageSetupDialog').then((m) => ({ default: m.PageSetupHost })));
 
 /** 협업 템플릿 목록을 다시 확인하는 간격 */
 const REFRESH_MS = 60_000;
@@ -63,21 +68,25 @@ export function App() {
 
   return (
     <BrowserRouter>
-      <Routes>
-        <Route path="/login" element={<LoginPage />} />
-        <Route path="/signup" element={<SignupPage />} />
-        {/* 약관 · 개인정보처리방침은 누구나 볼 수 있다 */}
-        <Route path="/privacy" element={<PrivacyPage />} />
-        <Route path="/terms" element={<TermsPage />} />
-        {/* 초대장은 로그인하지 않아도 볼 수 있다 (참여하려면 로그인) */}
-        <Route path="/join/:code" element={<JoinPage />} />
-        <Route path="*" element={status === 'authed' ? <AuthedApp /> : <ToLogin />} />
-      </Routes>
+      <Suspense fallback={<BootScreen />}>
+        <Routes>
+          <Route path="/login" element={<LoginPage />} />
+          <Route path="/signup" element={<SignupPage />} />
+          {/* 약관 · 개인정보처리방침은 누구나 볼 수 있다 */}
+          <Route path="/privacy" element={<PrivacyPage />} />
+          <Route path="/terms" element={<TermsPage />} />
+          {/* 초대장은 로그인하지 않아도 볼 수 있다 (참여하려면 로그인) */}
+          <Route path="/join/:code" element={<JoinPage />} />
+          <Route path="*" element={status === 'authed' ? <AuthedApp /> : <ToLogin />} />
+        </Routes>
+      </Suspense>
       <ToastViewport />
       <TooltipHost />
       <ConfirmHost />
       <PromptHost />
-      <PageSetupHost />
+      <Suspense fallback={null}>
+        <PageSetupHost />
+      </Suspense>
       <NarrowScreenNotice />
     </BrowserRouter>
   );

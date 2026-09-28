@@ -1,17 +1,14 @@
 import * as Y from 'yjs';
 import type { Feature, PublicUser } from '@shared/types';
 import { BLANK_CONTENT, FEATURE_INFO } from '@shared/presets';
+import { addBoard, addCodeFile, addDocument } from '@shared/create';
 import {
-  addBoard,
-  addCodeFile,
-  addDocument,
   getBoards,
   getDocs,
   getFiles,
   languageFromFilename,
   readPageSetup,
   type Shape,
-  type YItem,
 } from '@shared/schema';
 import { newId } from '../lib/util';
 import { lastPageSetup, pageSetupDialog } from '../modules/docs/page/PageSetupDialog';
@@ -23,19 +20,11 @@ import { toast } from '../store/toasts';
 import { useTemplates } from '../store/templates';
 import type { WorkspaceValue } from './context';
 import { placeNewPage, restoreBuiltinSection } from './layout';
+import { NAME_KEY, itemLabel, itemsMap, type ItemModule } from './items';
 
-export type ItemModule = 'code' | 'docs' | 'design';
+export { itemLabel, itemsMap, type ItemModule } from './items';
 
-const NAME_KEY: Record<ItemModule, string> = { code: 'name', docs: 'title', design: 'name' };
 const NOUN: Record<ItemModule, string> = { code: '파일', docs: '문서', design: '보드' };
-
-export function itemsMap(doc: Y.Doc, module: ItemModule): Y.Map<YItem> {
-  return module === 'code' ? getFiles(doc) : module === 'docs' ? getDocs(doc) : getBoards(doc);
-}
-
-export function itemLabel(item: YItem, module: ItemModule): string {
-  return (item.get(NAME_KEY[module]) as string) ?? '';
-}
 
 function guard(ws: WorkspaceValue): boolean {
   if (ws.canEdit) return true;

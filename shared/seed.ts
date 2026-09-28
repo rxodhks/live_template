@@ -1,7 +1,7 @@
 import type * as Y from 'yjs';
 import type { Feature } from './types';
 import { BLANK_CONTENT, getPreset } from './presets';
-import { addBoard, addCodeFile, addDocument } from './schema';
+import { addBoard, addCodeFile, addDocument } from './create';
 
 /** 프리셋 + 선택한 기능으로 새 템플릿의 초기 내용을 만든다 */
 export function seedTemplateDoc(doc: Y.Doc, presetId: string, features: Feature[], createdBy: string, newId: () => string): void {
