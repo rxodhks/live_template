@@ -17,3 +17,6 @@ jobs:
       - run: npm run typecheck
       # 화면을 빌드한 뒤, 클라우드플레어 로컬 런타임(workerd)에서 Worker + Durable Object 통합 테스트
       - run: npm test
+      # 첫 화면에서 받는 JS·CSS(gzip)가 예산(scripts/bundle-budget.json)을 넘으면 실패 — 로딩이 느려지는 변경을 막는다
+      - name: 번들 크기 예산
+        run: node scripts/check-bundle.mjs

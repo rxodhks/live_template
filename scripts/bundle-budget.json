@@ -1,0 +1,5 @@
+{
+  "//": "gzip KB(1024바이트) 기준 예산. 2026-10 측정값(첫 화면 146.9 · Auth 11.7 · Workspace 66.7 · JoinPage 2.0)에 약 5% 여유를 둔 값",
+  "firstScreen": 155,
+  "routes": { "Auth": 13, "Workspace": 70, "JoinPage": 3 }
+}
