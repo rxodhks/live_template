@@ -1,5 +1,5 @@
-import { useEffect, useState } from 'react';
-import { useNavigate, useParams } from 'react-router-dom';
+import { useEffect, useRef, useState } from 'react';
+import { useLocation, useNavigate, useParams } from 'react-router-dom';
 import { Clock, Hourglass, LogIn, ShieldCheck, Users, XCircle } from 'lucide-react';
 import type { InvitePreview, JoinRequest, JoinStatus, TemplateSummary } from '@shared/types';
 import { FEATURE_INFO } from '@shared/presets';
@@ -43,6 +43,8 @@ function JoinCard() {
   const [pending, setPending] = useState<{ templateId: string } | null>(null);
   const [denied, setDenied] = useState(false);
   const pendingJoins = usePendingJoins();
+  const location = useLocation();
+  const autoJoin = useRef((location.state as { autoJoin?: boolean } | null)?.autoJoin === true);
 
   useEffect(() => {
     api<Preview>('GET', `/invites/${encodeURIComponent(code)}`)
@@ -99,6 +101,16 @@ function JoinCard() {
       setJoining(false);
     }
   };
+
+  // 초대 링크에서 시작한 로그인 · 가입을 막 마치고 돌아왔다면 한 번 더 누르지 않아도 바로 참여한다
+  // (이미 로그인한 채로 링크를 연 경우에는 직접 확인하고 누르도록 둔다)
+  useEffect(() => {
+    if (!autoJoin.current || !user || !preview?.valid || !preview.template || pending || denied) return;
+    autoJoin.current = false;
+    // 새로고침해도 다시 참여하지 않도록 기록에서 지운다
+    navigate(location.pathname, { replace: true, state: null });
+    void join();
+  }, [user, preview, pending, denied]); // eslint-disable-line react-hooks/exhaustive-deps
 
   if (error) {
     return (

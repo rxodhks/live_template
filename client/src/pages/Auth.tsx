@@ -101,7 +101,11 @@ function Steps({ current }: { current: 1 | 2 }) {
 function useSignedInRedirect(): ReactNode {
   const status = useSession((s) => s.status);
   const [params] = useSearchParams();
-  return status === 'authed' ? <Navigate to={safeNext(params.get('next'))} replace /> : null;
+  // 이 화면에서 막 로그인 · 가입을 마친 경우에만 초대 화면이 바로 참여하도록 알린다
+  const [wasAuthed] = useState(() => useSession.getState().status === 'authed');
+  const next = safeNext(params.get('next'));
+  const state = !wasAuthed && next.startsWith('/join/') ? { autoJoin: true } : undefined;
+  return status === 'authed' ? <Navigate to={next} replace state={state} /> : null;
 }
 
 /* ───────────────────────── 로그인 ───────────────────────── */
