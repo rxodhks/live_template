@@ -442,28 +442,41 @@ body.is-resizing {
   z-index: 40;
   border-radius: 2px;
 }
+/* 편집 화면 위쪽 도구 줄(언어 선택 · 실행 등)을 가리지 않도록 아래쪽 가운데에 떠 있는 알약으로 둔다.
+   코드 화면의 상태 표시줄(26px) 위로 띄운다. */
 .follow-banner {
   position: absolute;
-  top: 0;
+  bottom: 40px;
   left: 50%;
   transform: translateX(-50%);
   z-index: 41;
   display: flex;
   align-items: center;
   gap: 8px;
-  padding: 5px 6px 6px 12px;
+  max-width: calc(100% - 32px);
+  padding: 5px 6px 5px 12px;
   background: var(--user-color);
   color: #fff;
-  border-radius: 0 0 10px 10px;
+  border-radius: 999px;
   font-size: 12.5px;
+  white-space: nowrap;
   box-shadow: var(--shadow-md);
+}
+.follow-banner > span {
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+/* 출력 패널 마지막 줄(오류 등)이 배너에 가리지 않도록 아래 여백을 둔다 */
+.shell-main:has(.follow-banner) .code-output {
+  padding-bottom: 56px;
 }
 .follow-banner button {
   display: inline-flex;
+  flex: none;
   align-items: center;
   gap: 4px;
   padding: 3px 8px;
-  border-radius: 6px;
+  border-radius: 999px;
   background: rgb(255 255 255 / 0.2);
   color: #fff;
   font-size: 12px;
