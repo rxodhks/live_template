@@ -54,6 +54,8 @@ export function redirect(location: string, cookies: string[] = []): Response {
 /** 로그인 후 돌아갈 앱 내부 경로만 허용 (다른 사이트로 보내는 데 쓰이지 않게) */
 export function safeNext(value: string | null | undefined): string {
   if (!value || value.length > 512 || !value.startsWith('/') || value.startsWith('//') || value.includes('\\')) return '/';
+  // 브라우저는 주소 속 탭 · 줄바꿈을 지우므로 '/\t/evil.com'이 '//evil.com'(다른 사이트)이 된다
+  if (/[\u0000-\u001f\u007f]/.test(value)) return '/';
   if (value.startsWith('/login') || value.startsWith('/signup') || value.startsWith('/api/')) return '/';
   return value;
 }

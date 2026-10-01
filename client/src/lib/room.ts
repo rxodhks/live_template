@@ -18,6 +18,7 @@ export type AckResult<T = unknown> = { ok: boolean; data?: T; error?: string; st
 const PING_MS = 25_000;
 const PONG_TIMEOUT_MS = 10_000;
 const REQUEST_TIMEOUT_MS = 15_000;
+const MAX_MISSED = 200;
 
 export class RoomConnection {
   status: RoomStatus = 'connecting';
@@ -26,11 +27,6 @@ export class RoomConnection {
   deniedReason: string | null = null;
   /** 서버가 이 화면이 예전 버전이라며 연결을 거절했다 (새로고침하면 된다) */
   outdated = false;
-  /**
-   * 마지막으로 받은 입장 메시지. 연결은 만들자마자 시작되므로 화면이 구독하기 전에 도착할 수 있다
-   * (처음 여는 템플릿은 브라우저 사본을 기다리느라 구독이 늦다) → 늦게 구독한 쪽이 이것으로 따라잡는다
-   */
-  lastWelcome: Msg<'welcome'> | null = null;
 
   /** 같은 방에 있는 다른 연결들 (다른 사람 또는 내 다른 탭) */
   private others = new Set<string>();
@@ -45,6 +41,8 @@ export class RoomConnection {
   private pingTimer: ReturnType<typeof setInterval> | null = null;
   private pongTimer: ReturnType<typeof setTimeout> | null = null;
   private retryTimer: ReturnType<typeof setTimeout> | null = null;
+  /** replayMissed()를 부르기 전까지 받을 사람이 없던 메시지 */
+  private missed: ServerMessage[] | null = [];
 
   constructor(readonly templateId: string) {
     window.addEventListener('online', this.reconnectNow);
@@ -132,8 +130,22 @@ export class RoomConnection {
 
   private emit(m: ServerMessage) {
     const set = this.handlers.get(m.t);
-    if (!set) return;
+    if (!set?.size) {
+      // 화면이 아직 구독하지 않은 메시지는 replayMissed()까지 모아 둔다
+      if (this.missed && this.missed.length < MAX_MISSED) this.missed.push(m);
+      return;
+    }
     for (const fn of Array.from(set)) (fn as (m: ServerMessage) => void)(m);
+  }
+
+  /**
+   * 구독하기 전에 도착한 메시지를 순서대로 다시 전달한다 (한 번만).
+   * 연결은 화면이 준비되기 전(브라우저 사본을 읽는 동안)에 열리므로 welcome이 먼저 도착할 수 있다.
+   */
+  replayMissed(): void {
+    const missed = this.missed ?? [];
+    this.missed = null;
+    for (const m of missed) this.emit(m);
   }
 
   private connect = () => {
@@ -159,7 +171,6 @@ export class RoomConnection {
       }
       if (m.t === 'welcome') {
         welcomed = true;
-        this.lastWelcome = m;
         this.attempt = 0;
         this.sid = m.sid;
         this.role = m.role;

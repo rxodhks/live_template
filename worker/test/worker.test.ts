@@ -11,6 +11,7 @@ import os from 'node:os';
 import path from 'node:path';
 import * as Y from 'yjs';
 import { CLIENT_VERSION } from '../../shared/protocol.ts';
+import { safeNext } from '../src/auth.ts';
 
 const workerDir = path.resolve(import.meta.dirname, '..');
 const persistDir = fs.mkdtempSync(path.join(os.tmpdir(), 'lt-worker-'));
@@ -360,6 +361,7 @@ describe('로그인', () => {
     const session = `${SID}=${owner.token}`;
     const evil = await raw('PATCH', '/api/me', { cookie: session, body: { name: '해킹' }, headers: { origin: 'https://evil.example' } });
     assert.equal(evil.status, 403);
+    assert.ok(!JSON.stringify(evil.data).includes(owner.token), '막힌 요청의 응답에 세션 쿠키를 되돌려 주지 않는다');
     const fetchMeta = await raw('POST', '/api/auth/logout', { cookie: session, headers: { 'sec-fetch-site': 'cross-site' } });
     assert.equal(fetchMeta.status, 403);
     assert.equal((await raw('GET', '/api/me', { cookie: session })).status, 200, '막힌 요청은 아무 효과가 없다');
@@ -377,6 +379,25 @@ describe('로그인', () => {
     assert.equal(anon.data.reason, 'login_required', '로그인이 풀린 경우를 화면이 구분할 수 있다');
     // 예전 방식(가입 없이 계정 만들기)은 더 이상 없다
     assert.equal((await api('POST', '/users', undefined, { name: '익명' })).status, 404);
+    // 깨진 주소 인코딩은 서버 오류가 아니라 '없음'
+    assert.equal((await raw('GET', '/join/%E0')).status, 404);
+    assert.equal((await raw('GET', '/api/invites/%zz')).status, 404);
+  });
+
+  it('화면은 다른 사이트의 프레임 안에서 열리지 않는다', async () => {
+    for (const p of ['/', '/t/abc/design']) {
+      const res = await fetch(`${base}${p}`);
+      assert.equal(res.status, 200);
+      assert.equal(res.headers.get('x-frame-options'), 'DENY', p);
+      assert.equal(res.headers.get('x-content-type-options'), 'nosniff', p);
+    }
+  });
+
+  it('로그인 후 돌아갈 주소는 이 사이트 안으로만', () => {
+    assert.equal(safeNext('/t/abc/design?x=1'), '/t/abc/design?x=1');
+    for (const bad of ['//evil.example', '/\\evil.example', '/\t/evil.example', '/\n/evil.example', '/\r//evil.example', 'https://evil.example', '/login']) {
+      assert.equal(safeNext(bad), '/', JSON.stringify(bad));
+    }
   });
 
   it('토큰으로 내 정보를 확인하고 한글 이름을 바꿀 수 있다', async () => {
@@ -591,6 +612,12 @@ describe('실시간 협업', () => {
     assert.equal(denied.status, 403);
     await api('PATCH', `/templates/${templateId}/members/${editor.user.id}`, owner.token, { role: 'editor' });
     await b.waitType('role', (m) => m.role === 'editor');
+
+    // 도형을 많이 선택해도 프레즌스가 전달된다 (연결에 붙여 두는 정보는 크기 한도가 있다)
+    b.send({ t: 'presence', patch: { selection: Array.from({ length: 300 }, (_, i) => `shape-${i}-${'x'.repeat(40)}`) } });
+    const many = await a.waitType('presence', (m) => m.state.selection.length > 0);
+    assert.ok(many.state.selection.length <= 100);
+    assert.ok(many.state.selection.every((s: string) => s.length <= 64));
 
     // 나가면 다른 사람 화면에서 사라진다
     b.close();

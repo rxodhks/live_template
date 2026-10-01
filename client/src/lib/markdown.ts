@@ -168,7 +168,8 @@ async function finishHtml(bodyHtml: string): Promise<string> {
   });
   dom.querySelectorAll('div[data-embed]').forEach((el) => {
     const e = el as HTMLElement;
-    if (!e.dataset.src) return;
+    // 문서 변경으로 들어온 javascript: 같은 주소가 내보낸 파일에서 실행되지 않게 https만
+    if (!e.dataset.src || !/^https:\/\//i.test(e.dataset.src)) return;
     const h = Number(e.dataset.height);
     e.innerHTML = `<iframe src="${e.dataset.src.replace(/"/g, '&quot;')}" style="width:100%;${h > 0 ? `height:${h}px` : 'aspect-ratio:16/9'};border:0" allowfullscreen loading="lazy"></iframe>`;
   });
