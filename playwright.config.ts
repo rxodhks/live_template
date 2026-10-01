@@ -19,6 +19,10 @@ const port = Number(process.env.E2E_PORT ?? 8798);
 process.env.E2E_PERSIST_DIR ??= fs.mkdtempSync(path.join(os.tmpdir(), 'lt-e2e-'));
 const persistDir = process.env.E2E_PERSIST_DIR;
 const executablePath = process.env.PW_CHROMIUM_PATH || undefined;
+// 봇 확인(Turnstile)을 켠 두 번째 서버: 클라우드플레어가 제공하는 테스트 키(항상 통과)를 쓴다
+export const turnstilePort = port + 1;
+process.env.E2E_TURNSTILE_PERSIST_DIR ??= fs.mkdtempSync(path.join(os.tmpdir(), 'lt-e2e-ts-'));
+const turnstileVars = ['TURNSTILE_SITE_KEY:1x00000000000000000000AA', 'TURNSTILE_SECRET_KEY:1x0000000000000000000000000000000AA'].map((v) => `--var ${v}`).join(' ');
 
 export default defineConfig({
   testDir: './e2e',
@@ -42,14 +46,26 @@ export default defineConfig({
       use: { ...devices['Desktop Chrome'], viewport: { width: 1440, height: 900 }, launchOptions: executablePath ? { executablePath } : {} },
     },
   ],
-  webServer: {
-    command: `npx wrangler dev --port ${port} --ip 127.0.0.1 --persist-to ${JSON.stringify(persistDir)} --log-level warn --var AUTH_DEV_MODE:1`,
-    cwd: './worker',
-    url: `http://127.0.0.1:${port}/api/health`,
-    reuseExistingServer: !process.env.CI,
-    timeout: 90_000,
-    stdout: 'ignore',
-    stderr: 'pipe',
-    env: { WRANGLER_SEND_METRICS: 'false', CI: '1' },
-  },
+  webServer: [
+    {
+      command: `npx wrangler dev --port ${port} --ip 127.0.0.1 --persist-to ${JSON.stringify(persistDir)} --log-level warn --var AUTH_DEV_MODE:1`,
+      cwd: './worker',
+      url: `http://127.0.0.1:${port}/api/health`,
+      reuseExistingServer: !process.env.CI,
+      timeout: 90_000,
+      stdout: 'ignore',
+      stderr: 'pipe',
+      env: { WRANGLER_SEND_METRICS: 'false', CI: '1' },
+    },
+    {
+      command: `npx wrangler dev --port ${turnstilePort} --ip 127.0.0.1 --persist-to ${JSON.stringify(process.env.E2E_TURNSTILE_PERSIST_DIR)} --inspector-port ${turnstilePort + 1000} --log-level warn --var AUTH_DEV_MODE:1 ${turnstileVars}`,
+      cwd: './worker',
+      url: `http://127.0.0.1:${turnstilePort}/api/health`,
+      reuseExistingServer: !process.env.CI,
+      timeout: 90_000,
+      stdout: 'ignore',
+      stderr: 'pipe',
+      env: { WRANGLER_SEND_METRICS: 'false', CI: '1' },
+    },
+  ],
 });

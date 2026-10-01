@@ -183,7 +183,7 @@ function signedIn(outcome: AuthOutcome): Response {
   return withCookies(json({ status: 'needs_name' }), [cookie(COOKIE.signup, outcome.ticket, 1800)]);
 }
 
-const turnstileOn = (c: Ctx) => Boolean(c.env.TURNSTILE_SITE_KEY && c.env.TURNSTILE_SECRET_KEY) && !devMode(c);
+const turnstileOn = (c: Ctx) => Boolean(c.env.TURNSTILE_SITE_KEY && c.env.TURNSTILE_SECRET_KEY);
 
 /** 봇 확인 토큰 검증 — 누구나 부를 수 있는 메일 발송으로 하루 발송 한도를 소진시키지 못하게 */
 async function checkTurnstile(c: Ctx, token: unknown): Promise<void> {
