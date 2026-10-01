@@ -12,7 +12,7 @@ import { toast } from '../store/toasts';
 import { errorMessage } from '../lib/api';
 import { leaveTemplate } from '../lib/templateOps';
 import { TrashDialog, confirmTrash, trashTemplate } from '../components/DataProtection';
-import { queryTimeline } from '../lib/timeline';
+import { isPresenceEvent, queryTimeline } from '../lib/timeline';
 import { usePendingWatcher } from '../lib/pending';
 import { relativeTime } from '../lib/time';
 import { useTick } from '../hooks/useInterval';
@@ -67,6 +67,14 @@ export function Dashboard() {
   const requestTotal = Object.values(requests).reduce((a, b) => a + b, 0);
   const hour = new Date().getHours();
   const greeting = hour < 6 ? '늦은 밤이에요' : hour < 12 ? '좋은 아침이에요' : hour < 18 ? '좋은 오후예요' : '좋은 저녁이에요';
+
+  // 복원한 템플릿이 필터에 가려지지 않게 풀고, 카드가 보이도록 스크롤한다
+  const showRestored = (t: TemplateEntry) => {
+    setSpace('all');
+    setFeature('all');
+    setQ('');
+    requestAnimationFrame(() => document.querySelector(`[data-template-id="${t.id}"]`)?.scrollIntoView({ block: 'center', behavior: 'smooth' }));
+  };
 
   const joinByLink = async () => {
     const input = await promptDialog({
@@ -181,7 +189,7 @@ export function Dashboard() {
           </div>
         </div>
       </div>
-      {trashOpen && <TrashDialog onClose={() => setTrashOpen(false)} />}
+      {trashOpen && <TrashDialog onClose={() => setTrashOpen(false)} onRestored={showRestored} />}
       {creating && (
         <CreateTemplateModal
           initialPresetId={startPreset}
@@ -252,6 +260,7 @@ function TemplateCard({ template: t, onlineIds, requestCount }: { template: Temp
 
   return (
     <article
+      data-template-id={t.id}
       className={cx('template-card', `is-${personal ? 'personal' : 'shared'}`)}
       onClick={() => navigate(`/t/${t.id}`)}
       tabIndex={0}
@@ -289,7 +298,7 @@ function TemplateCard({ template: t, onlineIds, requestCount }: { template: Temp
         </span>
       </div>
       <h3>{t.name}</h3>
-      <p className="template-desc">{t.description || <span className="muted">설명 없음</span>}</p>
+      <p className="template-desc">{t.description}</p>
       <div className="template-card-bottom">
         {personal ? (
           <span
@@ -323,15 +332,27 @@ function TemplateCard({ template: t, onlineIds, requestCount }: { template: Temp
 
 function RecentActivity() {
   const [events, setEvents] = useState<TimelineEvent[] | null>(null);
+  const [failed, setFailed] = useState(false);
+  const [attempt, setAttempt] = useState(0);
   const loaded = useTemplates((s) => s.loaded);
   useTick(30_000);
   useEffect(() => {
     if (!loaded) return;
-    queryTimeline(undefined, { limit: 12 })
-      .then((r) => setEvents(r.events))
-      .catch(() => setEvents([]));
-    return onTimelineEvent(({ event }) => setEvents((prev) => (prev ? [event, ...prev.filter((e) => e.id !== event.id)].slice(0, 12) : prev)));
-  }, [loaded]);
+    let cancelled = false;
+    setFailed(false);
+    setEvents(null);
+    // 접속·퇴장 기록은 빼고 보여 주므로 넉넉히 받아 온다
+    queryTimeline(undefined, { limit: 40 })
+      .then((r) => !cancelled && setEvents(r.events.filter((e) => !isPresenceEvent(e)).slice(0, 12)))
+      .catch(() => !cancelled && setFailed(true));
+    const off = onTimelineEvent(({ event }) => {
+      if (!isPresenceEvent(event)) setEvents((prev) => (prev ? [event, ...prev.filter((e) => e.id !== event.id)].slice(0, 12) : prev));
+    });
+    return () => {
+      cancelled = true;
+      off();
+    };
+  }, [loaded, attempt]);
   return (
     <section className="dash-activity">
       <div className="dash-activity-head">
@@ -342,7 +363,14 @@ function RecentActivity() {
           전체 보기 <ArrowRight size={13} />
         </Link>
       </div>
-      {!events ? (
+      {failed ? (
+        <p className="muted small">
+          활동을 불러오지 못했습니다.{' '}
+          <button className="link small" onClick={() => setAttempt((n) => n + 1)}>
+            다시 시도
+          </button>
+        </p>
+      ) : !events ? (
         <Spinner />
       ) : events.length === 0 ? (
         <p className="muted small">아직 활동이 없습니다.</p>

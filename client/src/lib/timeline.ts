@@ -32,8 +32,13 @@ export async function queryTimeline(templateId: string | undefined, q: TimelineQ
     .map((t) => t.id);
   const [local, remote] = await Promise.all([
     queryLocalTimeline(personal, q),
-    useSession.getState().status === 'authed' ? api<Page>('GET', `/timeline?${params(q)}`).catch(() => ({ events: [], hasMore: false })) : { events: [], hasMore: false },
+    useSession.getState().status === 'authed' ? api<Page>('GET', `/timeline?${params(q)}`).catch((err: unknown) => ({ events: [], hasMore: false, err })) : { events: [], hasMore: false },
   ]);
+  // 서버 기록을 못 불러왔는데 보여 줄 개인 공간 기록도 없으면 ‘활동 없음’ 대신 오류로 알린다
+  if ('err' in remote && local.events.length === 0) throw remote.err;
   const merged = [...local.events, ...remote.events].sort((a, b) => b.at - a.at);
   return { events: merged.slice(0, limit), hasMore: local.hasMore || remote.hasMore || merged.length > limit };
 }
+
+/** 접속·퇴장 기록 — 요약 위젯(대시보드·개요)에서는 다른 활동을 가리지 않도록 뺀다 */
+export const isPresenceEvent = (e: TimelineEvent): boolean => e.type === 'presence.join' || e.type === 'presence.leave';

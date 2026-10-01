@@ -13,7 +13,7 @@ import { usePresence, uniqueUsers } from '../store/presence';
 import { useSession } from '../store/session';
 import { onTimelineEvent } from '../store/templates';
 import { useUI } from '../store/ui';
-import { queryTimeline } from '../lib/timeline';
+import { isPresenceEvent, queryTimeline } from '../lib/timeline';
 import { relativeTime } from '../lib/time';
 import { CursorPage } from '../components/Cursors';
 import { Avatar, AvatarStack, Button, Spinner } from '../components/ui';
@@ -160,7 +160,9 @@ function FeatureCard({ feature }: { feature: Feature }) {
   const module = feature as ItemModule;
   const items = useYItems(itemsMap(ws.doc, module));
   const info = FEATURE_INFO[feature];
-  const recent = [...items].reverse().slice(0, 5);
+  // 최근 수정(없으면 생성) 순 — Y.Map 순서는 삽입 순서를 보장하지 않는다
+  const stamp = (item: (typeof items)[number]) => Number(item.get('updatedAt') ?? item.get('createdAt') ?? 0);
+  const recent = [...items].sort((a, b) => stamp(b) - stamp(a)).slice(0, 5);
   const add = () => void createPage(ws, module, me);
   return (
     <section className={`module-card feature-${feature}`}>
@@ -288,16 +290,27 @@ function NotesCard() {
 
 function RecentTemplateActivity() {
   const ws = useWorkspace();
-  const [events, setEvents] = useState<TimelineEvent[]>([]);
+  const [events, setEvents] = useState<TimelineEvent[] | null>(null);
+  const [failed, setFailed] = useState(false);
+  const [attempt, setAttempt] = useState(0);
   useTick(30_000);
   useEffect(() => {
-    queryTimeline(ws.template.id, { limit: 8 })
-      .then((r) => setEvents(r.events))
-      .catch(() => {});
-    return onTimelineEvent(({ event }) => {
-      if (event.templateId === ws.template.id) setEvents((prev) => [event, ...prev.filter((e) => e.id !== event.id)].slice(0, 8));
+    let cancelled = false;
+    setFailed(false);
+    setEvents(null);
+    // 접속·퇴장 기록은 빼고 보여 주므로 넉넉히 받아 온다
+    queryTimeline(ws.template.id, { limit: 30 })
+      .then((r) => !cancelled && setEvents(r.events.filter((e) => !isPresenceEvent(e)).slice(0, 8)))
+      .catch(() => !cancelled && setFailed(true));
+    const off = onTimelineEvent(({ event }) => {
+      if (event.templateId === ws.template.id && !isPresenceEvent(event))
+        setEvents((prev) => (prev ? [event, ...prev.filter((e) => e.id !== event.id)].slice(0, 8) : prev));
     });
-  }, [ws.template.id]);
+    return () => {
+      cancelled = true;
+      off();
+    };
+  }, [ws.template.id, attempt]);
   return (
     <section className="overview-section">
       <div className="section-head">
@@ -309,7 +322,20 @@ function RecentTemplateActivity() {
         </button>
       </div>
       <ul className="mini-timeline">
-        {events.map((e) => (
+        {failed && (
+          <li className="muted small">
+            활동을 불러오지 못했습니다.{' '}
+            <button className="link small" onClick={() => setAttempt((n) => n + 1)}>
+              다시 시도
+            </button>
+          </li>
+        )}
+        {!failed && !events && (
+          <li>
+            <Spinner />
+          </li>
+        )}
+        {events?.map((e) => (
           <li key={e.id}>
             <Avatar user={e.user} size={24} />
             <div>
@@ -321,7 +347,7 @@ function RecentTemplateActivity() {
             </div>
           </li>
         ))}
-        {events.length === 0 && <li className="muted small">아직 활동이 없습니다.</li>}
+        {events?.length === 0 && <li className="muted small">아직 활동이 없습니다.</li>}
       </ul>
     </section>
   );
