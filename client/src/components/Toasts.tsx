@@ -70,6 +70,17 @@ function ToastItem({ toast }: { toast: Toast }) {
         </div>
         {toast.message && <div className="toast-message">{toast.message}</div>}
       </div>
+      {toast.action && (
+        <button
+          className="toast-action"
+          onClick={() => {
+            toast.action!.run();
+            dismiss(toast.id);
+          }}
+        >
+          {toast.action.label}
+        </button>
+      )}
       <button className="toast-close" aria-label="알림 닫기" onClick={() => dismiss(toast.id)}>
         <X size={14} />
       </button>

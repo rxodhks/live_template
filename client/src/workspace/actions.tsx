@@ -15,8 +15,8 @@ import { lastPageSetup, pageSetupDialog } from '../modules/docs/page/PageSetupDi
 import { ALL_PRESETS, describePage, storePx } from '../modules/docs/page/pageSizes';
 import { errorMessage } from '../lib/api';
 import { updateTemplate } from '../lib/templateOps';
-import { confirmDialog, promptDialog } from '../components/ui';
-import { toast } from '../store/toasts';
+import { promptDialog } from '../components/ui';
+import { toast, useToasts } from '../store/toasts';
 import { useTemplates } from '../store/templates';
 import type { WorkspaceValue } from './context';
 import { placeNewPage, restoreBuiltinSection } from './layout';
@@ -199,28 +199,63 @@ export function renameItem(ws: WorkspaceValue, module: ItemModule, id: string, n
   ws.action(`이름 변경 · ${next}`);
 }
 
+/** 삭제 직후 토스트에서 되돌릴 수 있는 시간 */
+const UNDO_DELETE_MS = 10_000;
+
 export async function deleteItem(ws: WorkspaceValue, module: ItemModule, id: string): Promise<void> {
   if (!guard(ws)) return;
   const map = itemsMap(ws.doc, module);
   const item = map.get(id);
   if (!item) return;
   const name = itemLabel(item, module);
-  const ok = await confirmDialog({
-    title: `${NOUN[module]}를 삭제할까요?`,
-    message: (
-      <>
-        <b>{name}</b> {NOUN[module]}가 모든 사용자에게서 삭제됩니다. 이 작업은 되돌릴 수 없습니다.
-      </>
-    ),
-    confirmText: '삭제',
-    danger: true,
-  });
-  if (!ok) return;
-  map.delete(id);
+  // 확인 창 대신 토스트의 "되돌리기"로 복구한다 (Notion · Figma처럼).
+  // 이 삭제만 추적하는 UndoManager가 지운 페이지(내용 · 폴더 · 순서 포함)를 같은 ID로 되살린다
+  const origin = { deleteItem: id };
+  const undo = new Y.UndoManager(map, { trackedOrigins: new Set([origin]) });
+  ws.doc.transact(() => map.delete(id), origin);
   const type = module === 'code' ? 'code.delete' : module === 'docs' ? 'docs.delete' : 'design.delete';
   ws.report({ type, targetId: id, targetName: name });
-  toast.show({ kind: 'danger', title: `${NOUN[module]}를 삭제했습니다`, message: name });
-  if (ws.view.module === module && ws.view.itemId === id) ws.go(module);
+  const wasOpen = ws.view.module === module && ws.view.itemId === id;
+  if (wasOpen) ws.go(module);
+  let done = false;
+  let unsubscribe = () => {};
+  const release = () => {
+    if (done) return;
+    done = true;
+    unsubscribe();
+    undo.destroy();
+  };
+  const toastId = toast.show({
+    kind: 'danger',
+    title: `${NOUN[module]}를 삭제했습니다`,
+    message: name,
+    duration: UNDO_DELETE_MS,
+    action: {
+      label: '되돌리기',
+      run: () => {
+        if (done) return;
+        if (!ws.canEdit) {
+          release();
+          toast.warning('되돌리지 못했습니다', '편집 권한이 없습니다.');
+          return;
+        }
+        undo.undo();
+        release();
+        if (!map.has(id)) {
+          toast.error('되돌리지 못했습니다', name);
+          return;
+        }
+        const type = module === 'code' ? 'code.create' : module === 'docs' ? 'docs.create' : 'design.create';
+        ws.report({ type, targetId: id, targetName: name, detail: '삭제 취소' });
+        toast.success(`${NOUN[module]}를 되살렸습니다`, name);
+        if (wasOpen) ws.go(module, id);
+      },
+    },
+  });
+  // 토스트가 사라지면 (시간이 다 되거나 닫으면) 되돌릴 기회도 끝 — 마우스를 올려 두는 동안은 유지된다
+  unsubscribe = useToasts.subscribe((st) => {
+    if (!st.toasts.some((t) => t.id === toastId)) release();
+  });
 }
 
 export function duplicateItem(ws: WorkspaceValue, module: ItemModule, id: string, me: PublicUser): void {

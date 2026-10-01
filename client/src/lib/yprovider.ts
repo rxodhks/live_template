@@ -156,11 +156,12 @@ export class RoomProvider implements DocProvider {
       return;
     }
     this.readOnly = res.data.readOnly;
-    Y.applyUpdate(this.doc, fromB64(res.data.update), this);
+    const serverUpdate = fromB64(res.data.update);
+    Y.applyUpdate(this.doc, serverUpdate, this);
     // 서버에 없는 로컬 변경(오프라인 편집 등)을 올린다
     if (!this.readOnly) {
       const diff = Y.encodeStateAsUpdate(this.doc, fromB64(res.data.sv));
-      if (diff.length > 2) this.enqueue(diff);
+      if (diff.length > 2 && hasLocalOnlyChanges(diff, serverUpdate)) this.enqueue(diff);
     }
     if (this.awareness.getLocalState() !== null) this.awDirty.add(this.doc.clientID);
     useConnection.getState().setOfflineChanges(false);
@@ -216,6 +217,8 @@ export class RoomProvider implements DocProvider {
 
   private onDocUpdate = (update: Uint8Array, origin: unknown) => {
     if (origin === this || this.readOnly) return;
+    // 브라우저 사본(IndexedDB)을 불러오는 중의 변경은 편집이 아니다 — 접속하면 상태 벡터 비교로 맞춘다
+    if (!this.ready) return;
     if (this.status !== 'synced') {
       useConnection.getState().setOfflineChanges(true);
       return;
@@ -252,5 +255,35 @@ export class RoomProvider implements DocProvider {
     if (this.room.audience > 0) this.room.send({ t: 'aw', u: toB64(encodeAwarenessUpdate(this.awareness, [this.doc.clientID])) });
     this.awareness.destroy();
     this.listeners.clear();
+  }
+}
+
+/**
+ * 접속 때 계산한 차이(diff)에 서버에 아직 없는 변경이 있는지
+ * encodeStateAsUpdate는 새 변경이 없어도 삭제 기록(delete set)을 통째로 싣는다 — 글자를 지운 적이 있는 문서는
+ * 열 때마다 "변경"을 보내 "저장 중"이 잠깐 떴다. 새 항목이 없고 삭제 기록도 서버가 이미 가진 것뿐이면 보내지 않는다.
+ * (서버 응답은 서버 문서의 삭제 기록 전체를 담고 있다. 판단이 애매하면 보낸다)
+ */
+function hasLocalOnlyChanges(diff: Uint8Array, serverUpdate: Uint8Array): boolean {
+  try {
+    const local = Y.decodeUpdate(diff);
+    if (local.structs.length) return true;
+    const server = Y.decodeUpdate(serverUpdate).ds.clients;
+    for (const [client, items] of local.ds.clients) {
+      const have = (server.get(client) ?? []).slice().sort((a, b) => a.clock - b.clock);
+      for (const { clock, len } of items) {
+        // [clock, clock + len)이 서버의 삭제 구간들로 빈틈없이 덮이는지
+        let at = clock;
+        for (const r of have) {
+          if (r.clock > at) break;
+          if (r.clock + r.len > at) at = r.clock + r.len;
+          if (at >= clock + len) break;
+        }
+        if (at < clock + len) return true;
+      }
+    }
+    return false;
+  } catch {
+    return true;
   }
 }

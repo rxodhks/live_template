@@ -26,7 +26,7 @@ const FEATURES = [
   { icon: <Palette size={18} />, title: '디자인 캔버스', text: '다양한 디자인 툴을 이용한 작업이 가능합니다.' },
   { icon: <Code2 size={18} />, title: '코드 에디터', text: '24개 언어, 실행과 미리보기까지. 간단한 작업을 수행할 수 있습니다.' },
   { icon: <FileText size={18} />, title: '문서 작성', text: '리치 텍스트 문서를 동시에 편집합니다.' },
-  { icon: <Lock size={18} />, title: '비밀 노트', text: '개 혹은 협업자들만의 암호화된 노트를 사용할 수 있습니다.' },
+  { icon: <Lock size={18} />, title: '비밀 노트', text: '개인 혹은 협업자들만의 암호화된 노트를 사용할 수 있습니다.' },
 ];
 
 const PROVIDERS: { id: OAuthProvider; label: string; icon: ReactNode }[] = [
@@ -101,7 +101,11 @@ function Steps({ current }: { current: 1 | 2 }) {
 function useSignedInRedirect(): ReactNode {
   const status = useSession((s) => s.status);
   const [params] = useSearchParams();
-  return status === 'authed' ? <Navigate to={safeNext(params.get('next'))} replace /> : null;
+  // 이 화면에서 막 로그인 · 가입을 마친 경우에만 초대 화면이 바로 참여하도록 알린다
+  const [wasAuthed] = useState(() => useSession.getState().status === 'authed');
+  const next = safeNext(params.get('next'));
+  const state = !wasAuthed && next.startsWith('/join/') ? { autoJoin: true } : undefined;
+  return status === 'authed' ? <Navigate to={next} replace state={state} /> : null;
 }
 
 /* ───────────────────────── 로그인 ───────────────────────── */
@@ -274,7 +278,7 @@ export function LoginPage() {
           <div className="auth-head">
             <h2>메일을 확인해 주세요</h2>
             <p className="muted">
-              <b className="auth-email-addr">{sentTo}</b>로 6자리 인증 코드를 보냈습니다. 인증 코드의 유효 기간은 10분입니다.
+              <b className="auth-email-addr">{sentTo}</b> 주소로 6자리 인증 코드를 보냈습니다. 인증 코드의 유효 기간은 10분입니다.
             </p>
           </div>
           {devCode && (

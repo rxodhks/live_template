@@ -66,7 +66,7 @@ export function Workspace() {
   const { tid = '' } = useParams();
   const entry = useTemplates((s) => s.templates[tid]);
   const loaded = useTemplates((s) => s.loaded);
-  const [lookup, setLookup] = useState<'idle' | 'loading' | 'missing'>('idle');
+  const [lookup, setLookup] = useState<'idle' | 'loading' | 'missing' | 'error'>('idle');
   const navigate = useNavigate();
 
   // 목록에 없는 협업 템플릿 링크로 바로 들어온 경우 (다른 기기에서 참여한 템플릿 등)
@@ -75,7 +75,11 @@ export function Workspace() {
     setLookup('loading');
     api<{ template: TemplateSummary }>('GET', `/templates/${tid}`)
       .then((r) => useTemplates.getState().upsertShared(r.template))
-      .catch(() => setLookup('missing'));
+      // 없거나 권한이 없을 때만 '찾을 수 없음' — 네트워크·서버 오류는 다시 시도할 수 있게 구분한다
+      .catch((err: unknown) => {
+        const status = (err as { status?: unknown } | null)?.status;
+        setLookup(status === 404 || status === 403 ? 'missing' : 'error');
+      });
   }, [loaded, entry, lookup, tid]);
 
   useEffect(() => setLookup('idle'), [tid]);
@@ -103,6 +107,18 @@ export function Workspace() {
             }
           >
             이 브라우저에 없는 템플릿이거나, 삭제되었거나, 접근 권한이 없습니다.
+          </EmptyState>
+        ) : lookup === 'error' ? (
+          <EmptyState
+            icon={<RefreshCw size={36} />}
+            title="서버에 연결할 수 없습니다"
+            action={
+              <Button variant="primary" icon={<RefreshCw size={15} />} onClick={() => setLookup('idle')}>
+                다시 시도
+              </Button>
+            }
+          >
+            네트워크 상태를 확인한 뒤 다시 시도해 주세요.
           </EmptyState>
         ) : (
           <div className="center-fill">

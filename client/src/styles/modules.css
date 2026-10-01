@@ -1130,6 +1130,10 @@ button.doc-emoji:hover:not(:disabled) {
   height: 0;
   pointer-events: none;
 }
+/* 좁은 표 칸에서는 긴 안내 문구가 여러 줄로 접혀 칸을 키운다 — 표 칸 안에서는 보이지 않게 */
+.doc-content .ProseMirror :is(td, th) p.is-empty::before {
+  content: none;
+}
 
 /* 다른 사람의 캐럿 (TipTap Collaboration Caret) */
 .collaboration-carets__caret {

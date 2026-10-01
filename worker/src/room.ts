@@ -853,12 +853,14 @@ export class TemplateRoom extends DurableObject<Env> {
     if (!good) {
       const fails = (at?.fails ?? 0) + 1;
       const meta = JSON.parse(row.json) as SecretNoteMeta;
-      this.record(user, { type: 'notes.unlock_fail', targetId: noteId, targetName: meta.title });
-      if (fails >= NOTE_MAX_ATTEMPTS) {
-        this.sql.exec('INSERT OR REPLACE INTO note_attempts (k, fails, locked_until) VALUES (?, 0, ?)', k, now + NOTE_LOCKOUT_MS);
-        return fail(429, `비밀번호를 여러 번 틀려 잠시 잠겼습니다. ${NOTE_LOCKOUT_MS / 1000}초 후 다시 시도하세요.`, { retryAfter: NOTE_LOCKOUT_MS / 1000 });
-      }
-      this.sql.exec('INSERT OR REPLACE INTO note_attempts (k, fails, locked_until) VALUES (?, ?, 0)', k, fails);
+      const locked = fails >= NOTE_MAX_ATTEMPTS;
+      // 시도 횟수는 다른 요청이 끼어들기 전에 먼저 기록한다
+      if (locked) this.sql.exec('INSERT OR REPLACE INTO note_attempts (k, fails, locked_until) VALUES (?, 0, ?)', k, now + NOTE_LOCKOUT_MS);
+      else this.sql.exec('INSERT OR REPLACE INTO note_attempts (k, fails, locked_until) VALUES (?, ?, 0)', k, fails);
+      // 나만 보는 개인 공간(백업)이면 볼 사람이 나뿐이라 입력 실패를 타임라인에 남기지 않는다
+      const access = await this.directory.access(this.templateId, user.id);
+      if (!access.ok || access.data.template.visibility !== 'private') this.record(user, { type: 'notes.unlock_fail', targetId: noteId, targetName: meta.title });
+      if (locked) return fail(429, `비밀번호를 여러 번 틀려 잠시 잠겼습니다. ${NOTE_LOCKOUT_MS / 1000}초 후 다시 시도하세요.`, { retryAfter: NOTE_LOCKOUT_MS / 1000 });
       return fail(401, `비밀번호가 올바르지 않습니다. (남은 시도 ${NOTE_MAX_ATTEMPTS - fails}회)`, { remaining: NOTE_MAX_ATTEMPTS - fails });
     }
     if (at) this.sql.exec('DELETE FROM note_attempts WHERE k = ?', k);

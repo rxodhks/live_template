@@ -30,7 +30,8 @@ export function confirmTrash(t: TemplateEntry): Promise<boolean> {
 export async function trashTemplate(t: TemplateEntry): Promise<boolean> {
   try {
     await deleteTemplate(t);
-    toast.show({ kind: 'danger', title: '휴지통으로 옮겼습니다', message: `${t.emoji} ${t.name} · 30일 안에 대시보드의 휴지통에서 복원할 수 있습니다.` });
+    // 요청한 일이 잘 된 것이므로 위험(빨강) 대신 일반 알림으로 — 안내 문구가 길어 조금 더 오래 띄운다
+    toast.show({ kind: 'info', duration: 5500, title: '휴지통으로 옮겼습니다', message: `${t.emoji} ${t.name} · 30일 안에 대시보드의 휴지통에서 복원할 수 있습니다.` });
     return true;
   } catch (err) {
     toast.error('삭제하지 못했습니다', errorMessage(err));
@@ -40,8 +41,8 @@ export async function trashTemplate(t: TemplateEntry): Promise<boolean> {
 
 const DAY = 86_400_000;
 
-export function TrashDialog({ onClose }: { onClose: () => void }) {
-  const navigate = useNavigate();
+/** 복원하면 대시보드에 그대로 머문다 — onRestored로 복원된 카드를 보여 줄 수 있다 */
+export function TrashDialog({ onClose, onRestored }: { onClose: () => void; onRestored?: (t: TemplateEntry) => void }) {
   const [items, setItems] = useState<TrashEntry[] | null>(null);
   const [ttl, setTtl] = useState(30);
   const [busy, setBusy] = useState<string | null>(null);
@@ -66,7 +67,7 @@ export function TrashDialog({ onClose }: { onClose: () => void }) {
       toast.success('템플릿을 복원했습니다', `${t.emoji} ${t.name} · 내용과 멤버가 그대로 돌아왔습니다.`);
       setItems((list) => list?.filter((x) => x.template.id !== e.template.id) ?? null);
       onClose();
-      navigate(`/t/${t.id}`);
+      onRestored?.(t);
     } catch (err) {
       toast.error('복원하지 못했습니다', errorMessage(err));
     } finally {

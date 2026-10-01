@@ -17,23 +17,35 @@ const EMOJIS = ['🗂️', '🚀', '🎨', '💻', '📝', '🧭', '🌐', '🧪
  *  - 기능(디자인/코딩/문서)은 여러 개 선택 가능 → 하나의 템플릿에서 동시에 작업
  *  - 프리셋을 고르면 기능과 시작 내용이 채워진다 (기능은 다시 조정 가능)
  */
-export function CreateTemplateModal({ onClose, onCreated }: { onClose: () => void; onCreated: (t: TemplateEntry) => void }) {
-  const [name, setName] = useState('');
+export function CreateTemplateModal({
+  initialPresetId,
+  onClose,
+  onCreated,
+}: {
+  /** 이 프리셋을 고른 상태로 연다 (첫 화면의 프리셋 카드) */
+  initialPresetId?: string;
+  onClose: () => void;
+  onCreated: (t: TemplateEntry) => void;
+}) {
+  const start = initialPresetId && initialPresetId !== 'blank' ? getPreset(initialPresetId) : null;
+  const [name, setName] = useState(start?.name ?? '');
   const [description, setDescription] = useState('');
-  const [emoji, setEmoji] = useState('🗂️');
-  const [presetId, setPresetId] = useState('blank');
-  const [features, setFeatures] = useState<Feature[]>(['docs']);
+  const [emoji, setEmoji] = useState(start?.emoji ?? '🗂️');
+  const [presetId, setPresetId] = useState(start?.id ?? 'blank');
+  const [features, setFeatures] = useState<Feature[]>(start?.features ?? ['docs']);
   const [saving, setSaving] = useState(false);
 
   const preset = getPreset(presetId);
 
   const choosePreset = (id: string) => {
     const p = getPreset(id);
+    // 이름 · 아이콘은 비어 있거나 직전 프리셋이 채운 그대로일 때만 바꾼다 (사용자가 고친 값은 유지)
+    const prev = presetId !== 'blank' ? getPreset(presetId) : null;
     setPresetId(id);
     if (id !== 'blank') {
       setFeatures(p.features);
-      if (emoji === '🗂️' || EMOJIS.includes(emoji)) setEmoji(p.emoji);
-      if (!name.trim()) setName(p.name);
+      if (emoji === '🗂️' || emoji === prev?.emoji) setEmoji(p.emoji);
+      if (!name.trim() || name === prev?.name) setName(p.name);
     }
   };
 
@@ -51,7 +63,7 @@ export function CreateTemplateModal({ onClose, onCreated }: { onClose: () => voi
   });
 
   const create = async () => {
-    if (!name.trim() || features.length === 0) return;
+    if (saving || !name.trim() || features.length === 0) return;
     setSaving(true);
     try {
       // 새 템플릿은 나만 보는 개인 공간에 만들어지고 곧바로 클라우드에 백업된다 (오프라인이면 연결되는 대로).
@@ -99,7 +111,17 @@ export function CreateTemplateModal({ onClose, onCreated }: { onClose: () => voi
           </Field>
           <div className="create-names">
             <Field label="템플릿 이름">
-              <input className="input" value={name} maxLength={60} placeholder="예) 신규 서비스 런칭" onChange={(e) => setName(e.target.value)} data-autofocus />
+              <input
+                className="input"
+                value={name}
+                maxLength={60}
+                placeholder="예) 신규 서비스 런칭"
+                onChange={(e) => setName(e.target.value)}
+                onKeyDown={(e) => {
+                  if (e.key === 'Enter' && !e.nativeEvent.isComposing) void create();
+                }}
+                data-autofocus
+              />
             </Field>
             <Field label="설명 (선택)">
               <input className="input" value={description} maxLength={200} placeholder="팀원들이 알아야 할 한 줄 설명" onChange={(e) => setDescription(e.target.value)} />

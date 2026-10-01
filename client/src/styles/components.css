@@ -602,6 +602,9 @@ textarea.input {
     opacity: 0;
   }
 }
+.modal:focus {
+  outline: none;
+}
 .modal {
   width: 100%;
   background: var(--surface);
@@ -677,8 +680,9 @@ textarea.input {
 
 .toast-viewport {
   position: fixed;
-  /* 편집 화면의 도구 줄(실행 · 미리보기 버튼 등)을 가리지 않도록 그 아래에 띄운다 */
-  top: calc(var(--topbar-h) + 46px + 10px);
+  /* 머리글 버튼(휴지통 · 새 템플릿 · 초대 등)을 가리지 않도록 오른쪽 아래에 띄운다
+     — 편집기 아래 상태 줄(26px) 위로 살짝 띄운다 */
+  bottom: 40px;
   right: 14px;
   z-index: 950;
   display: flex;
@@ -686,6 +690,14 @@ textarea.input {
   gap: 8px;
   width: min(360px, calc(100vw - 28px));
   pointer-events: none;
+}
+/* 오른쪽 채팅 패널이 열려 있으면 입력창을 가리지 않도록 패널 왼쪽에 띄운다 */
+body:has(.shell-drawer) .toast-viewport {
+  right: calc(var(--drawer-w) + 14px);
+}
+/* 좁은 화면 안내 줄이 떠 있으면 그 위로 */
+body:has(.narrow-notice) .toast-viewport {
+  bottom: 76px;
 }
 
 .toast {
@@ -763,6 +775,19 @@ textarea.input {
   color: var(--text-2);
   font-size: 13px;
   margin-top: 1px;
+}
+.toast-action {
+  flex: none;
+  align-self: center;
+  padding: 5px 10px;
+  border-radius: 7px;
+  font-size: 13px;
+  font-weight: 650;
+  color: var(--toast-color);
+  background: color-mix(in srgb, var(--toast-color) 12%, transparent);
+}
+.toast-action:hover {
+  background: color-mix(in srgb, var(--toast-color) 20%, transparent);
 }
 .toast-close {
   position: absolute;
@@ -1076,6 +1101,33 @@ textarea.input {
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
+}
+.palette-item {
+  cursor: pointer;
+}
+.palette-text {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+.palette-snippet {
+  font-size: 12px;
+  color: var(--text-3);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.palette-snippet mark {
+  background: var(--accent-soft);
+  color: var(--text);
+  font-weight: 650;
+  border-radius: 3px;
+  padding: 0 1px;
+}
+.palette-item.is-selected .palette-snippet mark {
+  background: var(--surface);
 }
 .palette-hint {
   font-size: 12px;

@@ -49,7 +49,31 @@ console.info = (...a) => send('info', a);
 console.debug = (...a) => send('log', a);
 console.warn = (...a) => send('warn', a);
 console.error = (...a) => send('error', a);
-console.table = (d) => send('log', [d]);
+// 객체 배열 · 객체의 객체는 표로 보여 준다 (그 밖의 값은 console.log처럼)
+console.table = (d, only) => {
+  if (d === null || typeof d !== 'object') return send('log', [d]);
+  const keys = Object.keys(d);
+  if (!keys.length) return send('log', [d]);
+  const cell = (v) => (v === undefined ? '' : typeof v === 'string' ? v : fmt(v, 1).replace(/\s*\n\s*/g, ' '));
+  const cols = [];
+  let hasValues = false;
+  for (const k of keys) {
+    const r = d[k];
+    if (r !== null && typeof r === 'object') {
+      for (const c of Object.keys(r)) if (!cols.includes(c)) cols.push(c);
+    } else hasValues = true;
+  }
+  const shown = Array.isArray(only) ? only.map(String) : cols;
+  const rows = keys.map((k) => {
+    const r = d[k];
+    const isObj = r !== null && typeof r === 'object';
+    const row = [k, ...shown.map((c) => (isObj && c in r ? cell(r[c]) : ''))];
+    if (hasValues) row.push(isObj ? '' : cell(r));
+    return row;
+  });
+  if (++outCount > MAX_OUT) return;
+  table(['(index)', ...shown, ...(hasValues ? ['Values'] : [])], rows);
+};
 self.onunhandledrejection = (e) => {
   e.preventDefault();
   send('error', ['처리되지 않은 Promise 거부: ' + fmt(e.reason)]);

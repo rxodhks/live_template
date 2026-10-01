@@ -116,6 +116,14 @@ function strength(pw: string): { score: number; label: string } {
   return { score: Math.min(score, 4), label };
 }
 
+/** 힌트에 비밀번호가 그대로 들어 있는지 (대소문자 · 앞뒤 공백 무시). 서버는 비밀번호를 모르므로 여기서만 막는다 */
+function hintLeaksPassword(hint: string, pw: string): boolean {
+  const h = hint.trim().toLowerCase();
+  const p = pw.trim().toLowerCase();
+  return !!h && !!p && h.includes(p);
+}
+const HINT_LEAK_ERROR = '힌트에 비밀번호를 넣을 수 없습니다';
+
 function NewNoteModal({ onClose }: { onClose: () => void }) {
   const ws = useWorkspace();
   const navigate = useNavigate();
@@ -126,7 +134,8 @@ function NewNoteModal({ onClose }: { onClose: () => void }) {
   const [saving, setSaving] = useState(false);
   const s = strength(pw);
   const mismatch = pw2.length > 0 && pw !== pw2;
-  const valid = title.trim() && pw.length >= 4 && pw === pw2;
+  const hintLeak = hintLeaksPassword(hint, pw);
+  const valid = title.trim() && pw.length >= 4 && pw === pw2 && !hintLeak;
 
   const create = async () => {
     if (!valid) return;
@@ -151,7 +160,7 @@ function NewNoteModal({ onClose }: { onClose: () => void }) {
   return (
     <Modal
       title="새 비밀 노트"
-      description="템플릿 멤버 중 비밀번호를 아는 사람만 열 수 있습니다."
+      description={ws.isPrivate ? '비밀번호를 아는 사람만 열 수 있습니다.' : '템플릿 멤버 중 비밀번호를 아는 사람만 열 수 있습니다.'}
       icon={<Lock size={18} />}
       onClose={onClose}
       footer={
@@ -180,7 +189,7 @@ function NewNoteModal({ onClose }: { onClose: () => void }) {
         <Field label="비밀번호 확인" error={mismatch ? '비밀번호가 일치하지 않습니다' : undefined}>
           <input className="input" type="password" autoComplete="new-password" value={pw2} onChange={(e) => setPw2(e.target.value)} />
         </Field>
-        <Field label="힌트 (선택)" hint="잠금 화면에 표시됩니다. 비밀번호 자체는 넣을 수 없습니다.">
+        <Field label="힌트 (선택)" hint="잠금 화면에 표시됩니다. 비밀번호 자체는 넣을 수 없습니다." error={hintLeak ? HINT_LEAK_ERROR : undefined}>
           <input className="input" value={hint} maxLength={80} onChange={(e) => setHint(e.target.value)} />
         </Field>
       </div>
@@ -258,7 +267,7 @@ function LockScreen({ note }: { note: SecretNoteMeta }) {
         ) : (
           error && <p className="lock-error">{error}</p>
         )}
-        <p className="muted small">비밀번호 입력 실패도 타임라인에 기록됩니다.</p>
+        {!ws.isPrivate && <p className="muted small">비밀번호 입력 실패도 타임라인에 기록됩니다.</p>}
       </div>
     </CursorPage>
   );
@@ -404,7 +413,8 @@ function ChangePasswordModal({ note, doc, selfChange, onClose }: { note: SecretN
   const [next2, setNext2] = useState('');
   const [hint, setHint] = useState(note.hint);
   const [saving, setSaving] = useState(false);
-  const valid = current && next.length >= 4 && next === next2;
+  const hintLeak = hintLeaksPassword(hint, next);
+  const valid = current && next.length >= 4 && next === next2 && !hintLeak;
   const submit = async () => {
     if (!valid) return;
     setSaving(true);
@@ -448,7 +458,7 @@ function ChangePasswordModal({ note, doc, selfChange, onClose }: { note: SecretN
         <Field label="새 비밀번호 확인" error={next2 && next !== next2 ? '비밀번호가 일치하지 않습니다' : undefined}>
           <input className="input" type="password" autoComplete="new-password" value={next2} onChange={(e) => setNext2(e.target.value)} />
         </Field>
-        <Field label="힌트 (선택)">
+        <Field label="힌트 (선택)" hint="잠금 화면에 표시됩니다. 비밀번호 자체는 넣을 수 없습니다." error={hintLeak ? HINT_LEAK_ERROR : undefined}>
           <input className="input" value={hint} maxLength={80} onChange={(e) => setHint(e.target.value)} />
         </Field>
       </div>

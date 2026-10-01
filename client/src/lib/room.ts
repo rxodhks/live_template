@@ -27,6 +27,11 @@ export class RoomConnection {
   deniedReason: string | null = null;
   /** 서버가 이 화면이 예전 버전이라며 연결을 거절했다 (새로고침하면 된다) */
   outdated = false;
+  /**
+   * 마지막으로 받은 입장 메시지. 연결은 만들자마자 시작되므로 화면이 구독하기 전에 도착할 수 있다
+   * (처음 여는 템플릿은 브라우저 사본을 기다리느라 구독이 늦다) → 늦게 구독한 쪽이 이것으로 따라잡는다
+   */
+  lastWelcome: Msg<'welcome'> | null = null;
 
   /** 같은 방에 있는 다른 연결들 (다른 사람 또는 내 다른 탭) */
   private others = new Set<string>();
@@ -171,6 +176,7 @@ export class RoomConnection {
       }
       if (m.t === 'welcome') {
         welcomed = true;
+        this.lastWelcome = m;
         this.attempt = 0;
         this.sid = m.sid;
         this.role = m.role;

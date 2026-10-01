@@ -3,6 +3,7 @@ import {
   type ReactNode,
   forwardRef,
   useEffect,
+  useId,
   useLayoutEffect,
   useRef,
   useState,
@@ -131,41 +132,89 @@ interface ModalProps {
   icon?: ReactNode;
 }
 
+/** 대화상자 안에서 Tab으로 갈 수 있는 요소 */
+const FOCUSABLE =
+  'a[href], button:not([disabled]), input:not([disabled]), select:not([disabled]), textarea:not([disabled]), [tabindex]:not([tabindex="-1"]), [contenteditable="true"]';
+
+function focusables(root: HTMLElement): HTMLElement[] {
+  return Array.from(root.querySelectorAll<HTMLElement>(FOCUSABLE)).filter((el) => el.getClientRects().length > 0);
+}
+
 export function Modal({ title, description, onClose, children, footer, width = 480, icon }: ModalProps) {
   const ref = useRef<HTMLDivElement>(null);
+  const titleId = useId();
+  const descId = useId();
   // 부르는 쪽이 onClose를 매번 새로 만들어도 아래 효과(첫 입력 요소로 포커스)가 다시 돌지 않게 한다
   // — 다시 돌면 글자를 입력할 때마다 포커스가 첫 입력 요소로 튄다
   const onCloseRef = useRef(onClose);
   onCloseRef.current = onClose;
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
+      const el = ref.current;
+      if (!el) return;
+      // 대화상자가 겹쳐 있으면 맨 위 것만 키를 받는다
+      const all = document.querySelectorAll('.modal[role="dialog"]');
+      if (all[all.length - 1] !== el) return;
       if (e.key === 'Escape') {
         e.stopPropagation();
         onCloseRef.current();
+        return;
+      }
+      if (e.key !== 'Tab') return;
+      // 포커스 가두기: Tab / Shift+Tab이 대화상자 밖으로 나가지 않게 처음 ↔ 끝을 잇는다
+      const list = focusables(el);
+      if (!list.length) {
+        e.preventDefault();
+        el.focus();
+        return;
+      }
+      const first = list[0];
+      const last = list[list.length - 1];
+      const active = document.activeElement;
+      const inside = active instanceof Node && el.contains(active);
+      // 대화상자에서 띄운 팝오버 · 명령 팔레트처럼 다른 창 안에 포커스가 있으면 그쪽에 맡긴다
+      if (!inside && active instanceof HTMLElement && active.closest('[role="dialog"]')) return;
+      if (e.shiftKey && (!inside || active === first || active === el)) {
+        e.preventDefault();
+        last.focus();
+      } else if (!e.shiftKey && (!inside || active === last)) {
+        e.preventDefault();
+        first.focus();
       }
     };
     window.addEventListener('keydown', onKey, true);
     const prev = document.activeElement as HTMLElement | null;
-    // 처음 열릴 때 한 번만 첫 입력 요소로 포커스
+    // 처음 열릴 때 한 번만 첫 입력 요소로 포커스 (없으면 대화상자 자체로)
     const frame = requestAnimationFrame(() => {
       const first = ref.current?.querySelector<HTMLElement>('[data-autofocus], input, textarea, select, button.btn-primary');
-      first?.focus();
+      if (first) first.focus();
+      else if (ref.current && !ref.current.contains(document.activeElement)) ref.current.focus();
     });
     return () => {
       cancelAnimationFrame(frame);
       window.removeEventListener('keydown', onKey, true);
-      prev?.focus?.();
+      // 닫히면 열기 전에 포커스가 있던 곳으로 돌려준다 (그 요소가 아직 화면에 있을 때만)
+      if (prev && prev !== document.body && prev.isConnected) prev.focus?.();
     };
   }, []);
 
   return createPortal(
     <div className="modal-backdrop" onMouseDown={(e) => e.target === e.currentTarget && onClose()}>
-      <div className="modal" role="dialog" aria-modal="true" style={{ maxWidth: width }} ref={ref}>
+      <div
+        className="modal"
+        role="dialog"
+        aria-modal="true"
+        aria-labelledby={titleId}
+        aria-describedby={description ? descId : undefined}
+        tabIndex={-1}
+        style={{ maxWidth: width }}
+        ref={ref}
+      >
         <header className="modal-header">
           {icon && <span className="modal-icon">{icon}</span>}
           <div className="modal-titles">
-            <h2>{title}</h2>
-            {description && <p>{description}</p>}
+            <h2 id={titleId}>{title}</h2>
+            {description && <p id={descId}>{description}</p>}
           </div>
           <IconButton label="닫기" onClick={onClose} size="sm">
             <X size={16} />

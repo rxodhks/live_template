@@ -63,17 +63,17 @@ export const BLOCKS: BlockDef[] = [
   { key: 'quote', label: '인용', hint: '>', group: '기본 블록', icon: <Quote size={s} />, keywords: ['quote', 'blockquote', '인용'], turnInto: (c) => c.setBlockquote(), isActive: (e) => e.isActive('blockquote') },
   { key: 'callout', label: '콜아웃', group: '기본 블록', icon: <Lightbulb size={s} />, keywords: ['callout', 'note', 'tip', '콜아웃', '강조', '알림', '박스'], turnInto: (c) => c.setCallout(), isActive: (e) => e.isActive('callout') },
   { key: 'code', label: '코드', hint: '```', group: '기본 블록', icon: <Code2 size={s} />, keywords: ['code', 'codeblock', '코드'], turnInto: (c) => c.setCodeBlock(), isActive: (e) => e.isActive('codeBlock') },
-  { key: 'divider', label: '구분선', hint: '---', group: '기본 블록', icon: <Minus size={s} />, keywords: ['divider', 'hr', 'line', '구분선', '줄'], insert: (e) => void e.chain().focus().setHorizontalRule().run() },
-  { key: 'table', label: '표', group: '기본 블록', icon: <Table size={s} />, keywords: ['table', '표', '테이블'], insert: (e) => void e.chain().focus().insertTable({ rows: 3, cols: 3, withHeaderRow: true }).run() },
+  { key: 'divider', label: '구분선', hint: '---', group: '기본 블록', icon: <Minus size={s} />, keywords: ['divider', 'hr', 'line', '구분선', '줄'], insert: (e) => void outOfList(e).chain().focus().setHorizontalRule().run() },
+  { key: 'table', label: '표', group: '기본 블록', icon: <Table size={s} />, keywords: ['table', '표', '테이블'], insert: (e) => void outOfList(e).chain().focus().insertTable({ rows: 3, cols: 3, withHeaderRow: true }).run() },
 
   { key: 'image', label: '이미지 올리기', group: '미디어', icon: <ImageUp size={s} />, keywords: ['image', 'photo', 'picture', 'upload', '이미지', '사진', '그림'], available: (env) => env.uploads, insert: (e) => pickImages(e) },
   { key: 'image-url', label: '이미지 주소로 넣기', group: '미디어', icon: <Link size={s} />, keywords: ['image', 'url', '이미지', '사진', '주소', '링크'], insert: (e) => insertImageUrl(e) },
   { key: 'embed', label: '동영상 · 임베드', group: '미디어', icon: <Clapperboard size={s} />, keywords: ['embed', 'video', 'youtube', 'vimeo', 'figma', 'map', '유튜브', '동영상', '영상', '임베드', '지도', '피그마'], insert: (e) => insertEmbedUrl(e) },
 
-  { key: 'columns2', label: '2단', group: '레이아웃', icon: <Columns2 size={s} />, keywords: ['columns', 'column', '2', '단', '나란히', '레이아웃'], insert: (e) => void e.chain().focus().insertColumns(2).run() },
-  { key: 'columns3', label: '3단', group: '레이아웃', icon: <Columns3 size={s} />, keywords: ['columns', 'column', '3', '단', '나란히', '레이아웃'], insert: (e) => void e.chain().focus().insertColumns(3).run() },
-  { key: 'page-break', label: '페이지 나누기', hint: 'Ctrl+Enter', group: '레이아웃', icon: <SeparatorHorizontal size={s} />, keywords: ['page break', 'break', 'page', '페이지', '쪽', '나누기', '새 페이지'], insert: (e) => void e.chain().focus().setPageBreak().run() },
-  { key: 'toc', label: '목차', group: '레이아웃', icon: <ListTree size={s} />, keywords: ['toc', 'table of contents', 'outline', '목차', '차례'], insert: (e) => void e.chain().focus().insertTableOfContents().run() },
+  { key: 'columns2', label: '2단', group: '레이아웃', icon: <Columns2 size={s} />, keywords: ['columns', 'column', '2', '단', '나란히', '레이아웃'], insert: (e) => void outOfList(e).chain().focus().insertColumns(2).run() },
+  { key: 'columns3', label: '3단', group: '레이아웃', icon: <Columns3 size={s} />, keywords: ['columns', 'column', '3', '단', '나란히', '레이아웃'], insert: (e) => void outOfList(e).chain().focus().insertColumns(3).run() },
+  { key: 'page-break', label: '페이지 나누기', hint: 'Ctrl+Enter', group: '레이아웃', icon: <SeparatorHorizontal size={s} />, keywords: ['page break', 'break', 'page', '페이지', '쪽', '나누기', '새 페이지'], insert: (e) => void outOfList(e).chain().focus().setPageBreak().run() },
+  { key: 'toc', label: '목차', group: '레이아웃', icon: <ListTree size={s} />, keywords: ['toc', 'table of contents', 'outline', '목차', '차례'], insert: (e) => void outOfList(e).chain().focus().insertTableOfContents().run() },
 
   { key: 'math', label: '수식 블록', group: '고급', icon: <Sigma size={s} />, keywords: ['math', 'latex', 'equation', 'katex', '수식', '수학'], insert: (e) => insertMath(e, 'block') },
   { key: 'math-inline', label: '인라인 수식', hint: '$$x$$', group: '고급', icon: <Radical size={s} />, keywords: ['math', 'inline', 'latex', '수식', '수학'], insert: (e) => insertMath(e, 'inline') },
@@ -132,6 +132,38 @@ const keepRange =
     return true;
   };
 
+const LISTS = new Set(['bulletList', 'orderedList', 'taskList']);
+const LIST_ITEMS = new Set(['listItem', 'taskItem']);
+
+/**
+ * 표 · 구분선처럼 큰 블록을 넣기 전에 커서를 목록(할 일 · 글머리 · 번호) 밖으로 옮긴다 — 목록 항목 안에 끼어 들어가지 않도록
+ *  · 빈 줄이면 그 줄을 목록 밖으로 꺼낸다 (그 자리에 넣는다)
+ *  · 글이 있는 줄이면 맨 바깥 목록 바로 다음에 빈 줄을 만들고 그리로 옮긴다
+ */
+function outOfList(editor: Editor): Editor {
+  const listDepth = () => {
+    const { $from } = editor.state.selection;
+    for (let d = 1; d <= $from.depth; d++) if (LISTS.has($from.node(d).type.name)) return d;
+    return 0;
+  };
+  if (!listDepth() || !editor.state.selection.empty) return editor;
+  if (editor.state.selection.$from.parent.content.size === 0) {
+    // 안쪽 항목부터 한 단계씩 꺼낸다
+    for (let i = 0; i < 8 && listDepth(); i++) {
+      const { $from } = editor.state.selection;
+      let item = '';
+      for (let d = $from.depth; d > 0 && !item; d--) if (LIST_ITEMS.has($from.node(d).type.name)) item = $from.node(d).type.name;
+      if (!item || !editor.commands.liftListItem(item)) break;
+    }
+  }
+  const depth = listDepth();
+  if (depth) {
+    const after = editor.state.selection.$from.after(depth);
+    editor.chain().insertContentAt(after, { type: 'paragraph' }).setTextSelection(after + 1).run();
+  }
+  return editor;
+}
+
 /* ───────────── 미디어 넣기 ───────────── */
 
 /** 파일 선택 창에서 이미지를 골라 넣는다 */
@@ -189,7 +221,7 @@ async function insertEmbedUrl(editor: Editor) {
   });
   if (!url) return;
   const info = resolveEmbed(url);
-  if (info) editor.chain().focus().insertEmbed({ src: info.src, url, provider: info.provider, height: info.height ?? null }).run();
+  if (info) outOfList(editor).chain().focus().insertEmbed({ src: info.src, url, provider: info.provider, height: info.height ?? null }).run();
 }
 
 export async function insertMath(editor: Editor, kind: 'block' | 'inline', initial = '') {
@@ -204,6 +236,6 @@ export async function insertMath(editor: Editor, kind: 'block' | 'inline', initi
     hint: kind === 'block' ? 'Ctrl/⌘ + Enter로 넣기 · 수식을 누르면 다시 고칠 수 있습니다' : '문장 안에서 $$x^2$$처럼 입력해도 됩니다',
   });
   if (!latex) return;
-  if (kind === 'block') editor.chain().focus().insertBlockMath({ latex }).run();
+  if (kind === 'block') outOfList(editor).chain().focus().insertBlockMath({ latex }).run();
   else editor.chain().focus().insertInlineMath({ latex }).run();
 }

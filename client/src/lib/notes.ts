@@ -98,8 +98,8 @@ function localApi(ctx: Ctx): NotesApi {
     }
     const keys = await deriveNoteKeys(password, row.kdf);
     if ((await sha256Hex(keys.verifier)) !== row.verifierHash) {
+      // 개인 공간은 나 혼자라 입력 실패를 타임라인에 남기지 않는다
       a.fails += 1;
-      ctx.record({ type: 'notes.unlock_fail', targetId: note.id, targetName: note.title });
       if (a.fails >= LOCAL_MAX_ATTEMPTS) {
         attempts.set(note.id, { fails: 0, lockedUntil: now + LOCAL_LOCKOUT_MS });
         throw new ApiError(429, `비밀번호를 여러 번 틀려 잠시 잠겼습니다. ${LOCAL_LOCKOUT_MS / 1000}초 후 다시 시도하세요.`, { retryAfter: LOCAL_LOCKOUT_MS / 1000 });

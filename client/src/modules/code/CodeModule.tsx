@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState, type CSSProperties, type PointerEvent as ReactPointerEvent } from 'react';
+import { useEffect, useLayoutEffect, useRef, useState, type CSSProperties, type PointerEvent as ReactPointerEvent } from 'react';
 import { useNavigate } from 'react-router-dom';
 import * as Y from 'yjs';
 import {
@@ -338,6 +338,22 @@ function CodeWorkspace({ file }: { file: YItem }) {
 
   const content = () => (file.get('content') as Y.Text).toString();
 
+  // 출력 패널: 새 출력이 오면 맨 아래로 따라 내려간다 (사용자가 위로 올려 보는 중이면 그대로 둔다)
+  const outRef = useRef<HTMLDivElement>(null);
+  const stickRef = useRef(true);
+  const firstOutId = useRef<number | undefined>(undefined);
+  useLayoutEffect(() => {
+    const el = outRef.current;
+    // 새로 실행해 출력이 처음부터 다시 쌓이면 다시 맨 아래 따라가기
+    if (output[0]?.id !== firstOutId.current) stickRef.current = true;
+    firstOutId.current = output[0]?.id;
+    if (el && stickRef.current) el.scrollTop = el.scrollHeight;
+  }, [output, status, panel]);
+  const onOutputScroll = () => {
+    const el = outRef.current;
+    if (el) stickRef.current = el.scrollHeight - el.scrollTop - el.clientHeight < 24;
+  };
+
   const errorCount = output.filter((o) => o.level === 'error').length;
   const previewLogs = output.filter((o) => o.fromPreview).length;
   const previewErrors = output.filter((o) => o.fromPreview && o.level === 'error').length;
@@ -513,7 +529,7 @@ function CodeWorkspace({ file }: { file: YItem }) {
                 </IconButton>
               </div>
               {panel === 'output' ? (
-                <div className="code-output" role="log">
+                <div className="code-output" role="log" ref={outRef} onScroll={onOutputScroll}>
                   {status && (
                     <div className="out-status">
                       <Spinner size={12} /> {status}
