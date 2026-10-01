@@ -158,8 +158,8 @@ export async function updateProfile(draft: Omit<PublicUser, 'id'>): Promise<Publ
 
 export const fetchAuthConfig = () => api<AuthConfig>('GET', '/auth/config');
 
-export const startEmailLogin = (email: string) =>
-  api<{ ok: true; email: string; expiresAt: number; resendAfter: number; devCode?: string }>('POST', '/auth/email/start', { email });
+export const startEmailLogin = (email: string, turnstile?: string) =>
+  api<{ ok: true; email: string; expiresAt: number; resendAfter: number; devCode?: string }>('POST', '/auth/email/start', { email, turnstile });
 
 export const verifyEmailLogin = (email: string, code: string) =>
   api<EmailVerifyResult & { user?: PublicUser }>('POST', '/auth/email/verify', { email, code });

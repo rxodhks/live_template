@@ -39,6 +39,8 @@ export const SESSION_TTL_MS = 30 * 86_400_000;
 const CODE_TTL_MS = 10 * 60_000;
 const CODE_RESEND_MS = 30_000;
 const CODE_MAX_ATTEMPTS = 5;
+/** 주소마다 하루에 틀릴 수 있는 인증 코드 횟수 (코드를 다시 받아 가며 무작위로 맞혀 보는 것 방지) */
+const CODE_MAX_FAILS_PER_DAY = 20;
 /** 휴지통 보관 기간: 지나면 영구 삭제 */
 export const TRASH_TTL_MS = 30 * 86_400_000;
 /** 외부 로그인 왕복 · 이름 입력까지 기다리는 시간 */
@@ -311,6 +313,11 @@ export class Directory extends DurableObject<Env> {
       .toArray()[0];
     if (!row || row.expires_at < Date.now()) return fail(400, '인증 코드가 만료되었습니다. 코드를 다시 받아 주세요.', { reason: 'expired' });
     if (!safeEqual(row.hash, await sha256Hex(`${email}:${code}`))) {
+      // 코드를 새로 받아 가며 계속 맞혀 보는 것을 막는다: 주소마다 하루에 틀릴 수 있는 횟수
+      if (this.limit(`fail:${email}`, CODE_MAX_FAILS_PER_DAY, 86_400_000)) {
+        this.sql.exec('DELETE FROM email_codes WHERE email = ?', email);
+        return fail(429, '인증 코드를 너무 많이 잘못 입력했습니다. 내일 다시 시도하거나 다른 로그인 방법을 이용해 주세요.', { reason: 'expired' });
+      }
       const attempts = row.attempts + 1;
       if (attempts >= CODE_MAX_ATTEMPTS) {
         this.sql.exec('DELETE FROM email_codes WHERE email = ?', email);

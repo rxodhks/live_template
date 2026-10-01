@@ -920,6 +920,80 @@ describe('데이터 보호', () => {
   });
 });
 
+describe('남용 방지', () => {
+  let o: Awaited<ReturnType<typeof newUser>>;
+  let e: Awaited<ReturnType<typeof newUser>>;
+  const id = newTemplateId();
+  /** awareness 변경 하나 (clientID · clock은 128 미만) */
+  const awUpdate = (clientId: number, clock: number, state: string) => b64(new Uint8Array([1, clientId, clock, state.length, ...Buffer.from(state)]));
+
+  before(async () => {
+    o = await newUser('남용소유');
+    e = await newUser('남용편집');
+    await backup(o, id, { 'a.txt': 'a' }, '남용 방지 템플릿');
+    const inv = await api('POST', `/templates/${id}/invites`, o.token, { role: 'editor', expiresInDays: 1, maxUses: null, requireApproval: false });
+    await api('POST', `/invites/${inv.data.invite.token}/accept`, e.token);
+  });
+
+  it('다른 사람의 텍스트 커서를 흉내 내거나 지울 수 없다', async () => {
+    const a = new Client(id, o.token);
+    const b = new Client(id, e.token);
+    await a.ready();
+    await b.ready();
+    await syncDoc(a);
+    await syncDoc(b);
+    a.send({ t: 'aw', u: awUpdate(42, 1, '{"user":"a"}') });
+    await b.waitType('aw', (m) => m.u === awUpdate(42, 1, '{"user":"a"}'));
+    b.send({ t: 'aw', u: awUpdate(42, 2, '{"user":"fake"}') }); // A의 clientID로 다른 이름
+    b.send({ t: 'aw', u: awUpdate(42, 3, 'null') }); // A의 커서 지우기
+    b.send({ t: 'aw', u: awUpdate(43, 1, '{"user":"b"}') }); // 자기 것은 된다
+    await a.waitType('aw', (m) => m.u === awUpdate(43, 1, '{"user":"b"}'));
+    await sleep(300);
+    assert.ok(!a.messages.some((m) => m.t === 'aw'), '남의 clientID를 담은 커서 변경은 중계하지 않는다');
+    // 같은 사람이 다시 접속하면 (예전 연결이 아직 남아 있어도) 자기 커서를 이어서 쓴다
+    const a2 = new Client(id, o.token);
+    await a2.ready();
+    await syncDoc(a2);
+    a2.send({ t: 'aw', u: awUpdate(42, 4, '{"user":"a"}') });
+    await b.waitType('aw', (m) => m.u === awUpdate(42, 4, '{"user":"a"}'));
+    a2.close();
+    a.close();
+    b.close();
+    await sleep(300);
+  });
+
+  it('한 사람이 한 방에 열 수 있는 연결 수에는 한도가 있다', async () => {
+    const open = Array.from({ length: 12 }, () => new Client(id, e.token));
+    await Promise.all(open.map((c) => c.ready()));
+    assert.equal(await wsRejected(id, e.token), true, '13번째 연결은 받지 않는다');
+    open[0].close();
+    await sleep(500);
+    const again = new Client(id, e.token);
+    await again.ready();
+    for (const c of [...open, again]) c.close();
+    await sleep(500);
+  });
+
+  it('문서가 너무 커지면 더 이상 받지 않는다 (16MB)', async () => {
+    const c = new Client(id, e.token);
+    await c.ready();
+    const { doc } = await syncDoc(c);
+    const chunk = 'x'.repeat(2_500_000);
+    const sends: Promise<{ ok: boolean; status?: number }>[] = [];
+    for (let i = 0; i < 7; i++) {
+      const sv = Y.encodeStateVector(doc);
+      doc.getText(`big${i}`).insert(0, chunk);
+      sends.push(c.request({ t: 'update', u: b64(Y.encodeStateAsUpdate(doc, sv)) }));
+    }
+    const res = await Promise.all(sends);
+    assert.ok(res.slice(0, 6).every((r) => r.ok), JSON.stringify(res.map((r) => r.status)));
+    assert.equal(res[6].ok, false);
+    assert.equal(res[6].status, 413);
+    c.close();
+    await sleep(2500);
+  });
+});
+
 describe('영속성', () => {
   it('서버를 다시 시작해도 문서·타임라인·멤버가 남아 있다', async () => {
     // "저장됨" 확인을 받은 변경은 바로 서버가 꺼져도 남아 있어야 한다

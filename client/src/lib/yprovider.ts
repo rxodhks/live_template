@@ -209,6 +209,12 @@ export class RoomProvider implements DocProvider {
         this.notify();
         return c.setSaveError('읽기 전용 권한이라 저장되지 않았습니다.');
       }
+      if (res.status === 413) {
+        // 다시 보내도 같은 이유로 거절되므로 반복 전송하지 않는다 (새로고침 전까지 이 화면의 편집은 저장되지 않음)
+        this.readOnly = true;
+        this.notify();
+        return c.setSaveError(res.error ?? '문서가 너무 커서 더 이상 저장할 수 없습니다.');
+      }
       c.setSaveError(res.error ?? '저장 확인이 지연되고 있습니다.');
       // 다시 접속하면 상태 벡터 비교로 빠진 부분이 자동으로 다시 전송된다
       if (this.room.online) void this.sync();

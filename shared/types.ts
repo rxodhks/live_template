@@ -30,6 +30,8 @@ export interface AuthConfig {
   providers: Record<OAuthProvider, boolean>;
   /** 로컬 개발 모드: 인증 코드를 메일 대신 응답과 서버 로그로 준다 */
   devMode: boolean;
+  /** 이메일 인증 코드를 보내기 전에 봇 확인(Turnstile)을 거친다 */
+  turnstileSiteKey?: string;
 }
 
 /** 로그인한 계정 정보 (본인에게만 보인다) */

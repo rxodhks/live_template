@@ -5,6 +5,7 @@ import type { AuthConfig, OAuthProvider, SignupInfo } from '@shared/types';
 import { USER_AVATARS, USER_COLORS } from '@shared/colors';
 import { ApiError, errorMessage, legacyProfile } from '../lib/api';
 import { completeLogin, completeSignup, fetchAuthConfig, fetchSignup, safeNext, startEmailLogin, startOAuth, verifyEmailLogin } from '../lib/auth';
+import { mountTurnstile, type TurnstileWidget } from '../lib/turnstile';
 import { cx } from '../lib/util';
 import { useSession } from '../store/session';
 import { toast } from '../store/toasts';
@@ -127,12 +128,28 @@ export function LoginPage() {
   const [notice, setNotice] = useState<string | null>(() => LOGIN_ERRORS[params.get('error') ?? ''] ?? null);
   const [codeError, setCodeError] = useState<string | null>(null);
   useTick(step === 'code' ? 1000 : 0);
+  const botCheckRef = useRef<HTMLDivElement>(null);
+  const botCheck = useRef<Promise<TurnstileWidget> | null>(null);
 
   useEffect(() => {
     fetchAuthConfig()
       .then(setConfig)
       .catch((err) => setConfigError(errorMessage(err)));
   }, []);
+
+  // 봇 확인(설정된 경우만): 화면에 들어오면 미리 준비해 두고, 코드를 보낼 때마다 새 토큰을 받는다
+  const siteKey = config?.turnstileSiteKey;
+  useEffect(() => {
+    const el = botCheckRef.current;
+    if (!siteKey || !el) return;
+    const widget = mountTurnstile(el, siteKey);
+    botCheck.current = widget;
+    widget.catch(() => undefined);
+    return () => {
+      botCheck.current = null;
+      void widget.then((w) => w.remove()).catch(() => undefined);
+    };
+  }, [siteKey]);
 
   if (redirect) return redirect;
 
@@ -144,7 +161,8 @@ export function LoginPage() {
     setNotice(null);
     setCodeError(null);
     try {
-      const res = await startEmailLogin(address);
+      const token = botCheck.current ? await (await botCheck.current).token() : undefined;
+      const res = await startEmailLogin(address, token);
       setSentTo(res.email);
       setDevCode(res.devCode ?? null);
       setResendAt(Date.now() + res.resendAfter * 1000);
@@ -323,6 +341,7 @@ export function LoginPage() {
           </div>
         </>
       )}
+      <div ref={botCheckRef} className="auth-botcheck" />
     </AuthLayout>
   );
 }
