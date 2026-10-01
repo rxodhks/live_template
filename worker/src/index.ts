@@ -641,18 +641,30 @@ export default {
     const url = new URL(req.url);
 
     const join = url.pathname.match(/^\/join\/([^/]+)\/?$/);
-    if (join && req.method === 'GET') return invitePage(req, env, decodeURIComponent(join[1]));
+    if (join && req.method === 'GET') {
+      const token = decodeParam(join[1]);
+      return token === null ? json({ error: '찾을 수 없는 초대 링크입니다.' }, 404) : invitePage(req, env, token);
+    }
     if (!url.pathname.startsWith('/api/')) return env.ASSETS.fetch(req);
 
     // 쓰기 요청과 실시간 연결은 이 사이트에서 보낸 것만 받는다
     const writes = req.method !== 'GET' && req.method !== 'HEAD';
     const upgrade = req.headers.get('upgrade')?.toLowerCase() === 'websocket';
     if ((writes || upgrade) && crossSite(req)) {
-      return json({ error: '다른 사이트에서 보낸 요청은 받을 수 없습니다.', dbg: Object.fromEntries(req.headers) }, 403);
+      return json({ error: '다른 사이트에서 보낸 요청은 받을 수 없습니다.' }, 403);
     }
     return handleApi(req, env, url, exec);
   },
 } satisfies ExportedHandler<Env>;
+
+/** 깨진 주소 인코딩(%E0 등)은 서버 오류 대신 '없음'으로 */
+function decodeParam(value: string): string | null {
+  try {
+    return decodeURIComponent(value);
+  } catch {
+    return null;
+  }
+}
 
 async function handleApi(req: Request, env: Env, url: URL, exec: ExecutionContext): Promise<Response> {
   let methodMismatch = false;
@@ -664,7 +676,9 @@ async function handleApi(req: Request, env: Env, url: URL, exec: ExecutionContex
       continue;
     }
     const params: Record<string, string> = {};
-    r.keys.forEach((k, i) => (params[k] = decodeURIComponent(m[i + 1])));
+    const values = r.keys.map((_, i) => decodeParam(m[i + 1]));
+    if (values.includes(null)) return json({ error: '찾을 수 없는 API입니다.' }, 404);
+    r.keys.forEach((k, i) => (params[k] = values[i]!));
     try {
       return await r.handler({ req, env, url, params, exec });
     } catch (err) {

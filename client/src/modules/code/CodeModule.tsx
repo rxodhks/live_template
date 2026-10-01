@@ -155,6 +155,8 @@ function CodeWorkspace({ file }: { file: YItem }) {
   // 미리보기 콘솔 메시지 수집
   useEffect(() => {
     const onMsg = (e: MessageEvent) => {
+      // 이 미리보기 창이 보낸 것만 (문서의 임베드 같은 다른 창이 가짜 콘솔 줄을 넣지 못하게)
+      if (e.source !== frameRef.current?.contentWindow) return;
       const d = e.data as { __ltPreview?: boolean; level?: OutputLine['level']; text?: string };
       if (d?.__ltPreview) setOutput((o) => [...o.slice(-300), { ...line(d.level ?? 'log', `[미리보기] ${d.text ?? ''}`), fromPreview: true }]);
     };

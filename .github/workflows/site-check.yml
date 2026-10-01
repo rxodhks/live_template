@@ -9,6 +9,10 @@ on:
   push:
     paths: ['.github/workflows/site-check.yml']
 
+# 저장소 토큰은 읽기만 (의존성 설치 중 악성 코드가 저장소에 쓰지 못하게)
+permissions:
+  contents: read
+
 jobs:
   check:
     runs-on: ubuntu-latest
