@@ -39,11 +39,13 @@ export function CreateTemplateModal({
 
   const choosePreset = (id: string) => {
     const p = getPreset(id);
+    // 이름 · 아이콘은 비어 있거나 직전 프리셋이 채운 그대로일 때만 바꾼다 (사용자가 고친 값은 유지)
+    const prev = presetId !== 'blank' ? getPreset(presetId) : null;
     setPresetId(id);
     if (id !== 'blank') {
       setFeatures(p.features);
-      if (emoji === '🗂️' || EMOJIS.includes(emoji)) setEmoji(p.emoji);
-      if (!name.trim()) setName(p.name);
+      if (emoji === '🗂️' || emoji === prev?.emoji) setEmoji(p.emoji);
+      if (!name.trim() || name === prev?.name) setName(p.name);
     }
   };
 
@@ -61,7 +63,7 @@ export function CreateTemplateModal({
   });
 
   const create = async () => {
-    if (!name.trim() || features.length === 0) return;
+    if (saving || !name.trim() || features.length === 0) return;
     setSaving(true);
     try {
       // 새 템플릿은 나만 보는 개인 공간에 만들어지고 곧바로 클라우드에 백업된다 (오프라인이면 연결되는 대로).
@@ -109,7 +111,17 @@ export function CreateTemplateModal({
           </Field>
           <div className="create-names">
             <Field label="템플릿 이름">
-              <input className="input" value={name} maxLength={60} placeholder="예) 신규 서비스 런칭" onChange={(e) => setName(e.target.value)} data-autofocus />
+              <input
+                className="input"
+                value={name}
+                maxLength={60}
+                placeholder="예) 신규 서비스 런칭"
+                onChange={(e) => setName(e.target.value)}
+                onKeyDown={(e) => {
+                  if (e.key === 'Enter' && !e.nativeEvent.isComposing) void create();
+                }}
+                data-autofocus
+              />
             </Field>
             <Field label="설명 (선택)">
               <input className="input" value={description} maxLength={200} placeholder="팀원들이 알아야 할 한 줄 설명" onChange={(e) => setDescription(e.target.value)} />

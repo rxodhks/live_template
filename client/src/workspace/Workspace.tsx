@@ -4,8 +4,8 @@ import * as Y from 'yjs';
 import { IndexeddbPersistence } from 'y-indexeddb';
 import { RefreshCw, ShieldAlert, SearchX } from 'lucide-react';
 import type { ActivityInput, ChatMessage, CursorPoint, JoinRequest, SecretNoteMeta, TemplateEntry, TemplateSummary, ViewModule } from '@shared/types';
-import type { LivePen, PresencePatch } from '@shared/protocol';
-import { RoomConnection } from '../lib/room';
+import type { LivePen, PresencePatch, ServerMessage } from '@shared/protocol';
+import { RoomConnection, type RoomStatus } from '../lib/room';
 import { type DocProvider, LocalProvider, RoomProvider } from '../lib/yprovider';
 import { createNotesApi, type UnlockedNote } from '../lib/notes';
 import { recordLocal } from '../lib/local';
@@ -31,6 +31,8 @@ import { TemplateTimeline } from './TemplateTimeline';
 import { Members } from './Members';
 import { Settings } from './Settings';
 import { EmptyState, Spinner, Button } from '../components/ui';
+
+type WelcomeMessage = Extract<ServerMessage, { t: 'welcome' }>;
 
 // 에디터 모듈은 필요할 때 불러온다 (초기 로딩 경량화)
 const CodeModule = lazy(() => import('../modules/code/CodeModule').then((m) => ({ default: m.CodeModule })));
@@ -189,24 +191,26 @@ function WorkspaceInner({ entry }: { entry: TemplateEntry }) {
       const t = useTemplates.getState().templates[tid];
       if (t) useTemplates.getState().upsert({ ...t, myRole: role });
     };
+    const onStatus = (s: RoomStatus) => {
+      connection.setStatus(s === 'online' ? 'online' : s === 'connecting' ? 'connecting' : 'offline');
+      if (s === 'denied') {
+        setError(room.deniedReason ?? '템플릿에 접근할 수 없습니다.');
+        setOutdated(room.outdated);
+      }
+      if (s !== 'online') usePresence.getState().clear();
+    };
+    const onWelcome = (m: WelcomeMessage) => {
+      usePresence.getState().reset(m.presence, m.sid);
+      setNotes(m.notes);
+      setChat(m.chat);
+      setRequests(m.requests);
+      useTemplates.getState().setRequests(tid, m.requests.length);
+      if (m.role !== entryRef.current.myRole) setRoleInStore(m.role);
+      room.send({ t: 'presence', patch: { view: viewRef.current, idle: document.hidden } });
+    };
     const offs = [
-      room.onStatus((s) => {
-        connection.setStatus(s === 'online' ? 'online' : s === 'connecting' ? 'connecting' : 'offline');
-        if (s === 'denied') {
-          setError(room.deniedReason ?? '템플릿에 접근할 수 없습니다.');
-          setOutdated(room.outdated);
-        }
-        if (s !== 'online') usePresence.getState().clear();
-      }),
-      room.on('welcome', (m) => {
-        usePresence.getState().reset(m.presence, m.sid);
-        setNotes(m.notes);
-        setChat(m.chat);
-        setRequests(m.requests);
-        useTemplates.getState().setRequests(tid, m.requests.length);
-        if (m.role !== entryRef.current.myRole) setRoleInStore(m.role);
-        room.send({ t: 'presence', patch: { view: viewRef.current, idle: document.hidden } });
-      }),
+      room.onStatus(onStatus),
+      room.on('welcome', onWelcome),
       room.on('presence', (m) => usePresence.getState().upsert(m.state)),
       room.on('presence:leave', (m) => {
         usePresence.getState().remove(m.sid);
@@ -257,6 +261,10 @@ function WorkspaceInner({ entry }: { entry: TemplateEntry }) {
         navigateRef.current('/', { replace: true });
       }),
     ];
+    // 연결은 화면보다 먼저 시작된다 — 구독 전에 이미 들어가 있었으면 그 상태를 지금 반영한다
+    // (빠뜨리면 "연결 중…"에 머물고 비밀 노트 · 채팅 · 참여 요청 목록이 비어 보인다)
+    onStatus(room.status);
+    if (room.online && room.lastWelcome) onWelcome(room.lastWelcome);
     // 연결이 바뀌거나 템플릿을 떠날 때만 정리한다 (페이지 이동마다 접속자 목록이 비워지면 안 된다)
     return () => {
       offs.forEach((off) => off());
