@@ -1102,6 +1102,33 @@ body:has(.narrow-notice) .toast-viewport {
   text-overflow: ellipsis;
   white-space: nowrap;
 }
+.palette-item {
+  cursor: pointer;
+}
+.palette-text {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+.palette-snippet {
+  font-size: 12px;
+  color: var(--text-3);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.palette-snippet mark {
+  background: var(--accent-soft);
+  color: var(--text);
+  font-weight: 650;
+  border-radius: 3px;
+  padding: 0 1px;
+}
+.palette-item.is-selected .palette-snippet mark {
+  background: var(--surface);
+}
 .palette-hint {
   font-size: 12px;
   color: var(--text-3);
