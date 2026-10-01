@@ -15,6 +15,10 @@ concurrency:
   group: deploy
   cancel-in-progress: false
 
+# 저장소 토큰은 읽기만 (의존성 설치 중 악성 코드가 저장소에 쓰지 못하게)
+permissions:
+  contents: read
+
 jobs:
   deploy:
     runs-on: ubuntu-latest
