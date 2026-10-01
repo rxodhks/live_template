@@ -73,14 +73,13 @@ test('초대 링크로 참여한 두 번째 사용자가 문서 편집을 실시
   const editorA = page.locator('.doc-content .ProseMirror');
   await expect(editorA).toBeVisible();
 
-  // 사용자 B: 초대 링크 → 로그인 · 가입 → 참여 → 같은 문서
+  // 사용자 B: 초대 링크 → 로그인 · 가입 → (자동 참여) → 같은 문서
   const pageB = await newUserPage();
   await pageB.goto(joinPath);
   await expect(pageB.getByRole('heading', { name: templateName })).toBeVisible();
   await pageB.getByRole('button', { name: '로그인하고 참여하기' }).click();
   await signUpViaEmail(pageB, uniqueEmail('guest'), '밥');
-  await pageB.waitForURL(new RegExp(`${joinPath}$`));
-  await pageB.getByRole('button', { name: '참여하기', exact: true }).click();
+  // 초대 링크에서 시작한 가입은 '참여하기'를 다시 누르지 않아도 바로 작업 공간으로 들어간다
   await pageB.waitForURL(/\/t\/[A-Za-z0-9_-]+/);
   await expect(pageB.getByRole('heading', { level: 1, name: templateName })).toBeVisible();
   await pageB.getByText('제목 없는 문서').first().click();
