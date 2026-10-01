@@ -5,7 +5,7 @@ import { IndexeddbPersistence } from 'y-indexeddb';
 import { RefreshCw, ShieldAlert, SearchX } from 'lucide-react';
 import type { ActivityInput, ChatMessage, CursorPoint, JoinRequest, SecretNoteMeta, TemplateEntry, TemplateSummary, ViewModule } from '@shared/types';
 import type { LivePen, PresencePatch } from '@shared/protocol';
-import { RoomConnection } from '../lib/room';
+import { RoomConnection, type RoomStatus } from '../lib/room';
 import { type DocProvider, LocalProvider, RoomProvider } from '../lib/yprovider';
 import { createNotesApi, type UnlockedNote } from '../lib/notes';
 import { recordLocal } from '../lib/local';
@@ -204,15 +204,16 @@ function WorkspaceInner({ entry }: { entry: TemplateEntry }) {
       const t = useTemplates.getState().templates[tid];
       if (t) useTemplates.getState().upsert({ ...t, myRole: role });
     };
+    const onStatus = (s: RoomStatus) => {
+      connection.setStatus(s === 'online' ? 'online' : s === 'connecting' ? 'connecting' : 'offline');
+      if (s === 'denied') {
+        setError(room.deniedReason ?? '템플릿에 접근할 수 없습니다.');
+        setOutdated(room.outdated);
+      }
+      if (s !== 'online') usePresence.getState().clear();
+    };
     const offs = [
-      room.onStatus((s) => {
-        connection.setStatus(s === 'online' ? 'online' : s === 'connecting' ? 'connecting' : 'offline');
-        if (s === 'denied') {
-          setError(room.deniedReason ?? '템플릿에 접근할 수 없습니다.');
-          setOutdated(room.outdated);
-        }
-        if (s !== 'online') usePresence.getState().clear();
-      }),
+      room.onStatus(onStatus),
       room.on('welcome', (m) => {
         usePresence.getState().reset(m.presence, m.sid);
         setNotes(m.notes);
@@ -272,6 +273,9 @@ function WorkspaceInner({ entry }: { entry: TemplateEntry }) {
         navigateRef.current('/', { replace: true });
       }),
     ];
+    // 연결은 브라우저 사본을 읽는 동안 먼저 열린다 — 그사이 받은 상태 · 메시지(welcome 등)를 이제 반영
+    onStatus(room.status);
+    room.replayMissed();
     // 연결이 바뀌거나 템플릿을 떠날 때만 정리한다 (페이지 이동마다 접속자 목록이 비워지면 안 된다)
     return () => {
       offs.forEach((off) => off());
