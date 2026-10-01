@@ -18,6 +18,7 @@ export type AckResult<T = unknown> = { ok: boolean; data?: T; error?: string; st
 const PING_MS = 25_000;
 const PONG_TIMEOUT_MS = 10_000;
 const REQUEST_TIMEOUT_MS = 15_000;
+const MAX_MISSED = 200;
 
 export class RoomConnection {
   status: RoomStatus = 'connecting';
@@ -40,6 +41,8 @@ export class RoomConnection {
   private pingTimer: ReturnType<typeof setInterval> | null = null;
   private pongTimer: ReturnType<typeof setTimeout> | null = null;
   private retryTimer: ReturnType<typeof setTimeout> | null = null;
+  /** replayMissed()를 부르기 전까지 받을 사람이 없던 메시지 */
+  private missed: ServerMessage[] | null = [];
 
   constructor(readonly templateId: string) {
     window.addEventListener('online', this.reconnectNow);
@@ -127,8 +130,22 @@ export class RoomConnection {
 
   private emit(m: ServerMessage) {
     const set = this.handlers.get(m.t);
-    if (!set) return;
+    if (!set?.size) {
+      // 화면이 아직 구독하지 않은 메시지는 replayMissed()까지 모아 둔다
+      if (this.missed && this.missed.length < MAX_MISSED) this.missed.push(m);
+      return;
+    }
     for (const fn of Array.from(set)) (fn as (m: ServerMessage) => void)(m);
+  }
+
+  /**
+   * 구독하기 전에 도착한 메시지를 순서대로 다시 전달한다 (한 번만).
+   * 연결은 화면이 준비되기 전(브라우저 사본을 읽는 동안)에 열리므로 welcome이 먼저 도착할 수 있다.
+   */
+  replayMissed(): void {
+    const missed = this.missed ?? [];
+    this.missed = null;
+    for (const m of missed) this.emit(m);
   }
 
   private connect = () => {

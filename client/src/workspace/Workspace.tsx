@@ -1,11 +1,11 @@
-import { Suspense, lazy, useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useLocation, useNavigate, useParams } from 'react-router-dom';
 import * as Y from 'yjs';
 import { IndexeddbPersistence } from 'y-indexeddb';
 import { RefreshCw, ShieldAlert, SearchX } from 'lucide-react';
 import type { ActivityInput, ChatMessage, CursorPoint, JoinRequest, SecretNoteMeta, TemplateEntry, TemplateSummary, ViewModule } from '@shared/types';
 import type { LivePen, PresencePatch } from '@shared/protocol';
-import { RoomConnection } from '../lib/room';
+import { RoomConnection, type RoomStatus } from '../lib/room';
 import { type DocProvider, LocalProvider, RoomProvider } from '../lib/yprovider';
 import { createNotesApi, type UnlockedNote } from '../lib/notes';
 import { recordLocal } from '../lib/local';
@@ -31,12 +31,21 @@ import { TemplateTimeline } from './TemplateTimeline';
 import { Members } from './Members';
 import { Settings } from './Settings';
 import { EmptyState, Spinner, Button } from '../components/ui';
+import { lazyWithPreload, whenIdle } from '../lib/lazy';
 
 // 에디터 모듈은 필요할 때 불러온다 (초기 로딩 경량화)
-const CodeModule = lazy(() => import('../modules/code/CodeModule').then((m) => ({ default: m.CodeModule })));
-const DocsModule = lazy(() => import('../modules/docs/DocsModule').then((m) => ({ default: m.DocsModule })));
-const DesignModule = lazy(() => import('../modules/design/DesignModule').then((m) => ({ default: m.DesignModule })));
-const NotesModule = lazy(() => import('../modules/notes/NotesModule').then((m) => ({ default: m.NotesModule })));
+function ModuleLoading() {
+  return (
+    <div className="center-fill">
+      <Spinner size={24} />
+    </div>
+  );
+}
+const CodeModule = lazyWithPreload(() => import('../modules/code/CodeModule').then((m) => m.CodeModule), ModuleLoading);
+const DocsModule = lazyWithPreload(() => import('../modules/docs/DocsModule').then((m) => m.DocsModule), ModuleLoading);
+const DesignModule = lazyWithPreload(() => import('../modules/design/DesignModule').then((m) => m.DesignModule), ModuleLoading);
+const NotesModule = lazyWithPreload(() => import('../modules/notes/NotesModule').then((m) => m.NotesModule), ModuleLoading);
+const EDITOR_MODULES: Partial<Record<ViewModule, { preload: () => void }>> = { code: CodeModule, docs: DocsModule, design: DesignModule, notes: NotesModule };
 
 /** 잦은 편집 활동은 대상별로 이 간격에 한 번만 보고 (서버에서도 5분 단위로 합침) */
 const EDIT_REPORT_INTERVAL = 20_000;
@@ -137,6 +146,12 @@ function WorkspaceInner({ entry }: { entry: TemplateEntry }) {
   const navigateRef = useRef(navigate);
   navigateRef.current = navigate;
 
+  // 보고 있는 에디터 파일은 브라우저 사본(IndexedDB)을 읽는 동안 함께 받는다
+  EDITOR_MODULES[view.module]?.preload();
+  // 이 템플릿의 다른 에디터도 한가할 때 받아 둔다 → 영역을 옮길 때 기다리지 않는다
+  const features = entry.features.join();
+  useEffect(() => whenIdle(() => ['notes', ...features.split(',')].forEach((m) => EDITOR_MODULES[m as ViewModule]?.preload())), [features]);
+
   /* ── 연결: 개인 공간은 브라우저만, 협업 공간은 실시간 방 ── */
   const [conn, setConn] = useState<{ doc: Y.Doc; provider: DocProvider; room: RoomConnection | null } | null>(null);
   useEffect(() => {
@@ -189,15 +204,16 @@ function WorkspaceInner({ entry }: { entry: TemplateEntry }) {
       const t = useTemplates.getState().templates[tid];
       if (t) useTemplates.getState().upsert({ ...t, myRole: role });
     };
+    const onStatus = (s: RoomStatus) => {
+      connection.setStatus(s === 'online' ? 'online' : s === 'connecting' ? 'connecting' : 'offline');
+      if (s === 'denied') {
+        setError(room.deniedReason ?? '템플릿에 접근할 수 없습니다.');
+        setOutdated(room.outdated);
+      }
+      if (s !== 'online') usePresence.getState().clear();
+    };
     const offs = [
-      room.onStatus((s) => {
-        connection.setStatus(s === 'online' ? 'online' : s === 'connecting' ? 'connecting' : 'offline');
-        if (s === 'denied') {
-          setError(room.deniedReason ?? '템플릿에 접근할 수 없습니다.');
-          setOutdated(room.outdated);
-        }
-        if (s !== 'online') usePresence.getState().clear();
-      }),
+      room.onStatus(onStatus),
       room.on('welcome', (m) => {
         usePresence.getState().reset(m.presence, m.sid);
         setNotes(m.notes);
@@ -257,6 +273,9 @@ function WorkspaceInner({ entry }: { entry: TemplateEntry }) {
         navigateRef.current('/', { replace: true });
       }),
     ];
+    // 연결은 브라우저 사본을 읽는 동안 먼저 열린다 — 그사이 받은 상태 · 메시지(welcome 등)를 이제 반영
+    onStatus(room.status);
+    room.replayMissed();
     // 연결이 바뀌거나 템플릿을 떠날 때만 정리한다 (페이지 이동마다 접속자 목록이 비워지면 안 된다)
     return () => {
       offs.forEach((off) => off());
@@ -487,15 +506,7 @@ function WorkspaceInner({ entry }: { entry: TemplateEntry }) {
         {featureOff ? (
           <AddAreaPrompt module={view.module as ItemModule} />
         ) : (
-          <Suspense
-            fallback={
-              <div className="center-fill">
-                <Spinner size={24} />
-              </div>
-            }
-          >
-            <ModuleView module={view.module} key={`${view.module}`} />
-          </Suspense>
+          <ModuleView module={view.module} key={`${view.module}`} />
         )}
       </AppShell>
       <span className="sr-only">{me.name} 님으로 작업 중</span>
