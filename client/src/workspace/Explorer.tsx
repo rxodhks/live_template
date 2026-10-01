@@ -810,13 +810,24 @@ function NotesSection({ collapsed, onToggle }: { collapsed: boolean; onToggle: (
       }
       addLabel="새 비밀 노트"
     >
-      {ws.notes.length === 0 && <p className="ex-empty">비밀번호로 잠그는 팀 전용 노트</p>}
+      {ws.notes.length === 0 && <p className="ex-empty">{ws.isPrivate ? '비밀번호로 잠가 두는 나만의 노트' : '비밀번호를 아는 멤버만 여는 노트'}</p>}
       {ws.notes.map((n) => {
         const active = ws.view.module === 'notes' && ws.view.itemId === n.id;
         const unlocked = !!ws.tickets[n.id];
         const viewers = Object.values(others).filter((p) => p.view.module === 'notes' && p.view.itemId === n.id);
         return (
-          <div key={n.id} className={cx('ex-item', active && 'is-active')} onClick={() => navigate(viewPath(ws.template.id, 'notes', n.id))} role="link" tabIndex={0}>
+          <div
+            key={n.id}
+            className={cx('ex-item', active && 'is-active')}
+            onClick={() => navigate(viewPath(ws.template.id, 'notes', n.id))}
+            role="link"
+            tabIndex={0}
+            onKeyDown={(e) => {
+              if (e.key !== 'Enter' && e.key !== ' ') return;
+              e.preventDefault();
+              navigate(viewPath(ws.template.id, 'notes', n.id));
+            }}
+          >
             <span className={cx('ex-emoji', unlocked && 'is-unlocked')} data-tip={unlocked ? '잠금 해제됨' : '잠김'}>
               {unlocked ? '🔓' : '🔒'}
             </span>
