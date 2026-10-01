@@ -31,6 +31,8 @@ export { Directory, TemplateRoom };
 
 const MAX_BODY = 2 * 1024 * 1024;
 const MAX_UPLOAD = 24 * 1024 * 1024;
+/** 실시간 연결 때 방으로 넘기는 참여 요청 목록의 최대 크기 (헤더) */
+const MAX_REQUESTS_HEADER = 16 * 1024;
 
 interface Ctx {
   req: Request;
@@ -134,11 +136,14 @@ function templateParam(c: Ctx): string {
   return id;
 }
 
-async function access(c: Ctx, min: Role = 'viewer') {
-  const user = await requireUser(c);
+async function access(c: Ctx, min: Role = 'viewer', withRequests = false) {
+  // 잘못된 주소도 로그인 확인이 먼저 (로그인하지 않았다면 404가 아니라 401)
+  if (!isId(c.params.id, 8, 40)) await requireUser(c);
   const templateId = templateParam(c);
-  const a = unwrap(await directory(c.env).access(templateId, user.id, min));
-  return { user, templateId, ...a };
+  // 로그인 · 권한 확인을 Directory 한 번 호출로
+  const r = await directory(c.env).authorize(tokenOf(c.req), templateId, min, withRequests);
+  if (!r) throw new HttpError(401, '로그인이 필요합니다.', { reason: 'login_required' });
+  return { user: r.user, templateId, ...unwrap(r.access) };
 }
 
 /* ───────────── 라우트 ───────────── */
@@ -413,11 +418,15 @@ route('GET', '/api/me/requests', async (c) => {
 route('GET', '/api/templates/:id/ws', async (c) => {
   if (c.req.headers.get('upgrade')?.toLowerCase() !== 'websocket') throw new HttpError(426, 'WebSocket 연결이 필요합니다.');
   requireCurrentClient(c.req);
-  const { user, role, templateId } = await access(c);
+  const { user, role, templateId, requests } = await access(c, 'viewer', true);
   const headers = new Headers(c.req.headers);
   headers.set('x-lt-user', encodeURIComponent(JSON.stringify(user)));
   headers.set('x-lt-role', role);
   headers.set('x-lt-template', templateId);
+  // 대기 중인 참여 요청도 함께 넘겨 방이 Directory를 다시 부르지 않게 한다 (너무 크면 방이 직접 읽는다)
+  const pending = encodeURIComponent(JSON.stringify(requests ?? []));
+  headers.delete('x-lt-requests');
+  if (pending.length <= MAX_REQUESTS_HEADER) headers.set('x-lt-requests', pending);
   headers.delete('authorization');
   headers.delete('cookie');
   return room(c.env, templateId).fetch(new Request(c.req.url, { method: 'GET', headers }));

@@ -229,7 +229,9 @@ export class TemplateRoom extends DurableObject<Env> {
     // 기다려야 하는 일은 연결을 받기 전에 끝낸다.
     // 받은 뒤에 기다리면 그사이 들어온 사람의 접속 알림이 welcome보다 먼저 도착하고,
     // welcome의 (오래된) 접속자 목록이 그것을 덮어써 서로 보이지 않게 된다.
-    const requests: JoinRequest[] = role === 'viewer' ? [] : await this.directory.pendingRequestsFor(templateId);
+    const passed = request.headers.get('x-lt-requests');
+    const requests: JoinRequest[] =
+      role === 'viewer' ? [] : passed ? (JSON.parse(decodeURIComponent(passed)) as JoinRequest[]) : await this.directory.pendingRequestsFor(templateId);
 
     const pair = new WebSocketPair();
     const [client, server] = Object.values(pair);
@@ -259,7 +261,8 @@ export class TemplateRoom extends DurableObject<Env> {
       } else {
         this.record(user, { type: 'presence.join' });
       }
-      await this.directory.setOnline(templateId, this.onlineUserIds());
+      // 접속자 목록은 참고용이라 기다리지 않고 연결부터 돌려준다
+      void this.directory.setOnline(templateId, this.onlineUserIds());
     }
     return new Response(null, { status: 101, webSocket: client, headers: { 'Sec-WebSocket-Protocol': 'lt' } });
   }
