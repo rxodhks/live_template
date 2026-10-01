@@ -60,7 +60,6 @@ interface Attachment {
   role: Role;
   view: PresenceView;
   viewport: Viewport | null;
-  selection: string[];
   idle: boolean;
   /** 문서 동기화에 참여 중인지 */
   synced: boolean;
@@ -121,6 +120,8 @@ export class TemplateRoom extends DurableObject<Env> {
   private waitingAcks: { sid: string; id: number }[] = [];
   private flushScheduled = false;
   private cursors = new Map<string, CursorPoint | null>();
+  /** 선택한 도형 ID — 연결에 붙여 두는 정보(attachment)는 2KB 한도라 커서처럼 메모리에만 둔다 */
+  private selections = new Map<string, string[]>();
   private actions = new Map<string, { label: string; at: number }>();
   private leaveTimers = new Map<string, ReturnType<typeof setTimeout>>();
   private lastTouch = 0;
@@ -205,7 +206,7 @@ export class TemplateRoom extends DurableObject<Env> {
       view: a.view,
       cursor: this.cursors.get(a.sid) ?? null,
       viewport: a.viewport,
-      selection: a.selection,
+      selection: this.selections.get(a.sid) ?? [],
       idle: a.idle,
       action: this.actions.get(a.sid) ?? null,
     };
@@ -234,7 +235,7 @@ export class TemplateRoom extends DurableObject<Env> {
     const pair = new WebSocketPair();
     const [client, server] = Object.values(pair);
     this.ctx.acceptWebSocket(server, [user.id]);
-    const a: Attachment = { sid: newId(10), user, role, view: { module: 'overview', itemId: null }, viewport: null, selection: [], idle: false, synced: false, aw: [], notes: {} };
+    const a: Attachment = { sid: newId(10), user, role, view: { module: 'overview', itemId: null }, viewport: null, idle: false, synced: false, aw: [], notes: {} };
     server.serializeAttachment(a);
 
     // 연결 받기 → 접속자 목록 → welcome → 다른 사람에게 알림까지 한 번에 (중간에 await 없음)
@@ -282,6 +283,7 @@ export class TemplateRoom extends DurableObject<Env> {
     if (!a) return;
     ws.serializeAttachment(null);
     this.cursors.delete(a.sid);
+    this.selections.delete(a.sid);
     this.actions.delete(a.sid);
     this.broadcast({ t: 'presence:leave', sid: a.sid, clients: a.aw }, { exceptSid: a.sid });
     const remaining = this.sockets();
@@ -324,13 +326,14 @@ export class TemplateRoom extends DurableObject<Env> {
         } catch {
           update = Y.encodeStateAsUpdate(doc);
         }
-        if (!a.synced) {
+        const first = !a.synced;
+        if (first) {
           a.synced = true;
           ws.serializeAttachment(a);
         }
         ack(msg.id, { ok: true, data: { update: toB64(update), sv: toB64(Y.encodeStateVector(doc)), readOnly: a.role === 'viewer' } });
-        // 새로 들어온 사람이 다른 사람들의 텍스트 커서를 바로 볼 수 있도록 요청
-        this.broadcast({ t: 'aw:query' }, { exceptSid: a.sid, filter: (o) => o.synced });
+        // 새로 들어온 사람이 다른 사람들의 텍스트 커서를 바로 볼 수 있도록 요청 (처음 한 번만 — 반복 sync로 방 전체가 응답하지 않게)
+        if (first) this.broadcast({ t: 'aw:query' }, { exceptSid: a.sid, filter: (o) => o.synced });
         return;
       }
       case 'update': {
@@ -370,12 +373,12 @@ export class TemplateRoom extends DurableObject<Env> {
           const view = sanitizeView(p.view);
           if (view.module !== a.view.module || view.itemId !== a.view.itemId) {
             this.cursors.set(a.sid, null);
-            a.selection = [];
+            this.selections.delete(a.sid);
           }
           a.view = view;
         }
         if (p.viewport !== undefined) a.viewport = sanitizeViewport(p.viewport);
-        if (Array.isArray(p.selection)) a.selection = p.selection.filter((s) => typeof s === 'string').slice(0, 200);
+        if (Array.isArray(p.selection)) this.selections.set(a.sid, p.selection.filter((s): s is string => typeof s === 'string' && s.length <= 64).slice(0, 100));
         if (typeof p.idle === 'boolean') a.idle = p.idle;
         ws.serializeAttachment(a);
         this.broadcast({ t: 'presence', state: this.presenceOf(a) }, { exceptSid: a.sid });
@@ -549,7 +552,14 @@ export class TemplateRoom extends DurableObject<Env> {
     const acks = this.waitingAcks;
     this.waitingAcks = [];
     if (this.pending.length) {
-      const merged = Y.mergeUpdates(this.pending);
+      let merged: Uint8Array;
+      try {
+        merged = Y.mergeUpdates(this.pending);
+      } catch (err) {
+        // 합치기에 실패해도 다음 저장이 계속 막히지 않도록, 이미 반영된 메모리 문서 전체를 기록한다
+        console.error('문서 변경 합치기 실패 · 전체 상태로 저장', err);
+        merged = Y.encodeStateAsUpdate(this.ensureDoc());
+      }
       this.pending = [];
       this.appendUpdate(merged);
       const count = this.sql.exec<{ c: number }>('SELECT count(DISTINCT grp) AS c FROM doc_updates').one().c;

@@ -38,7 +38,7 @@ export const Embed = Node.create({
           const src = e.getAttribute('data-src');
           if (!isAllowedEmbedSrc(src)) return false;
           const h = Number(e.getAttribute('data-height'));
-          return { src, url: e.getAttribute('data-url') ?? '', provider: e.getAttribute('data-provider') ?? '', height: h > 0 ? h : null };
+          return { src, url: linkOf(e.getAttribute('data-url'), src), provider: e.getAttribute('data-provider') ?? '', height: h > 0 ? h : null };
         },
       },
     ];
@@ -46,10 +46,11 @@ export const Embed = Node.create({
 
   renderHTML({ node, HTMLAttributes }) {
     const { src, url, provider, height } = node.attrs;
+    const link = linkOf(url, src);
     return [
       'div',
-      mergeAttributes(HTMLAttributes, { 'data-embed': '', 'data-src': src, 'data-url': url, 'data-provider': provider, 'data-height': height ?? '', class: 'doc-embed' }),
-      ['a', { href: url || src }, `${provider}: ${url || src}`],
+      mergeAttributes(HTMLAttributes, { 'data-embed': '', 'data-src': src, 'data-url': link, 'data-provider': provider, 'data-height': height ?? '', class: 'doc-embed' }),
+      ['a', { href: link }, `${provider}: ${link}`],
     ];
   },
 
@@ -67,15 +68,21 @@ export const Embed = Node.create({
   },
 });
 
+/** 원본 링크는 http(s)만 — 붙여넣기 · 문서 변경으로 들어온 javascript: 같은 주소는 임베드 주소로 대신한다 (HTML 내보내기 포함) */
+function linkOf(url: string | null | undefined, src: string): string {
+  return url && /^https?:\/\//i.test(url) ? url : src;
+}
+
 function EmbedView({ node, selected, deleteNode, editor }: ReactNodeViewProps) {
   const { src, url, provider, height } = node.attrs as { src: string; url: string; provider: string; height: number | null };
   const ok = isAllowedEmbedSrc(src);
+  const link = linkOf(url, src);
   return (
     <NodeViewWrapper className={cx('doc-embed', selected && 'is-selected')}>
       <div className="doc-embed-head" contentEditable={false} data-drag-handle>
         <span className="doc-embed-provider">{provider || '임베드'}</span>
-        <span className="doc-embed-url">{url || src}</span>
-        <a href={url || src} target="_blank" rel="noreferrer noopener" aria-label="새 탭에서 열기" onMouseDown={(e) => e.stopPropagation()}>
+        <span className="doc-embed-url">{link}</span>
+        <a href={link} target="_blank" rel="noreferrer noopener" aria-label="새 탭에서 열기" onMouseDown={(e) => e.stopPropagation()}>
           <ExternalLink size={13} />
         </a>
         {editor.isEditable && (

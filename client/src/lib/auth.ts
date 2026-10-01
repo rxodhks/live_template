@@ -176,5 +176,6 @@ export function startOAuth(provider: OAuthProvider, next: string): void {
 /** 로그인 후 돌아갈 앱 내부 경로만 허용 */
 export function safeNext(value: string | null): string {
   if (!value || !value.startsWith('/') || value.startsWith('//') || value.startsWith('/login') || value.startsWith('/signup')) return '/';
+  if (value.includes('\\') || /[\u0000-\u001f\u007f]/.test(value)) return '/';
   return value;
 }

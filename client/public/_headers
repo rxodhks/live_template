@@ -1,0 +1,6 @@
+# 클라우드플레어 정적 파일(화면) 응답 헤더 · /api/*, /join/*은 Worker 코드가 직접 응답한다
+/*
+  # 다른 사이트가 이 앱을 투명한 프레임으로 겹쳐 놓고 클릭을 유도하지 못하게 (클릭재킹)
+  X-Frame-Options: DENY
+  X-Content-Type-Options: nosniff
+  Referrer-Policy: strict-origin-when-cross-origin
