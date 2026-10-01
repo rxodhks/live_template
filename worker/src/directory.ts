@@ -536,6 +536,23 @@ export class Directory extends DurableObject<Env> {
     return ok({ template: this.summary(r.data.t, userId), role: r.data.role, broadcast: this.broadcastSummary(r.data.t) });
   }
 
+  /**
+   * 로그인 확인 + 템플릿 권한 확인을 한 번에 (Worker → Directory 왕복을 두 번에서 한 번으로).
+   * 로그인되어 있지 않으면 null. withRequests면 편집자 이상에게 대기 중인 참여 요청도 함께 준다 (실시간 연결용).
+   */
+  async authorize(
+    token: string | null,
+    templateId: string,
+    min: Role = 'viewer',
+    withRequests = false,
+  ): Promise<{ user: PublicUser; access: Result<{ template: TemplateSummary; role: Role; broadcast: TemplateBroadcast; requests?: JoinRequest[] }> } | null> {
+    const user = await this.authenticate(token);
+    if (!user) return null;
+    const access = await this.access(templateId, user.id, min);
+    if (!access.ok || !withRequests) return { user, access };
+    return { user, access: ok({ ...access.data, requests: access.data.role === 'viewer' ? [] : this.pendingRequests(templateId) }) };
+  }
+
   async listTemplates(userId: string): Promise<{ templates: TemplateSummary[]; online: Record<string, string[]>; requests: Record<string, number> }> {
     const rows = this.sql
       .exec<TemplateRow>(

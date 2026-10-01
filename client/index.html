@@ -8,11 +8,22 @@
     <meta name="description" content="디자인 · 코딩 · 문서를 한 마당에서 함께 만드는 실시간 협업 템플릿. 내 방에서 시작해, 마당에서 함께." />
     <title>Madang · 함께 만드는 작업 마당</title>
     <link rel="icon" href="/favicon.svg" type="image/svg+xml" />
+    <!-- 글꼴 CSS(일반 요청)와 글꼴 파일(CORS 요청)은 연결을 따로 쓴다 -->
+    <link rel="preconnect" href="https://cdn.jsdelivr.net" />
     <link rel="preconnect" href="https://cdn.jsdelivr.net" crossorigin />
+    <!-- 글꼴 CSS는 다른 사이트(jsdelivr)에서 받으므로 화면과 앱 시작을 막지 않게 따로 불러온다 (도착하면 글꼴만 바뀜) -->
     <link
       rel="stylesheet"
       href="https://cdn.jsdelivr.net/gh/orioncactus/pretendard@v1.3.9/dist/web/variable/pretendardvariable-dynamic-subset.min.css"
+      media="print"
+      onload="this.media='all'"
     />
+    <noscript>
+      <link
+        rel="stylesheet"
+        href="https://cdn.jsdelivr.net/gh/orioncactus/pretendard@v1.3.9/dist/web/variable/pretendardvariable-dynamic-subset.min.css"
+      />
+    </noscript>
     <script>
       // 첫 페인트 전에 테마를 적용해 깜빡임 방지
       try {
