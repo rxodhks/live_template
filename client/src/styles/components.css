@@ -677,8 +677,9 @@ textarea.input {
 
 .toast-viewport {
   position: fixed;
-  /* 편집 화면의 도구 줄(실행 · 미리보기 버튼 등)을 가리지 않도록 그 아래에 띄운다 */
-  top: calc(var(--topbar-h) + 46px + 10px);
+  /* 머리글 버튼(휴지통 · 새 템플릿 · 초대 등)을 가리지 않도록 오른쪽 아래에 띄운다
+     — 편집기 아래 상태 줄(26px) 위로 살짝 띄운다 */
+  bottom: 40px;
   right: 14px;
   z-index: 950;
   display: flex;
@@ -686,6 +687,14 @@ textarea.input {
   gap: 8px;
   width: min(360px, calc(100vw - 28px));
   pointer-events: none;
+}
+/* 오른쪽 채팅 패널이 열려 있으면 입력창을 가리지 않도록 패널 왼쪽에 띄운다 */
+body:has(.shell-drawer) .toast-viewport {
+  right: calc(var(--drawer-w) + 14px);
+}
+/* 좁은 화면 안내 줄이 떠 있으면 그 위로 */
+body:has(.narrow-notice) .toast-viewport {
+  bottom: 76px;
 }
 
 .toast {

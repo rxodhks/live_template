@@ -22,6 +22,9 @@ import {
 import { useOptionalWorkspace, type WorkspaceValue } from '../workspace/context';
 import { Avatar, Button, IconButton, Modal, Spinner, confirmDialog } from './ui';
 
+/** 클립보드에 쓰지 못했을 때(권한·브라우저 제한) — 직접 복사할 수 있게 링크를 알림에 보여 준다 */
+const copyFailed = (url: string) => toast.error('복사하지 못했습니다', url);
+
 const ROLE_CHOICES: { role: InviteRole; label: string; desc: string }[] = [
   { role: 'editor', label: '편집자', desc: '디자인 · 코드 · 문서 · 비밀 노트 편집' },
   { role: 'viewer', label: '뷰어', desc: '읽기 전용 · 커서 공유와 채팅은 가능' },
@@ -69,6 +72,7 @@ function InviteDialog_({ ws }: { ws: WorkspaceValue }) {
       setCreated(invite);
       setInvites((prev) => [invite, ...(prev ?? []).filter((i) => i.id !== invite.id)]);
       if (await copyText(inviteLink(invite.token))) toast.success('초대 링크를 만들고 복사했습니다', inviteSummary(invite));
+      else copyFailed(inviteLink(invite.token));
     } catch (err) {
       toast.error(personal ? '협업 공간으로 전환하지 못했습니다' : '초대 링크를 만들지 못했습니다', errorMessage(err));
     } finally {
@@ -209,7 +213,7 @@ function InviteDialog_({ ws }: { ws: WorkspaceValue }) {
                     <IconButton
                       label="링크 복사"
                       size="sm"
-                      onClick={async () => (await copyText(inviteLink(i.token))) && toast.success('초대 링크를 복사했습니다', inviteSummary(i))}
+                      onClick={async () => ((await copyText(inviteLink(i.token))) ? toast.success('초대 링크를 복사했습니다', inviteSummary(i)) : copyFailed(inviteLink(i.token)))}
                     >
                       <Copy size={15} />
                     </IconButton>
@@ -243,7 +247,7 @@ function CreatedLink({ invite, templateName, inviter, onNew }: { invite: InviteI
       <div className="share-link">
         <Link2 size={16} />
         <input className="input" readOnly value={url} onFocus={(e) => e.currentTarget.select()} />
-        <Button variant="primary" icon={<Copy size={14} />} onClick={async () => (await copyText(url)) && toast.success('초대 링크를 복사했습니다')}>
+        <Button variant="primary" icon={<Copy size={14} />} onClick={async () => ((await copyText(url)) ? toast.success('초대 링크를 복사했습니다') : copyFailed(url))}>
           복사
         </Button>
       </div>
@@ -252,7 +256,9 @@ function CreatedLink({ invite, templateName, inviter, onNew }: { invite: InviteI
           size="sm"
           variant="ghost"
           icon={<MessageSquareText size={14} />}
-          onClick={async () => (await copyText(inviteMessage(templateName, invite, inviter))) && toast.success('초대 메시지를 복사했습니다', '메신저에 붙여넣어 보내세요.')}
+          onClick={async () =>
+            (await copyText(inviteMessage(templateName, invite, inviter))) ? toast.success('초대 메시지를 복사했습니다', '메신저에 붙여넣어 보내세요.') : copyFailed(url)
+          }
         >
           안내 문구와 함께 복사
         </Button>
