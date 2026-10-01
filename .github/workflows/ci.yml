@@ -4,6 +4,10 @@ on:
   push:
   pull_request:
 
+# 저장소 토큰은 읽기만 (의존성 설치 중 악성 코드가 저장소에 쓰지 못하게)
+permissions:
+  contents: read
+
 jobs:
   check:
     runs-on: ubuntu-latest
@@ -17,3 +21,31 @@ jobs:
       - run: npm run typecheck
       # 화면을 빌드한 뒤, 클라우드플레어 로컬 런타임(workerd)에서 Worker + Durable Object 통합 테스트
       - run: npm test
+      # 첫 화면에서 받는 JS·CSS(gzip)가 예산(scripts/bundle-budget.json)을 넘으면 실패 — 로딩이 느려지는 변경을 막는다
+      - name: 번들 크기 예산
+        run: node scripts/check-bundle.mjs
+
+  # 실제 브라우저(크로미움)로 핵심 흐름 확인: 가입·로그인 → 템플릿 만들기 → 초대 링크로 참여한 두 사람의 실시간 편집
+  e2e:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-node@v7
+        with:
+          node-version: 22
+          cache: npm
+      - run: npm ci
+      - run: npm run build
+      - run: npx playwright install --with-deps chromium
+      - run: npm run e2e
+        env:
+          CI: '1'
+      - name: 실패하면 화면 기록 남기기
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: playwright-report
+          path: |
+            playwright-report/
+            test-results/
+          retention-days: 7
