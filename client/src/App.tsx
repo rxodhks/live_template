@@ -2,6 +2,7 @@ import { Suspense, lazy, useEffect, useState } from 'react';
 import { BrowserRouter, Navigate, Route, Routes, useLocation } from 'react-router-dom';
 import { Monitor, X } from 'lucide-react';
 import { isTypingTarget } from './lib/util';
+import { lazyWithPreload, whenIdle } from './lib/lazy';
 import { bootSession, claimLegacyAccount } from './lib/auth';
 import { backupPending } from './lib/templateOps';
 import { useSession } from './store/session';
@@ -21,8 +22,12 @@ const SignupPage = lazy(() => import('./pages/Auth').then((m) => ({ default: m.S
 const PrivacyPage = lazy(() => import('./pages/Legal').then((m) => ({ default: m.PrivacyPage })));
 const TermsPage = lazy(() => import('./pages/Legal').then((m) => ({ default: m.TermsPage })));
 const JoinPage = lazy(() => import('./pages/JoinPage').then((m) => ({ default: m.JoinPage })));
-const Workspace = lazy(() => import('./workspace/Workspace').then((m) => ({ default: m.Workspace })));
-const PageSetupHost = lazy(() => import('./modules/docs/page/PageSetupDialog').then((m) => ({ default: m.PageSetupHost })));
+// 둘 다 Suspense 없이 불러온다 (lib/lazy.ts) — Suspense 대체 화면이 한 번 나오면 그 뒤 300ms 동안 다른 화면 전환도 늦어진다
+const Workspace = lazyWithPreload(() => import('./workspace/Workspace').then((m) => m.Workspace), BootScreen);
+const PageSetupHost = lazyWithPreload(() => import('./modules/docs/page/PageSetupDialog').then((m) => m.PageSetupHost));
+
+// 템플릿 주소로 바로 들어왔다면(새로고침 · 링크) 로그인 확인과 함께 템플릿 화면도 받기 시작한다
+if (window.location.pathname.startsWith('/t/')) Workspace.preload();
 
 /** 협업 템플릿 목록을 다시 확인하는 간격 */
 const REFRESH_MS = 60_000;
@@ -84,9 +89,7 @@ export function App() {
       <TooltipHost />
       <ConfirmHost />
       <PromptHost />
-      <Suspense fallback={null}>
-        <PageSetupHost />
-      </Suspense>
+      <PageSetupHost />
       <NarrowScreenNotice />
     </BrowserRouter>
   );
@@ -106,6 +109,8 @@ function ToLogin() {
 
 function AuthedApp() {
   useGlobalShortcuts();
+  // 템플릿을 열기 전에 템플릿 화면을 미리 받아 둔다 → 열 때 기다리지 않는다
+  useEffect(() => whenIdle(Workspace.preload), []);
   return (
     <Routes>
       <Route path="/" element={<Dashboard />} />

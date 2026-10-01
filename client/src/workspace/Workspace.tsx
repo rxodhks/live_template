@@ -1,4 +1,4 @@
-import { Suspense, lazy, useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useLocation, useNavigate, useParams } from 'react-router-dom';
 import * as Y from 'yjs';
 import { IndexeddbPersistence } from 'y-indexeddb';
@@ -31,12 +31,21 @@ import { TemplateTimeline } from './TemplateTimeline';
 import { Members } from './Members';
 import { Settings } from './Settings';
 import { EmptyState, Spinner, Button } from '../components/ui';
+import { lazyWithPreload, whenIdle } from '../lib/lazy';
 
 // 에디터 모듈은 필요할 때 불러온다 (초기 로딩 경량화)
-const CodeModule = lazy(() => import('../modules/code/CodeModule').then((m) => ({ default: m.CodeModule })));
-const DocsModule = lazy(() => import('../modules/docs/DocsModule').then((m) => ({ default: m.DocsModule })));
-const DesignModule = lazy(() => import('../modules/design/DesignModule').then((m) => ({ default: m.DesignModule })));
-const NotesModule = lazy(() => import('../modules/notes/NotesModule').then((m) => ({ default: m.NotesModule })));
+function ModuleLoading() {
+  return (
+    <div className="center-fill">
+      <Spinner size={24} />
+    </div>
+  );
+}
+const CodeModule = lazyWithPreload(() => import('../modules/code/CodeModule').then((m) => m.CodeModule), ModuleLoading);
+const DocsModule = lazyWithPreload(() => import('../modules/docs/DocsModule').then((m) => m.DocsModule), ModuleLoading);
+const DesignModule = lazyWithPreload(() => import('../modules/design/DesignModule').then((m) => m.DesignModule), ModuleLoading);
+const NotesModule = lazyWithPreload(() => import('../modules/notes/NotesModule').then((m) => m.NotesModule), ModuleLoading);
+const EDITOR_MODULES: Partial<Record<ViewModule, { preload: () => void }>> = { code: CodeModule, docs: DocsModule, design: DesignModule, notes: NotesModule };
 
 /** 잦은 편집 활동은 대상별로 이 간격에 한 번만 보고 (서버에서도 5분 단위로 합침) */
 const EDIT_REPORT_INTERVAL = 20_000;
@@ -136,6 +145,12 @@ function WorkspaceInner({ entry }: { entry: TemplateEntry }) {
   // useNavigate()는 주소가 바뀔 때마다 새 함수가 된다 — 실시간 이벤트 구독이 이동할 때마다 다시 걸리지 않도록 ref로 쓴다
   const navigateRef = useRef(navigate);
   navigateRef.current = navigate;
+
+  // 보고 있는 에디터 파일은 브라우저 사본(IndexedDB)을 읽는 동안 함께 받는다
+  EDITOR_MODULES[view.module]?.preload();
+  // 이 템플릿의 다른 에디터도 한가할 때 받아 둔다 → 영역을 옮길 때 기다리지 않는다
+  const features = entry.features.join();
+  useEffect(() => whenIdle(() => ['notes', ...features.split(',')].forEach((m) => EDITOR_MODULES[m as ViewModule]?.preload())), [features]);
 
   /* ── 연결: 개인 공간은 브라우저만, 협업 공간은 실시간 방 ── */
   const [conn, setConn] = useState<{ doc: Y.Doc; provider: DocProvider; room: RoomConnection | null } | null>(null);
@@ -487,15 +502,7 @@ function WorkspaceInner({ entry }: { entry: TemplateEntry }) {
         {featureOff ? (
           <AddAreaPrompt module={view.module as ItemModule} />
         ) : (
-          <Suspense
-            fallback={
-              <div className="center-fill">
-                <Spinner size={24} />
-              </div>
-            }
-          >
-            <ModuleView module={view.module} key={`${view.module}`} />
-          </Suspense>
+          <ModuleView module={view.module} key={`${view.module}`} />
         )}
       </AppShell>
       <span className="sr-only">{me.name} 님으로 작업 중</span>
