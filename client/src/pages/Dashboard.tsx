@@ -33,6 +33,8 @@ export function Dashboard() {
   const { templates, online, requests, loaded } = useTemplates();
   const [params, setParams] = useSearchParams();
   const [creating, setCreating] = useState(params.get('new') === '1');
+  /** 첫 화면의 프리셋 카드로 열었으면 그 프리셋을 미리 골라 둔다 */
+  const [startPreset, setStartPreset] = useState<string>();
   const [trashOpen, setTrashOpen] = useState(false);
   const [space, setSpace] = useState<SpaceFilter>('all');
   const [feature, setFeature] = useState<FeatureFilter>('all');
@@ -152,7 +154,12 @@ export function Dashboard() {
                   <Spinner size={24} />
                 </div>
               ) : all.length === 0 ? (
-                <FirstRun onCreate={() => setCreating(true)} />
+                <FirstRun
+                  onCreate={(presetId) => {
+                    setStartPreset(presetId);
+                    setCreating(true);
+                  }}
+                />
               ) : list.length === 0 ? (
                 <EmptyState title="조건에 맞는 템플릿이 없습니다">필터나 검색어를 바꿔 보세요.</EmptyState>
               ) : (
@@ -177,7 +184,11 @@ export function Dashboard() {
       {trashOpen && <TrashDialog onClose={() => setTrashOpen(false)} />}
       {creating && (
         <CreateTemplateModal
-          onClose={() => setCreating(false)}
+          initialPresetId={startPreset}
+          onClose={() => {
+            setCreating(false);
+            setStartPreset(undefined);
+          }}
           onCreated={(t) => {
             setCreating(false);
             navigate(`/t/${t.id}`);
@@ -188,14 +199,14 @@ export function Dashboard() {
   );
 }
 
-function FirstRun({ onCreate }: { onCreate: () => void }) {
+function FirstRun({ onCreate }: { onCreate: (presetId?: string) => void }) {
   return (
     <div className="first-run">
       <h2>첫 템플릿을 만들어 보세요</h2>
       <p className="muted">디자인·코딩·문서 중 필요한 기능을 골라 개인 공간에서 시작하고, 필요할 때 팀원을 초대하세요.</p>
       <div className="first-run-presets">
         {PRESETS.slice(1, 5).map((p) => (
-          <button key={p.id} className="preset" onClick={onCreate}>
+          <button key={p.id} className="preset" onClick={() => onCreate(p.id)}>
             <span className="preset-emoji">{p.emoji}</span>
             <span className="preset-text">
               <b>{p.name}</b>
@@ -204,7 +215,7 @@ function FirstRun({ onCreate }: { onCreate: () => void }) {
           </button>
         ))}
       </div>
-      <Button variant="primary" icon={<Plus size={15} />} onClick={onCreate}>
+      <Button variant="primary" icon={<Plus size={15} />} onClick={() => onCreate()}>
         템플릿 만들기
       </Button>
     </div>

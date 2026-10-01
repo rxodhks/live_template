@@ -1,7 +1,16 @@
 import { create } from 'zustand';
 import type { ToastPayload } from '@shared/types';
 
-export interface Toast extends ToastPayload {
+/** 토스트 안의 버튼 (예: 되돌리기) — 누르면 실행하고 토스트를 닫는다 */
+export interface ToastAction {
+  label: string;
+  run: () => void;
+}
+
+/** 화면에서만 쓰는 토스트 (서버에서 오는 ToastPayload + 버튼) */
+export type ClientToast = ToastPayload & { action?: ToastAction };
+
+export interface Toast extends ClientToast {
   id: string;
   createdAt: number;
   duration: number;
@@ -15,7 +24,7 @@ const maxVisible = () => 5;
 
 interface ToastState {
   toasts: Toast[];
-  push(t: ToastPayload): string;
+  push(t: ClientToast): string;
   dismiss(id: string): void;
   remove(id: string): void;
 }
@@ -55,7 +64,7 @@ export const useToasts = create<ToastState>((set, get) => ({
 }));
 
 export const toast = {
-  show: (t: ToastPayload) => useToasts.getState().push(t),
+  show: (t: ClientToast) => useToasts.getState().push(t),
   success: (title: string, message?: string) => useToasts.getState().push({ kind: 'success', title, message }),
   info: (title: string, message?: string) => useToasts.getState().push({ kind: 'info', title, message }),
   warning: (title: string, message?: string) => useToasts.getState().push({ kind: 'warning', title, message }),

@@ -17,12 +17,22 @@ const EMOJIS = ['🗂️', '🚀', '🎨', '💻', '📝', '🧭', '🌐', '🧪
  *  - 기능(디자인/코딩/문서)은 여러 개 선택 가능 → 하나의 템플릿에서 동시에 작업
  *  - 프리셋을 고르면 기능과 시작 내용이 채워진다 (기능은 다시 조정 가능)
  */
-export function CreateTemplateModal({ onClose, onCreated }: { onClose: () => void; onCreated: (t: TemplateEntry) => void }) {
-  const [name, setName] = useState('');
+export function CreateTemplateModal({
+  initialPresetId,
+  onClose,
+  onCreated,
+}: {
+  /** 이 프리셋을 고른 상태로 연다 (첫 화면의 프리셋 카드) */
+  initialPresetId?: string;
+  onClose: () => void;
+  onCreated: (t: TemplateEntry) => void;
+}) {
+  const start = initialPresetId && initialPresetId !== 'blank' ? getPreset(initialPresetId) : null;
+  const [name, setName] = useState(start?.name ?? '');
   const [description, setDescription] = useState('');
-  const [emoji, setEmoji] = useState('🗂️');
-  const [presetId, setPresetId] = useState('blank');
-  const [features, setFeatures] = useState<Feature[]>(['docs']);
+  const [emoji, setEmoji] = useState(start?.emoji ?? '🗂️');
+  const [presetId, setPresetId] = useState(start?.id ?? 'blank');
+  const [features, setFeatures] = useState<Feature[]>(start?.features ?? ['docs']);
   const [saving, setSaving] = useState(false);
 
   const preset = getPreset(presetId);

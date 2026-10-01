@@ -764,6 +764,19 @@ textarea.input {
   font-size: 13px;
   margin-top: 1px;
 }
+.toast-action {
+  flex: none;
+  align-self: center;
+  padding: 5px 10px;
+  border-radius: 7px;
+  font-size: 13px;
+  font-weight: 650;
+  color: var(--toast-color);
+  background: color-mix(in srgb, var(--toast-color) 12%, transparent);
+}
+.toast-action:hover {
+  background: color-mix(in srgb, var(--toast-color) 20%, transparent);
+}
 .toast-close {
   position: absolute;
   top: 8px;
