@@ -24,9 +24,12 @@ export function lazyWithPreload<P extends object>(load: () => Promise<ComponentT
 
   function Preloadable(props: P) {
     const [, rerender] = useReducer((n: number) => n + 1, 0);
+    // 처음 그릴 때 대체 화면이었는지를 본다. 그린 뒤 effect가 돌기 전에 파일이 도착하면
+    // `loaded`는 이미 채워져 있어서, 그것만 보면 다시 그리지 않고 대체 화면에 멈춘다.
+    const showedFallback = !loaded;
     useEffect(() => {
-      if (!loaded) get().then(rerender, rerender);
-    }, []);
+      if (showedFallback) get().then(rerender, rerender);
+    }, []); // eslint-disable-line react-hooks/exhaustive-deps
     if (loaded) return createElement(loaded, props);
     if (failed) {
       const err = failed;
