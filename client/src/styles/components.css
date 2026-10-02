@@ -1300,6 +1300,15 @@ body:has(.narrow-notice) .toast-viewport {
   border-bottom: 1px dashed var(--border);
 }
 
+.feedback-input {
+  width: 100%;
+  min-height: 120px;
+  resize: vertical;
+  font: inherit;
+  line-height: 1.5;
+  padding: 10px 12px;
+}
+
 /* 테스트 사이트 표시 */
 .staging-badge {
   position: fixed;

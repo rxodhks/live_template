@@ -22,7 +22,7 @@ import type {
   ViewModule,
   Viewport,
 } from '../../shared/types';
-import type { ClientMessage, NoteJoinData, ServerMessage, TemplateBroadcast } from '../../shared/protocol';
+import { type ClientMessage, MAX_DOC_BYTES, type NoteJoinData, type ServerMessage, type TemplateBroadcast } from '../../shared/protocol';
 import { ACTIVITY, CLIENT_REPORTABLE, COALESCE_WINDOW_MS } from '../../shared/activity';
 import type { Env } from './env';
 import { type Result, clampText, fail, fromB64, isId, newId, ok, safeEqual, sha256Hex, toB64 } from './util';
@@ -45,8 +45,6 @@ const NOTE_TICKET_TTL_MS = 30 * 60 * 1000;
 const NOTE_MAX_ATTEMPTS = 5;
 const NOTE_LOCKOUT_MS = 5 * 60 * 1000;
 const MAX_BLOB_CHARS = 1_500_000;
-/** 문서 전체 크기 상한 — 이보다 커지면 sync 응답(문서 + base64)이 Durable Object 메모리(128MB)를 압박하고 버전 기록이 크게 불어난다 */
-const MAX_DOC_BYTES = 16 * 1024 * 1024;
 /** 한 사람이 한 방에 열 수 있는 연결 수 (탭 여러 개는 충분히, 무한히 여는 것은 막는다) */
 const MAX_SOCKETS_PER_USER = 12;
 /** SQLite 값 하나는 2MB까지라서 큰 문서 상태는 나눠 저장한다 */
@@ -323,7 +321,13 @@ export class TemplateRoom extends DurableObject<Env> {
   /* ───────────── 메시지 ───────────── */
 
   async webSocketMessage(ws: WebSocket, raw: string | ArrayBuffer): Promise<void> {
-    if (typeof raw !== 'string' || raw.length > 4_000_000) return;
+    if (typeof raw !== 'string') return;
+    if (raw.length > 4_000_000) {
+      // 해석하지 않고 버리되, 보낸 쪽이 응답을 기다리며 "저장 중"에 머물지 않게 끝의 요청 번호로 거절을 알린다
+      const id = Number(/"id":(\d+)\}\s*$/.exec(raw.slice(-40))?.[1]);
+      if (id) this.send(ws, { t: 'ack', id, ok: false, status: 413, error: '한 번에 보내는 변경이 너무 큽니다.' });
+      return;
+    }
     let msg: ClientMessage;
     try {
       msg = JSON.parse(raw) as ClientMessage;
@@ -541,6 +545,8 @@ export class TemplateRoom extends DurableObject<Env> {
 
   /** 이 크기의 변경을 더 받아도 문서가 상한을 넘지 않는지. 추정치가 넘을 때만 실제 크기를 다시 잰다 */
   private hasRoomFor(bytes: number): boolean {
+    // 잠들었다 깨어나면 추정치가 0이라 먼저 문서를 불러온다 (그러지 않으면 깨어난 뒤 첫 변경은 상한 없이 통과했다)
+    this.ensureDoc();
     if (this.docBytesEstimate + bytes <= MAX_DOC_BYTES) return true;
     this.docBytesEstimate = Y.encodeStateAsUpdate(this.ensureDoc()).length;
     return this.docBytesEstimate + bytes <= MAX_DOC_BYTES;
@@ -984,10 +990,10 @@ export class TemplateRoom extends DurableObject<Env> {
    * 브라우저에서 만든 템플릿을 클라우드에 등록 (Directory에 등록한 뒤 방 초기화)
    *  · private: 개인 공간 백업 (나만) · shared: 초대하면서 협업 공간으로
    */
-  async share(user: PublicUser, templateId: string, text: string, visibility: TemplateVisibility = 'shared'): Promise<Result<TemplateSummary>> {
+  async share(user: PublicUser, templateId: string, body: Uint8Array, visibility: TemplateVisibility = 'shared'): Promise<Result<TemplateSummary>> {
     let input: Partial<ShareUpload>;
     try {
-      input = JSON.parse(text) as Partial<ShareUpload>;
+      input = JSON.parse(new TextDecoder().decode(body)) as Partial<ShareUpload>;
     } catch {
       return fail(400, '잘못된 요청 형식입니다.');
     }
@@ -1030,6 +1036,8 @@ export class TemplateRoom extends DurableObject<Env> {
     } catch {
       return fail(400, '문서 데이터가 올바르지 않습니다.');
     }
+    // 올리는 것은 받아 놓고 첫 편집부터 거절하지 않도록, 처음부터 상한을 확인한다
+    if (state.length > MAX_DOC_BYTES) return fail(413, '템플릿이 너무 큽니다. 이미지 일부를 지운 뒤 다시 시도해 주세요.');
     const notes: EncryptedNote[] = [];
     for (const n of (input.notes ?? []).slice(0, 100)) {
       const v = this.validateEncrypted(n, input.user);

@@ -2,7 +2,7 @@ import { type ReactNode, useCallback, useEffect, useRef, useState } from 'react'
 import { TopBar } from './TopBar';
 import { LeftRail } from './LeftRail';
 import { CommandPalette } from './CommandPalette';
-import { ProfileDialog, ShortcutsDialog } from './Dialogs';
+import { FeedbackDialog, ProfileDialog, ShortcutsDialog } from './Dialogs';
 import { InviteDialog } from './InviteDialog';
 import { cx } from '../lib/util';
 
@@ -92,6 +92,7 @@ export function AppShell({ panel, panelOpen = true, drawer, children }: Props) {
       <InviteDialog />
       <ProfileDialog />
       <ShortcutsDialog />
+      <FeedbackDialog />
     </div>
   );
 }

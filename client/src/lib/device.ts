@@ -55,3 +55,19 @@ export async function runDeviceClear(): Promise<void> {
     /* 무시 */
   }
 }
+
+/**
+ * 이 기기에 있는 템플릿 문서 사본만 지우고 새로 불러온다 — 다음 접속 때 클라우드에 저장된 상태를 다시 받는다.
+ * (저장 한도에 걸려 서버가 받지 않는 변경이 사본에 남아, 열 때마다 다시 거절되는 경우)
+ */
+export function resetDocCopy(templateId: string): void {
+  try {
+    const raw = sessionStorage.getItem(KEY);
+    const plan = (raw ? JSON.parse(raw) : { appDb: null, docs: [] }) as Plan;
+    plan.docs = [...plan.docs, docDbName(templateId)];
+    sessionStorage.setItem(KEY, JSON.stringify(plan));
+  } catch {
+    return;
+  }
+  window.location.reload();
+}

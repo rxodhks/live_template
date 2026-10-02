@@ -226,6 +226,7 @@ export class Directory extends DurableObject<Env> {
         last_used_at INTEGER);
       CREATE INDEX IF NOT EXISTS passkeys_by_user ON passkeys(user_id);
       CREATE TABLE IF NOT EXISTS auth_flows (id TEXT PRIMARY KEY, kind TEXT NOT NULL, data TEXT NOT NULL, expires_at INTEGER NOT NULL);
+      CREATE TABLE IF NOT EXISTS feedback (id TEXT PRIMARY KEY, user_id TEXT NOT NULL, at INTEGER NOT NULL, message TEXT NOT NULL, context TEXT NOT NULL);
       CREATE TABLE IF NOT EXISTS rate (key TEXT NOT NULL, bucket INTEGER NOT NULL, count INTEGER NOT NULL, expires_at INTEGER NOT NULL,
         PRIMARY KEY (key, bucket));
     `);
@@ -677,6 +678,23 @@ export class Directory extends DurableObject<Env> {
 
   private templateIdsOf(userId: string): string[] {
     return this.sql.exec<{ template_id: string }>('SELECT template_id FROM members WHERE user_id = ?', userId).toArray().map((r) => r.template_id);
+  }
+
+  /* ───────────── 피드백 · 화면 오류 ───────────── */
+
+  /** 앱 안 "피드백 보내기" — 사람마다 시간당 20개까지 */
+  async addFeedback(userId: string, message: string, context: string): Promise<Result<{ id: string; at: number }>> {
+    const wait = this.limit(`feedback:${userId}`, 20, 3_600_000);
+    if (wait) return fail(429, '피드백을 너무 많이 보냈습니다. 잠시 후 다시 보내 주세요.', { retryAfter: wait });
+    const id = newId();
+    const at = Date.now();
+    this.sql.exec('INSERT INTO feedback (id, user_id, at, message, context) VALUES (?, ?, ?, ?, ?)', id, userId, at, message, context);
+    return ok({ id, at });
+  }
+
+  /** 화면 오류 보고를 받아도 되는지 (로그인 전에도 보내므로 접속 주소마다 시간당 30번) */
+  async allowClientErrors(key: string): Promise<boolean> {
+    return this.limit(`cerr:${key}`, 30, 3_600_000) === null;
   }
 
   /* ───────────── 템플릿 ───────────── */

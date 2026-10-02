@@ -30,6 +30,12 @@ export const CLIENT_VERSION = 2;
 export const CLIENT_VERSION_HEADER = 'x-lt-client';
 export const CLIENT_VERSION_PARAM = 'cv';
 
+/**
+ * 템플릿 문서 하나의 크기 상한 (Yjs 문서 전체). 문서 이미지도 이 안에 들어간다.
+ * 이보다 커지면 sync 응답이 Durable Object 메모리(128MB)를 압박하고 버전 기록이 크게 불어난다.
+ */
+export const MAX_DOC_BYTES = 16 * 1024 * 1024;
+
 export interface PresencePatch {
   view?: PresenceView;
   viewport?: Viewport | null;

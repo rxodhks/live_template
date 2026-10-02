@@ -30,7 +30,9 @@ import { Overview } from './Overview';
 import { TemplateTimeline } from './TemplateTimeline';
 import { Members } from './Members';
 import { Settings } from './Settings';
-import { EmptyState, Spinner, Button } from '../components/ui';
+import { EmptyState, Spinner, Button, confirmDialog } from '../components/ui';
+import { resetDocCopy } from '../lib/device';
+import { MAX_DOC_BYTES } from '@shared/protocol';
 import { lazyWithPreload, whenIdle } from '../lib/lazy';
 
 // 에디터 모듈은 필요할 때 불러온다 (초기 로딩 경량화)
@@ -151,6 +153,7 @@ function WorkspaceInner({ entry }: { entry: TemplateEntry }) {
   const [tickets, setTickets] = useState<Record<string, UnlockedNote>>({});
   const [panelOpen, setPanelOpen] = useState(true);
   const [synced, setSynced] = useState(!shared);
+  const [tooLarge, setTooLarge] = useState(false);
 
   const viewRef = useRef(view);
   viewRef.current = view;
@@ -177,7 +180,10 @@ function WorkspaceInner({ entry }: { entry: TemplateEntry }) {
     const whenReady = Promise.race([idb.whenSynced, new Promise((r) => setTimeout(r, 1500))]);
     const room = shared ? new RoomConnection(tid) : null;
     const provider: DocProvider = room ? new RoomProvider(room, doc, { whenReady }) : new LocalProvider(doc);
-    const update = () => setSynced(provider.synced);
+    const update = () => {
+      setSynced(provider.synced);
+      setTooLarge(!!provider.tooLarge);
+    };
     const unsub = provider.subscribe(update);
     let cancelled = false;
     void whenReady.then(() => !cancelled && setConn({ doc, provider, room }));
@@ -485,7 +491,8 @@ function WorkspaceInner({ entry }: { entry: TemplateEntry }) {
     mode: entry.mode,
     isPrivate: isPrivate(entry),
     role: entry.myRole,
-    canEdit: entry.myRole !== 'viewer',
+    // 저장 한도에 걸리면 편집을 막는다 — 입력은 되는데 저장되지 않는 상태를 만들지 않도록
+    canEdit: entry.myRole !== 'viewer' && !tooLarge,
     doc: conn.doc,
     provider: conn.provider,
     room: conn.room,
@@ -519,6 +526,7 @@ function WorkspaceInner({ entry }: { entry: TemplateEntry }) {
     <WorkspaceContext.Provider value={value}>
       <AppShell panel={<Explorer />} panelOpen={panelOpen} drawer={value.chatOpen ? <ChatPanel /> : null}>
         {follow && followed && <FollowBanner presence={followed} onStop={() => setFollow(null)} />}
+        {tooLarge && <TooLargeBanner templateId={tid} />}
         {featureOff ? (
           <AddAreaPrompt module={view.module as ItemModule} />
         ) : (
@@ -527,6 +535,30 @@ function WorkspaceInner({ entry }: { entry: TemplateEntry }) {
       </AppShell>
       <span className="sr-only">{me.name} 님으로 작업 중</span>
     </WorkspaceContext.Provider>
+  );
+}
+
+/** 템플릿이 저장 한도에 닿았을 때: 편집을 막고, 이 기기에만 남은 (거절된) 변경을 버리는 방법을 안내한다 */
+function TooLargeBanner({ templateId }: { templateId: string }) {
+  const reset = async () => {
+    const ok = await confirmDialog({
+      title: '클라우드에 저장된 상태로 되돌릴까요?',
+      message: `이 기기에만 있고 저장되지 못한 변경(방금 넣은 이미지 등)을 버리고, 마지막으로 저장된 상태를 다시 불러옵니다. 그다음 필요 없는 이미지를 지우면 다시 편집할 수 있습니다.`,
+      confirmText: '되돌리기',
+      danger: true,
+    });
+    if (ok) resetDocCopy(templateId);
+  };
+  return (
+    <div className="too-large-banner" role="alert">
+      <span>
+        <b>이 템플릿이 저장 한도({MAX_DOC_BYTES / 1024 / 1024}MB)에 닿아 더 이상 저장되지 않습니다.</b> 문서 이미지가 대부분을 차지합니다. 저장되지 못한 변경을 버리고 되돌린 뒤
+        이미지 몇 개를 지우면 다시 편집할 수 있습니다.
+      </span>
+      <Button size="sm" variant="primary" onClick={() => void reset()}>
+        저장된 상태로 되돌리기
+      </Button>
+    </div>
   );
 }
 

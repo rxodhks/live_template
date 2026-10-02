@@ -1,10 +1,12 @@
 import { Suspense, lazy, useState } from 'react';
-import { Keyboard, UserRound } from 'lucide-react';
+import { Keyboard, MessageSquareHeart, UserRound } from 'lucide-react';
 import { useUI } from '../store/ui';
 import { useSession } from '../store/session';
 import { useTemplates } from '../store/templates';
 import { toast } from '../store/toasts';
-import { errorMessage } from '../lib/api';
+import { api, errorMessage } from '../lib/api';
+import { recentErrors } from '../lib/errorReport';
+import { CLIENT_VERSION } from '@shared/protocol';
 import { updateProfile } from '../lib/auth';
 import { modKey } from '../lib/util';
 import { Button, Kbd, Modal } from './ui';
@@ -144,6 +146,74 @@ export function ShortcutsDialog() {
           </section>
         ))}
       </div>
+    </Modal>
+  );
+}
+
+/** 앱 안 "피드백 보내기" — 지금 화면 주소 · 창 크기 · 최근 오류를 함께 보낸다 */
+export function FeedbackDialog() {
+  const open = useUI((s) => s.feedbackOpen);
+  if (!open) return null;
+  return <FeedbackDialog_ />;
+}
+
+function FeedbackDialog_() {
+  const setOpen = useUI((s) => s.setFeedbackOpen);
+  const [message, setMessage] = useState('');
+  const [sending, setSending] = useState(false);
+  const send = async () => {
+    const text = message.trim();
+    if (!text || sending) return;
+    setSending(true);
+    try {
+      await api('POST', '/feedback', {
+        message: text,
+        context: {
+          page: `${window.location.pathname}${window.location.search}`,
+          viewport: `${window.innerWidth}x${window.innerHeight}`,
+          clientVersion: String(CLIENT_VERSION),
+          recentErrors: recentErrors(),
+        },
+      });
+      toast.success('피드백을 보냈습니다', '소중한 의견 고맙습니다!');
+      setOpen(false);
+    } catch (err) {
+      toast.error('보내지 못했습니다', errorMessage(err));
+    } finally {
+      setSending(false);
+    }
+  };
+  return (
+    <Modal
+      title="피드백 보내기"
+      description="불편했던 점, 버그, 바라는 기능 무엇이든 좋습니다. 지금 보고 있는 화면 주소와 브라우저 정보가 함께 전달됩니다."
+      icon={<MessageSquareHeart size={18} />}
+      onClose={() => setOpen(false)}
+      footer={
+        <>
+          <Button variant="ghost" onClick={() => setOpen(false)}>
+            취소
+          </Button>
+          <Button variant="primary" onClick={() => void send()} loading={sending} disabled={!message.trim()}>
+            보내기
+          </Button>
+        </>
+      }
+    >
+      <textarea
+        className="input feedback-input"
+        rows={6}
+        maxLength={4000}
+        autoFocus
+        placeholder="예) 문서에 표를 넣으면 글자가 겹쳐 보여요."
+        aria-label="피드백 내용"
+        value={message}
+        onChange={(e) => setMessage(e.target.value)}
+        onKeyDown={(e) => {
+          if (e.key === 'Enter' && (e.metaKey || e.ctrlKey)) void send();
+        }}
+      />
+      <p className="muted small">{modKey} Enter로 보내기</p>
     </Modal>
   );
 }

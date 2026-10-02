@@ -1,7 +1,7 @@
 import * as Y from 'yjs';
 import { Awareness, applyAwarenessUpdate, encodeAwarenessUpdate, removeAwarenessStates } from 'y-protocols/awareness';
 import { useConnection } from '../store/connection';
-import type { RoomConnection, RoomStatus } from './room';
+import type { AckResult, RoomConnection, RoomStatus } from './room';
 import { fromB64, toB64 } from './crypto';
 
 /*
@@ -20,6 +20,8 @@ export interface DocProvider {
   readonly status: ProviderStatus;
   readonly readOnly: boolean;
   readonly synced: boolean;
+  /** 템플릿이 저장 한도(MAX_DOC_BYTES)에 닿아 서버가 변경을 받지 않는 상태 */
+  readonly tooLarge?: boolean;
   subscribe(fn: () => void): () => void;
   /** 연속 동작(도형 끌기 등) 중에는 더 자주 동기화 */
   setLive?(on: boolean): void;
@@ -54,11 +56,14 @@ export class LocalProvider implements DocProvider {
 const ALONE_MS = 1000;
 const SHARED_MS = 150;
 const LIVE_MS = 50;
+/** 문서 변경 메시지 하나의 최대 크기 (base64로 늘어나도 서버 한도 4MB 안) */
+const MAX_MESSAGE_BYTES = 2_500_000;
 
 export class RoomProvider implements DocProvider {
   readonly awareness: Awareness;
   status: ProviderStatus = 'connecting';
   readOnly: boolean;
+  tooLarge = false;
   private listeners = new Set<() => void>();
   private offs: (() => void)[] = [];
   private destroyed = false;
@@ -197,29 +202,48 @@ export class RoomProvider implements DocProvider {
       if (aw) this.room.send({ t: 'aw', u: aw });
       return;
     }
-    const merged = this.outbox.length === 1 ? this.outbox[0] : Y.mergeUpdates(this.outbox);
-    // 대기 중으로 세어 둔 1건을 이 요청이 이어받는다 (응답이 오면 해제)
+    // 한 메시지가 너무 커지지 않게 나눠 보낸다 (서버는 4MB가 넘는 메시지를 받지 않는다 — 이미지 여러 장을 한 번에 넣을 때)
+    const groups: Uint8Array[][] = [];
+    let size = 0;
+    for (const u of this.outbox) {
+      if (!groups.length || (size > 0 && size + u.length > MAX_MESSAGE_BYTES)) {
+        groups.push([]);
+        size = 0;
+      }
+      groups[groups.length - 1].push(u);
+      size += u.length;
+    }
     this.outbox = [];
-    void this.room.request({ t: 'update', u: toB64(merged), aw }).then((res) => {
-      const c = useConnection.getState();
-      c.addPending(-1);
-      if (res.ok) return c.markSaved();
-      if (res.status === 403) {
-        this.readOnly = true;
-        this.notify();
-        return c.setSaveError('읽기 전용 권한이라 저장되지 않았습니다.');
-      }
-      if (res.status === 413) {
-        // 다시 보내도 같은 이유로 거절되므로 반복 전송하지 않는다 (새로고침 전까지 이 화면의 편집은 저장되지 않음)
-        this.readOnly = true;
-        this.notify();
-        return c.setSaveError(res.error ?? '문서가 너무 커서 더 이상 저장할 수 없습니다.');
-      }
-      c.setSaveError(res.error ?? '저장 확인이 지연되고 있습니다.');
-      // 다시 접속하면 상태 벡터 비교로 빠진 부분이 자동으로 다시 전송된다
-      if (this.room.online) void this.sync();
+    // 대기 중으로 세어 둔 1건을 첫 요청이 이어받고, 나머지는 하나씩 더 센다 (응답이 오면 해제)
+    useConnection.getState().addPending(groups.length - 1);
+    groups.forEach((g, i) => {
+      const merged = g.length === 1 ? g[0] : Y.mergeUpdates(g);
+      void this.room.request({ t: 'update', u: toB64(merged), aw: i === 0 ? aw : undefined }).then(this.onUpdateAck);
     });
   }
+
+  private onUpdateAck = (res: AckResult) => {
+    const c = useConnection.getState();
+    c.addPending(-1);
+    if (res.ok) return c.markSaved();
+    if (res.status === 403) {
+      this.readOnly = true;
+      this.notify();
+      return c.setSaveError('읽기 전용 권한이라 저장되지 않았습니다.');
+    }
+    if (res.status === 413) {
+      // 다시 보내도 같은 이유로 거절되므로 반복 전송하지 않는다. 화면이 편집을 막고 되돌리는 방법을 안내한다 (Workspace)
+      if (this.tooLarge) return;
+      this.readOnly = true;
+      this.tooLarge = true;
+      this.notify();
+      c.setSaveBlocked(true);
+      return c.setSaveError(res.error ?? '문서가 너무 커서 더 이상 저장할 수 없습니다.');
+    }
+    c.setSaveError(res.error ?? '저장 확인이 지연되고 있습니다.');
+    // 다시 접속하면 상태 벡터 비교로 빠진 부분이 자동으로 다시 전송된다
+    if (this.room.online) void this.sync();
+  };
 
   private onDocUpdate = (update: Uint8Array, origin: unknown) => {
     if (origin === this || this.readOnly) return;
@@ -253,6 +277,7 @@ export class RoomProvider implements DocProvider {
     if (this.timer) clearTimeout(this.timer);
     // 연결이 없어 못 보낸 변경은 브라우저 사본에 남아 다음 접속 때 동기화된다
     if (this.outbox.length) useConnection.getState().addPending(-1);
+    if (this.tooLarge) useConnection.getState().setSaveBlocked(false);
     this.outbox = [];
     this.doc.off('update', this.onDocUpdate);
     this.awareness.off('update', this.onAwarenessUpdate);

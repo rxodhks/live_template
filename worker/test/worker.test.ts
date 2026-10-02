@@ -1106,6 +1106,54 @@ describe('남용 방지', () => {
     c.close();
     await sleep(2500);
   });
+
+  it('방이 잠들었다 깨어난 뒤에도 문서 크기 상한을 지킨다', async () => {
+    const tid = newTemplateId();
+    await backup(o, tid, { 'a.txt': 'a' }, '잠드는 방');
+    const c = new Client(tid, o.token);
+    await c.ready();
+    const { doc } = await syncDoc(c);
+    const send = (key: string, text: string) => {
+      const sv = Y.encodeStateVector(doc);
+      doc.getText(key).insert(0, text);
+      return c.request({ t: 'update', u: b64(Y.encodeStateAsUpdate(doc, sv)) });
+    };
+    for (let i = 0; i < 6; i++) assert.ok((await send(`t${i}`, '긴글'.repeat(400_000))).ok, `${i}번째 변경`);
+    // 메시지가 없으면 방(Durable Object)은 잠들고 메모리(문서 · 크기 추정치)를 비운다
+    await sleep(15_000);
+    const res = await send('t6', '긴글'.repeat(400_000));
+    assert.equal(res.status, 413, '깨어난 뒤 첫 변경도 상한을 넘으면 거절');
+    c.close();
+    await sleep(2500);
+  });
+});
+
+describe('피드백 · 화면 오류', () => {
+  it('로그인한 사람은 피드백을 보낼 수 있다', async () => {
+    const u = await newUser('피드백');
+    assert.equal((await api('POST', '/feedback', undefined, { message: '좋아요' })).status, 401, '로그인 필요');
+    assert.equal((await api('POST', '/feedback', u.token, { message: '   ' })).status, 400, '빈 내용은 받지 않는다');
+    const r = await api('POST', '/feedback', u.token, { message: '표를 넣으면 글자가 겹쳐요', context: { page: '/t/abc/docs', viewport: '1440x900', recentErrors: ['TypeError: x'] } });
+    assert.equal(r.status, 201, JSON.stringify(r.data));
+  });
+
+  it('화면 오류 보고는 로그인 전에도 받는다 (형식이 이상해도 오류 없이)', async () => {
+    assert.equal((await api('POST', '/client-errors', undefined, { errors: [{ message: 'TypeError: boom', stack: 'at x', page: '/login', at: Date.now() }] })).status, 200);
+    assert.equal((await api('POST', '/client-errors', undefined, { errors: [null, 'x', 1] })).status, 200);
+    assert.equal((await api('POST', '/client-errors', undefined, {})).status, 200);
+  });
+
+  it('저장 한도(16MB)보다 큰 템플릿은 올리는 단계에서 거절하고 등록하지 않는다', async () => {
+    const u = await newUser('큰업로드');
+    const id = newTemplateId();
+    const res = await backup(u, id, { 'big.txt': 'x'.repeat(17 * 1024 * 1024) });
+    assert.equal(res.status, 413, JSON.stringify(res.data).slice(0, 200));
+    assert.equal((await api('GET', `/templates/${id}`, u.token)).status, 404, '반쯤 등록된 템플릿이 남지 않는다');
+    assert.equal((await backup(u, id, { 'a.txt': 'a' })).status, 201, '같은 ID로 다시 올릴 수 있다');
+    // 한도 안의 큰 템플릿(이름은 한글)은 올라간다 — 예전에는 방 호출 인자가 32MiB를 넘어 500이었다
+    const big = await backup(u, newTemplateId(), { 'big.txt': 'x'.repeat(14 * 1024 * 1024) }, '한글 이름의 큰 템플릿');
+    assert.equal(big.status, 201, JSON.stringify(big.data).slice(0, 200));
+  });
 });
 
 describe('영속성', () => {
