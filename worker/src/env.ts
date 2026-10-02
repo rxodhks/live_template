@@ -19,6 +19,12 @@ export interface Env {
   /** 깃허브 OAuth App (GitHub 저장소 Secret 이름은 GITHUB_로 시작할 수 없어서 GIT_를 쓴다) */
   GIT_CLIENT_ID?: string;
   GIT_CLIENT_SECRET?: string;
+  /**
+   * 클라우드플레어 Turnstile(봇 확인) — 둘 다 있으면 이메일 인증 코드를 보내기 전에 사람인지 확인한다.
+   * 없으면 확인 없이 동작 (대시보드 Turnstile에서 사이트를 추가하면 받을 수 있다)
+   */
+  TURNSTILE_SITE_KEY?: string;
+  TURNSTILE_SECRET_KEY?: string;
   /** "1"이면 로컬(localhost)에서만 인증 코드를 응답에 담아 준다 — 개발 · 테스트용 */
   AUTH_DEV_MODE?: string;
 }

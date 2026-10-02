@@ -417,3 +417,12 @@
 .legal-page > .legal-links {
   padding: 0 16px 32px;
 }
+
+/* 봇 확인(Turnstile): 확인이 필요할 때만 상자가 나타난다 */
+.auth-botcheck {
+  display: flex;
+  justify-content: center;
+}
+.auth-botcheck:empty {
+  display: none;
+}

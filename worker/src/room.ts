@@ -45,6 +45,10 @@ const NOTE_TICKET_TTL_MS = 30 * 60 * 1000;
 const NOTE_MAX_ATTEMPTS = 5;
 const NOTE_LOCKOUT_MS = 5 * 60 * 1000;
 const MAX_BLOB_CHARS = 1_500_000;
+/** 문서 전체 크기 상한 — 이보다 커지면 sync 응답(문서 + base64)이 Durable Object 메모리(128MB)를 압박하고 버전 기록이 크게 불어난다 */
+const MAX_DOC_BYTES = 16 * 1024 * 1024;
+/** 한 사람이 한 방에 열 수 있는 연결 수 (탭 여러 개는 충분히, 무한히 여는 것은 막는다) */
+const MAX_SOCKETS_PER_USER = 12;
 /** SQLite 값 하나는 2MB까지라서 큰 문서 상태는 나눠 저장한다 */
 const CHUNK_BYTES = 1_000_000;
 /** 버전 기록: 변경이 있으면 1시간마다 문서 전체를 저장, 48시간 이내는 모두 · 그 뒤로는 하루 하나씩 30일까지 보관 */
@@ -120,6 +124,10 @@ export class TemplateRoom extends DurableObject<Env> {
   private waitingAcks: { sid: string; id: number }[] = [];
   private flushScheduled = false;
   private cursors = new Map<string, CursorPoint | null>();
+  /** 문서 크기 추정치 (불러올 때 실제 크기 + 이후 변경 크기의 합 — 실제보다 크거나 같다) */
+  private docBytesEstimate = 0;
+  /** awareness clientID → 그 커서를 가진 연결(sid). 다른 사람의 커서를 흉내 내거나 지우지 못하게 */
+  private awOwners: Map<number, { sid: string; userId: string }> | null = null;
   /** 선택한 도형 ID — 연결에 붙여 두는 정보(attachment)는 2KB 한도라 커서처럼 메모리에만 둔다 */
   private selections = new Map<string, string[]>();
   private actions = new Map<string, { label: string; at: number }>();
@@ -234,6 +242,9 @@ export class TemplateRoom extends DurableObject<Env> {
     const requests: JoinRequest[] =
       role === 'viewer' ? [] : passed ? (JSON.parse(decodeURIComponent(passed)) as JoinRequest[]) : await this.directory.pendingRequestsFor(templateId);
 
+    if (this.ctx.getWebSockets(user.id).length >= MAX_SOCKETS_PER_USER) {
+      return new Response('연결이 너무 많습니다. 사용하지 않는 탭을 닫아 주세요.', { status: 429 });
+    }
     const pair = new WebSocketPair();
     const [client, server] = Object.values(pair);
     this.ctx.acceptWebSocket(server, [user.id]);
@@ -288,7 +299,11 @@ export class TemplateRoom extends DurableObject<Env> {
     this.cursors.delete(a.sid);
     this.selections.delete(a.sid);
     this.actions.delete(a.sid);
-    this.broadcast({ t: 'presence:leave', sid: a.sid, clients: a.aw }, { exceptSid: a.sid });
+    // 다른 연결이 넘겨받은 커서는 지우지 않는다
+    const owners = this.awarenessOwners();
+    const mine = a.aw.filter((id) => !owners.has(id) || owners.get(id)!.sid === a.sid);
+    for (const id of mine) owners.delete(id);
+    this.broadcast({ t: 'presence:leave', sid: a.sid, clients: mine }, { exceptSid: a.sid });
     const remaining = this.sockets();
     if (remaining.length === 0) await this.flush();
     if (!remaining.some((s) => s.a.user.id === a.user.id)) {
@@ -344,12 +359,13 @@ export class TemplateRoom extends DurableObject<Env> {
         let update: Uint8Array;
         try {
           update = fromB64(msg.u);
+          if (!this.hasRoomFor(update.length)) return ack(msg.id, { ok: false, status: 413, error: '문서가 너무 커서 더 이상 저장할 수 없습니다.' });
           Y.applyUpdate(this.ensureDoc(), update);
         } catch {
           return ack(msg.id, { ok: false, status: 400, error: '잘못된 문서 변경입니다.' });
         }
-        const aw = typeof msg.aw === 'string' && msg.aw.length < 20_000 ? msg.aw : undefined;
-        if (aw) this.trackAwareness(ws, a, aw);
+        this.docBytesEstimate += update.length;
+        const aw = typeof msg.aw === 'string' && msg.aw.length < 20_000 && this.trackAwareness(ws, a, msg.aw) ? msg.aw : undefined;
         this.pending.push(update);
         // 다른 사람에게는 바로 보여 주고, 보낸 사람의 "저장됨" 확인은 저장소에 기록한 뒤에 보낸다 (flush)
         this.waitingAcks.push({ sid: a.sid, id: msg.id });
@@ -360,7 +376,7 @@ export class TemplateRoom extends DurableObject<Env> {
       }
       case 'aw': {
         if (typeof msg.u !== 'string' || msg.u.length > 20_000) return;
-        this.trackAwareness(ws, a, msg.u);
+        if (!this.trackAwareness(ws, a, msg.u)) return;
         this.broadcast({ t: 'aw', u: msg.u }, { exceptSid: a.sid, filter: (o) => o.synced });
         return;
       }
@@ -478,26 +494,56 @@ export class TemplateRoom extends DurableObject<Env> {
     }
   }
 
-  /** 이 연결이 가진 awareness clientID 기록 (연결이 끊기면 다른 사람 화면에서 커서를 지우기 위해) */
-  private trackAwareness(ws: WebSocket, a: Attachment, u: string): void {
+  /**
+   * 이 연결이 가진 awareness clientID 기록 (연결이 끊기면 다른 사람 화면에서 커서를 지우기 위해).
+   * 다른 연결이 가진 clientID를 담은 메시지는 false — 중계하지 않는다 (남의 이름으로 커서를 띄우거나 남의 커서를 지우지 못하게)
+   */
+  private trackAwareness(ws: WebSocket, a: Attachment, u: string): boolean {
     let entries: { id: number; removed: boolean }[];
     try {
       entries = readAwareness(fromB64(u));
     } catch {
-      return;
+      return false;
     }
+    const owners = this.awarenessOwners();
+    // 같은 사람의 다른 연결(다시 접속했는데 예전 연결이 아직 안 끊긴 경우)이 가진 것은 넘겨받는다
+    const foreign = (id: number) => {
+      const o = owners.get(id);
+      return o !== undefined && o.sid !== a.sid && o.userId !== a.user.id;
+    };
+    if (entries.some(({ id }) => foreign(id))) return false;
     let changed = false;
     for (const { id, removed } of entries) {
       const has = a.aw.includes(id);
       if (removed && has) {
         a.aw = a.aw.filter((x) => x !== id);
+        owners.delete(id);
         changed = true;
-      } else if (!removed && !has && a.aw.length < 8) {
+      } else if (!removed && !has) {
+        if (a.aw.length >= 8) return false;
         a.aw.push(id);
+        owners.set(id, { sid: a.sid, userId: a.user.id });
         changed = true;
       }
     }
     if (changed) ws.serializeAttachment(a);
+    return true;
+  }
+
+  /** 잠들었다 깨어나면 메모리가 비므로 연결 정보(attachment)에서 다시 만든다 */
+  private awarenessOwners(): Map<number, { sid: string; userId: string }> {
+    if (!this.awOwners) {
+      this.awOwners = new Map();
+      for (const { a } of this.sockets()) for (const id of a.aw) this.awOwners.set(id, { sid: a.sid, userId: a.user.id });
+    }
+    return this.awOwners;
+  }
+
+  /** 이 크기의 변경을 더 받아도 문서가 상한을 넘지 않는지. 추정치가 넘을 때만 실제 크기를 다시 잰다 */
+  private hasRoomFor(bytes: number): boolean {
+    if (this.docBytesEstimate + bytes <= MAX_DOC_BYTES) return true;
+    this.docBytesEstimate = Y.encodeStateAsUpdate(this.ensureDoc()).length;
+    return this.docBytesEstimate + bytes <= MAX_DOC_BYTES;
   }
 
   /* ───────────── Yjs 문서 저장 ───────────── */
@@ -507,6 +553,7 @@ export class TemplateRoom extends DurableObject<Env> {
     const doc = new Y.Doc({ gc: true });
     const updates = this.readUpdates();
     if (updates.length) Y.applyUpdate(doc, Y.mergeUpdates(updates));
+    this.docBytesEstimate = updates.reduce((n, u) => n + u.length, 0);
     this.doc = doc;
     return doc;
   }

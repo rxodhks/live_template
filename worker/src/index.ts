@@ -171,6 +171,7 @@ route('GET', '/api/auth/config', async (c) =>
     email: Boolean(c.env.RESEND_API_KEY) || devMode(c),
     providers: Object.fromEntries(OAUTH_PROVIDERS.map((p) => [p, providerEnabled(c.env, p)])) as AuthConfig['providers'],
     devMode: devMode(c),
+    ...(turnstileOn(c) ? { turnstileSiteKey: c.env.TURNSTILE_SITE_KEY } : {}),
   } satisfies AuthConfig),
 );
 
@@ -182,13 +183,36 @@ function signedIn(outcome: AuthOutcome): Response {
   return withCookies(json({ status: 'needs_name' }), [cookie(COOKIE.signup, outcome.ticket, 1800)]);
 }
 
+const turnstileOn = (c: Ctx) => Boolean(c.env.TURNSTILE_SITE_KEY && c.env.TURNSTILE_SECRET_KEY);
+
+/** 봇 확인 토큰 검증 — 누구나 부를 수 있는 메일 발송으로 하루 발송 한도를 소진시키지 못하게 */
+async function checkTurnstile(c: Ctx, token: unknown): Promise<void> {
+  if (!turnstileOn(c)) return;
+  if (typeof token !== 'string' || !token || token.length > 2048) throw new HttpError(403, '자동 요청 확인이 필요합니다. 페이지를 새로고침한 뒤 다시 시도해 주세요.');
+  const form = new FormData();
+  form.append('secret', c.env.TURNSTILE_SECRET_KEY!);
+  form.append('response', token);
+  const ip = c.req.headers.get('cf-connecting-ip');
+  if (ip) form.append('remoteip', ip);
+  let success = false;
+  try {
+    const res = await fetch('https://challenges.cloudflare.com/turnstile/v0/siteverify', { method: 'POST', body: form });
+    success = ((await res.json()) as { success?: boolean }).success === true;
+  } catch (err) {
+    console.error('Turnstile 확인 실패', err);
+    throw new HttpError(503, '자동 요청 확인 서버에 연결하지 못했습니다. 잠시 후 다시 시도해 주세요.');
+  }
+  if (!success) throw new HttpError(403, '자동 요청 확인에 실패했습니다. 다시 시도해 주세요.');
+}
+
 /* 이메일: 6자리 인증 코드 (가입과 로그인이 같은 흐름) */
 route('POST', '/api/auth/email/start', async (c) => {
-  const { email } = await body<{ email?: unknown }>(c.req);
+  const { email, turnstile } = await body<{ email?: unknown; turnstile?: unknown }>(c.req);
   const addr = normalizeEmail(email);
   if (!addr) throw new HttpError(400, '올바른 이메일 주소를 입력해 주세요.');
   const dev = devMode(c);
   if (!c.env.RESEND_API_KEY && !dev) throw new HttpError(503, '이메일 로그인이 아직 준비되지 않았습니다. 다른 로그인 방법을 이용해 주세요.');
+  await checkTurnstile(c, turnstile);
   const dir = directory(c.env);
   // 개발 모드(내 컴퓨터)에서는 IP 제한을 두지 않는다 — 테스트가 한 주소에서 여러 계정을 만든다
   const { code, expiresAt } = unwrap(await dir.startEmailCode(addr, dev ? null : clientIp(c.req)));
