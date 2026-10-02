@@ -8,6 +8,7 @@ import {
   Keyboard,
   LayoutGrid,
   LogOut,
+  MessageSquareHeart,
   ScrollText,
   ShieldCheck,
   MessageSquare,
@@ -153,6 +154,7 @@ export function TopBar() {
                 return { label: THEME_LABEL[t], icon: <Icon size={15} />, checked: theme === t, hint: theme === t ? <Check size={14} /> : undefined, onSelect: () => setTheme(t) };
               }),
               { divider: true, label: '' },
+              { label: '피드백 보내기', icon: <MessageSquareHeart size={15} />, onSelect: () => ui.setFeedbackOpen(true) },
               { label: '키보드 단축키', icon: <Keyboard size={15} />, onSelect: () => ui.setShortcutsOpen(true) },
               { label: '이용약관', icon: <ScrollText size={15} />, onSelect: () => navigate('/terms') },
               { label: '개인정보처리방침', icon: <ShieldCheck size={15} />, onSelect: () => navigate('/privacy') },

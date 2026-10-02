@@ -7,7 +7,7 @@ import { cx } from '../lib/util';
 
 /** 자동 저장 상태 표시 */
 export function SaveIndicator({ synced, mode }: { synced: boolean; mode: TemplateMode }) {
-  const { status, pending, lastSavedAt, offlineChanges, saveError } = useConnection();
+  const { status, pending, lastSavedAt, offlineChanges, saveError, saveBlocked } = useConnection();
   useTick(15_000);
 
   if (mode === 'personal') {
@@ -29,7 +29,12 @@ export function SaveIndicator({ synced, mode }: { synced: boolean; mode: Templat
   let tip = '모든 변경 사항은 입력 즉시 클라우드에 자동 저장됩니다.';
   let tone = 'ok';
 
-  if (status !== 'online') {
+  if (saveBlocked) {
+    icon = <CloudOff size={15} />;
+    text = '저장 안 됨';
+    tip = saveError ?? '저장 한도에 닿아 변경을 저장할 수 없습니다.';
+    tone = 'warn';
+  } else if (status !== 'online') {
     icon = <CloudOff size={15} />;
     text = offlineChanges ? '오프라인 · 로컬 보관 중' : status === 'connecting' ? '연결 중…' : '오프라인';
     tip = '연결이 끊겨도 편집은 이 기기에 보관되며, 다시 연결되면 자동으로 병합됩니다.';

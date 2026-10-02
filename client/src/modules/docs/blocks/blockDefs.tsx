@@ -1,5 +1,5 @@
 import type { ChainedCommands, Editor } from '@tiptap/core';
-import { TextSelection, type Transaction } from '@tiptap/pm/state';
+import { NodeSelection, TextSelection, type Transaction } from '@tiptap/pm/state';
 import {
   AtSign,
   CalendarDays,
@@ -31,6 +31,8 @@ import { toast, useToasts } from '../../../store/toasts';
 import type { ListItem } from './suggestion';
 import { EMBED_PROVIDERS, resolveEmbed } from './embed';
 import { isSafeImageSrc, prepareImage } from './images';
+import * as Y from 'yjs';
+import { MAX_DOC_BYTES } from '@shared/protocol';
 import { type DocEnv, dateLabel, isoDate } from './env';
 
 /*
@@ -182,13 +184,26 @@ export async function insertImageFiles(editor: Editor, files: File[], pos?: numb
   if (!images.length) return;
   // 큰 사진을 줄이는 데 잠깐 걸릴 수 있어 알려 준다
   const id = images.length > 1 || images.some((f) => f.size > 1_500_000) ? toast.info(images.length > 1 ? `이미지 ${images.length}개를 넣는 중…` : '이미지를 넣는 중…') : null;
+  // 문서 이미지는 템플릿 문서 안에 저장되므로, 저장 한도를 넘길 이미지는 넣기 전에 막는다 (넣은 뒤 거절되면 저장이 멈춘다)
+  const ydoc = (editor.extensionManager.extensions.find((e) => e.name === 'collaboration')?.options as { fragment?: Y.XmlFragment } | undefined)?.fragment?.doc;
+  let used = ydoc ? Y.encodeStateAsUpdate(ydoc).length : 0;
   let at = pos;
   for (const file of images) {
     try {
       const img = await prepareImage(file);
+      if (used + img.src.length > MAX_DOC_BYTES * 0.97) {
+        toast.error('저장 공간이 부족해 이미지를 넣지 못했습니다', `이 템플릿은 ${mb(used)}MB / ${mb(MAX_DOC_BYTES)}MB를 쓰고 있습니다. 필요 없는 이미지를 지우거나 새 템플릿을 만들어 주세요.`);
+        break;
+      }
+      used += img.src.length;
+      // 이미지마다 따로 넣는다 (변경 하나가 너무 커지지 않게). 다음 이미지는 방금 넣은 이미지 바로 뒤에 —
+      // 커서 위치에 넣으면 방금 넣어 선택된 이미지를 덮어써 마지막 한 장만 남았다
       const node = { type: 'image', attrs: { src: img.src, alt: file.name.replace(/\.[^.]+$/, '') } };
-      if (at === undefined) editor.chain().focus().insertContent(node).run();
-      else {
+      if (at === undefined) {
+        editor.chain().focus().insertContent(node).run();
+        const sel = editor.state.selection;
+        at = sel instanceof NodeSelection ? sel.to : sel.$from.depth > 0 ? sel.$from.before() : sel.from;
+      } else {
         editor.chain().insertContentAt(at, node).run();
         at += 1;
       }
@@ -198,6 +213,8 @@ export async function insertImageFiles(editor: Editor, files: File[], pos?: numb
   }
   if (id) useToasts.getState().dismiss(id);
 }
+
+const mb = (n: number) => (n / 1024 / 1024).toFixed(1).replace(/\.0$/, '');
 
 async function insertImageUrl(editor: Editor) {
   const url = await promptDialog({

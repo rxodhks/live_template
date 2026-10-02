@@ -1299,3 +1299,12 @@ body:has(.narrow-notice) .toast-viewport {
   font-size: 13px;
   border-bottom: 1px dashed var(--border);
 }
+
+.feedback-input {
+  width: 100%;
+  min-height: 120px;
+  resize: vertical;
+  font: inherit;
+  line-height: 1.5;
+  padding: 10px 12px;
+}

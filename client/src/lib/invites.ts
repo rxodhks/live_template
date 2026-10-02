@@ -47,7 +47,7 @@ export function inviteSummary(i: InviteInfo): string {
 export function inviteMessage(templateName: string, i: InviteInfo, inviter: string): string {
   const role = i.role === 'viewer' ? '뷰어(읽기 전용)' : '편집자';
   const until = i.expiresAt ? ` (${expiryText(i.expiresAt)})` : '';
-  return `${inviter} 님이 Madang의 ‘${templateName}’ 템플릿에 ${role}로 초대했습니다${until}.\n${inviteLink(i.token)}`;
+  return `${inviter} 님이 Madang의 ‘${templateName}’ 템플릿에 ${role}로 초대했습니다${until}.\n${inviteLink(i.token)}\n(PC 브라우저에서 열어 주세요. 휴대폰 화면은 아직 지원하지 않습니다.)`;
 }
 
 export function useInvites(templateId: string, enabled: boolean) {

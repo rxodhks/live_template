@@ -17,7 +17,7 @@ import {
   safeNext,
   withCookies,
 } from './auth';
-import { sendLoginCode } from './mail';
+import { sendFeedback, sendLoginCode } from './mail';
 import { HttpError, isId, json, newId, safeEqual, unwrap } from './util';
 
 export { Directory, TemplateRoom };
@@ -338,9 +338,11 @@ async function upload(c: Ctx, visibility: TemplateVisibility): Promise<Response>
   const templateId = templateParam(c);
   const length = Number(c.req.headers.get('content-length') ?? 0);
   if (length > MAX_UPLOAD) throw new HttpError(413, '템플릿이 너무 큽니다.');
-  const text = await c.req.text();
-  if (text.length > MAX_UPLOAD) throw new HttpError(413, '템플릿이 너무 큽니다.');
-  return json({ template: unwrap(await room(c.env, templateId).share(user, templateId, text, visibility)) }, 201);
+  // 문자열이 아니라 바이트로 넘긴다: 방(Durable Object) 호출 인자는 32MiB까지인데, 한글이 섞인 문자열은 글자당 2바이트로 세어져
+  // 12MB 남짓한 템플릿부터 서버 오류(500)가 났다
+  const bytes = new Uint8Array(await c.req.arrayBuffer());
+  if (bytes.length > MAX_UPLOAD) throw new HttpError(413, '템플릿이 너무 큽니다.');
+  return json({ template: unwrap(await room(c.env, templateId).share(user, templateId, bytes, visibility)) }, 201);
 }
 route('POST', '/api/templates/:id/share', (c) => upload(c, 'shared'));
 
@@ -427,7 +429,7 @@ route('POST', '/api/templates/:id/versions/:versionId/copy', async (c) => {
     timeline: [],
     notes: [],
   };
-  const copy = unwrap(await room(c.env, copyId).share(user, copyId, JSON.stringify(upload), 'private'));
+  const copy = unwrap(await room(c.env, copyId).share(user, copyId, new TextEncoder().encode(JSON.stringify(upload)), 'private'));
   await room(c.env, copyId).recordEvent(user, { type: 'template.copy', targetName: template.name, detail: typeof label === 'string' ? label.slice(0, 40) : '' });
   return json({ template: copy }, 201);
 });
@@ -620,6 +622,49 @@ route('POST', '/api/templates/:id/notes/:noteId/delete', async (c) => {
   const { verifier, force } = await body<{ verifier?: unknown; force?: unknown }>(c.req);
   const forced = force === true && hasRole(role, 'owner');
   return json(unwrap(await room(c.env, templateId).deleteNote(user, role, c.params.noteId, verifier, forced)));
+});
+
+/* ───────────── 피드백 · 화면 오류 ───────────── */
+
+const str = (v: unknown, max: number) => (typeof v === 'string' ? v.slice(0, max) : '');
+
+/** 앱 안 "피드백 보내기": 저장하고 로그에 남기고, 받을 주소가 설정돼 있으면 메일로도 보낸다 */
+route('POST', '/api/feedback', async (c) => {
+  const user = await requireUser(c);
+  const input = await body<{ message?: unknown; context?: Record<string, unknown> }>(c.req, 32 * 1024);
+  const message = str(input.message, 4000).trim();
+  if (!message) throw new HttpError(400, '내용을 입력해 주세요.');
+  const raw = input.context && typeof input.context === 'object' ? input.context : {};
+  const context = {
+    page: str(raw.page, 300),
+    viewport: str(raw.viewport, 40),
+    agent: agentOf(c.req).slice(0, 300),
+    clientVersion: str(raw.clientVersion, 20),
+    recentErrors: Array.isArray(raw.recentErrors) ? raw.recentErrors.slice(0, 5).map((e) => str(e, 300)) : [],
+  };
+  const saved = unwrap(await directory(c.env).addFeedback(user.id, message, JSON.stringify(context)));
+  console.log('[피드백]', JSON.stringify({ id: saved.id, user: { id: user.id, name: user.name }, message, ...context }));
+  if (c.env.FEEDBACK_EMAIL && c.env.RESEND_API_KEY) {
+    c.exec.waitUntil(sendFeedback(c.env, c.env.FEEDBACK_EMAIL, user, message, context).catch((err) => console.error('피드백 메일 발송 실패', err)));
+  }
+  return json({ ok: true }, 201);
+});
+
+/** 화면(브라우저)에서 난 오류 — 로그(클라우드플레어 Workers Logs)에만 남긴다 */
+route('POST', '/api/client-errors', async (c) => {
+  const input = await body<{ errors?: unknown }>(c.req, 32 * 1024);
+  const errors = Array.isArray(input.errors) ? input.errors.slice(0, 10) : [];
+  if (!errors.length) return json({ ok: true });
+  if (!(await directory(c.env).allowClientErrors(clientIp(c.req)))) return json({ ok: true, dropped: true });
+  const user = await currentUser(c).catch(() => null);
+  for (const e of errors as Record<string, unknown>[]) {
+    if (!e || typeof e !== 'object') continue;
+    console.error(
+      '[화면 오류]',
+      JSON.stringify({ message: str(e.message, 500), stack: str(e.stack, 2000), page: str(e.page, 300), at: Number(e.at) || null, user: user?.id ?? null, agent: agentOf(c.req).slice(0, 300) }),
+    );
+  }
+  return json({ ok: true });
 });
 
 /* ───────────── 초대 링크 미리보기 카드 ───────────── */
