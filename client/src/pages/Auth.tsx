@@ -55,12 +55,12 @@ function AuthLayout({ children }: { children: ReactNode }) {
             {BRAND} <small className="brand-ko">마당</small>
           </span>
         </div>
-        <p className="onboarding-tagline">내 방에서 시작해, 마당에서 함께.</p>
+        <p className="onboarding-tagline">개인 공간을 넘어 모두의 공간으로.</p>
         <h1>
           다양한 작업을
           <br />한 화면에서 <em>함께</em>.
         </h1>
-        <p>템플릿 하나에 필요한 기능만 골라 담고, 혼자 시작해서 필요할 때 팀원을 초대해 실시간으로 함께 작업하세요. 모든 변경은 자동 저장됩니다.</p>
+        <p>템플릿 하나에 필요한 기능만 골라 담고, 혼자 시작해서 필요할 때 팀원을 초대해 실시간으로 함께 작업하세요.</p>
         <ul className="onboarding-features">
           {FEATURES.map((f) => (
             <li key={f.title}>
