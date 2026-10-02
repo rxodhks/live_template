@@ -1,16 +1,30 @@
 import { useEffect, useRef, useState, type ReactNode } from 'react';
 import { Link, Navigate, useNavigate, useSearchParams } from 'react-router-dom';
-import { ArrowLeft, CheckCircle2, Code2, FileText, Lock, Mail, MousePointer2, Palette, RotateCw, ShieldCheck, UserPlus, UserRound } from 'lucide-react';
-import type { AuthConfig, OAuthProvider, SignupInfo } from '@shared/types';
+import { ArrowLeft, CheckCircle2, Code2, FileText, Fingerprint, Lock, Mail, MousePointer2, Palette, RotateCw, ShieldCheck, UserPlus, UserRound } from 'lucide-react';
+import type { AuthConfig, EmailVerifyResult, OAuthProvider, PublicUser, SignupInfo } from '@shared/types';
 import { USER_AVATARS, USER_COLORS } from '@shared/colors';
 import { ApiError, errorMessage, legacyProfile } from '../lib/api';
 import { completeLogin, completeSignup, fetchAuthConfig, fetchSignup, safeNext, startEmailLogin, startOAuth, verifyEmailLogin } from '../lib/auth';
 import { mountTurnstile, type TurnstileWidget } from '../lib/turnstile';
+import {
+  type LoginMethod,
+  dismissPasskeyOffer,
+  forgetLogin,
+  isPasskeyCancel,
+  loginWithPasskey,
+  passkeyAutofillAvailable,
+  passkeyOfferDismissed,
+  passkeySupported,
+  platformPasskeyAvailable,
+  readLastLogin,
+  registerPasskey,
+  rememberLogin,
+} from '../lib/passkey';
 import { cx } from '../lib/util';
 import { useSession } from '../store/session';
 import { toast } from '../store/toasts';
 import { useTick } from '../hooks/useInterval';
-import { Button, Field, Spinner } from '../components/ui';
+import { Button, Field, Spinner, confirmDialog } from '../components/ui';
 import { BRAND, BrandMark } from '../components/Brand';
 import { ProfileForm, type ProfileDraft } from '../components/ProfileForm';
 import { LegalLinks } from './Legal';
@@ -20,7 +34,44 @@ import { LegalLinks } from './Legal';
  *  1) 외부 계정(구글 · 깃허브) 또는 이메일 인증 코드로 본인 확인
  *  2) 처음이면 사이트에서 표시될 이름(과 커서 색상 · 아바타)을 정한다
  *  3) 메인 화면으로 (초대 링크로 왔다면 초대장으로)
+ * 다시 올 때 빠르게:
+ *  · 이메일 코드로 들어온 뒤 이 기기에 패스키를 등록하면, 다음부터는 지문 · 얼굴 · PIN 한 번으로 로그인
+ *  · 이 기기에서 마지막으로 쓴 이메일을 채워 두고, 마지막으로 쓴 방법에 '최근 사용'을 표시한다
  */
+
+/**
+ * 이메일 코드로 들어온 직후 한 번: 이 기기에 패스키를 등록할지 묻는다.
+ * (지문 · 얼굴 · PIN 인증기가 있는 기기에서만, 이미 등록했거나 이 기기에서 거절했다면 묻지 않는다)
+ */
+async function offerPasskey(): Promise<void> {
+  const account = useSession.getState().account;
+  if (!account || (account.passkeys ?? 0) > 0 || passkeyOfferDismissed()) return;
+  if (!(await platformPasskeyAvailable())) return;
+  const ok = await confirmDialog({
+    title: '다음부터 더 빠르게 로그인할까요?',
+    message: '이 기기에 패스키를 등록하면 다음부터 이메일과 인증 코드 없이 지문 · 얼굴 · 기기 PIN으로 바로 로그인합니다. 프로필 수정에서 언제든 관리할 수 있습니다.',
+    confirmText: '패스키 등록',
+  });
+  if (!ok) {
+    dismissPasskeyOffer();
+    return;
+  }
+  try {
+    await registerPasskey();
+    rememberLogin('passkey');
+    const s = useSession.getState();
+    if (s.user && s.account) s.setAuthed(s.user, { ...s.account, passkeys: (s.account.passkeys ?? 0) + 1 }, s.offline);
+    toast.success('패스키를 등록했습니다', '다음부터 로그인 화면에서 "패스키로 로그인"을 누르면 바로 들어옵니다.');
+  } catch (err) {
+    if (isPasskeyCancel(err)) return;
+    toast.error('패스키를 등록하지 못했습니다', errorMessage(err));
+  }
+}
+
+/** 로그인 버튼 옆 '최근 사용' 표시 */
+function RecentBadge({ show }: { show: boolean }) {
+  return show ? <span className="auth-recent">최근 사용</span> : null;
+}
 
 const FEATURES = [
   { icon: <MousePointer2 size={18} />, title: '실시간 커서와 행동 표시', text: '누가 어디서 무엇을 하는지 각 사용자의 커서에서 확인할 수 있습니다.' },
@@ -119,7 +170,8 @@ export function LoginPage() {
   const [config, setConfig] = useState<AuthConfig | null>(null);
   const [configError, setConfigError] = useState<string | null>(null);
   const [step, setStep] = useState<'start' | 'code'>('start');
-  const [email, setEmail] = useState('');
+  const [last, setLast] = useState(readLastLogin);
+  const [email, setEmail] = useState(() => last?.email ?? '');
   const [sentTo, setSentTo] = useState('');
   const [code, setCode] = useState('');
   const [devCode, setDevCode] = useState<string | null>(null);
@@ -130,6 +182,10 @@ export function LoginPage() {
   useTick(step === 'code' ? 1000 : 0);
   const botCheckRef = useRef<HTMLDivElement>(null);
   const botCheck = useRef<Promise<TurnstileWidget> | null>(null);
+  const [passkeys] = useState(passkeySupported);
+  /** 이메일 칸 자동 완성에 띄워 둔 패스키 요청 (버튼으로 패스키 로그인을 시작하면 먼저 거둔다) */
+  const autofill = useRef<AbortController | null>(null);
+  const [autofillRun, setAutofillRun] = useState(0);
 
   useEffect(() => {
     fetchAuthConfig()
@@ -151,9 +207,70 @@ export function LoginPage() {
     };
   }, [siteKey]);
 
+  /** 로그인 마무리 (이메일 코드 · 패스키 공통) */
+  const finish = async (res: EmailVerifyResult & { user?: PublicUser }, method: LoginMethod, address?: string) => {
+    if (res.status === 'needs_name') {
+      navigate(`/signup${next === '/' ? '' : `?next=${encodeURIComponent(next)}`}`, { replace: true });
+      return;
+    }
+    rememberLogin(method, address);
+    await completeLogin(res.user!);
+    toast.success(`다시 오셨네요, ${res.user!.name} 님!`);
+    if (method === 'email') void offerPasskey();
+  };
+
+  // 이메일 칸을 누르면 브라우저가 이 사이트의 패스키를 자동 완성 목록에 보여 준다 (고르면 바로 로그인)
+  useEffect(() => {
+    if (!passkeys || !config?.email || step !== 'start') return;
+    const ctrl = new AbortController();
+    autofill.current = ctrl;
+    void (async () => {
+      if (!(await passkeyAutofillAvailable()) || ctrl.signal.aborted) return;
+      try {
+        const res = await loginWithPasskey({ autofill: true, signal: ctrl.signal });
+        if (res && !ctrl.signal.aborted) {
+          setBusy('passkey');
+          await finish(res, 'passkey');
+        }
+      } catch (err) {
+        if (ctrl.signal.aborted || isPasskeyCancel(err)) return;
+        setBusy(null);
+        setNotice(errorMessage(err));
+        // 실패해도 다시 고를 수 있게 새 요청으로 띄워 둔다
+        setAutofillRun((n) => n + 1);
+      }
+    })();
+    return () => {
+      ctrl.abort();
+      if (autofill.current === ctrl) autofill.current = null;
+    };
+  }, [passkeys, config, step, autofillRun]); // eslint-disable-line react-hooks/exhaustive-deps
+
   if (redirect) return redirect;
 
+  const passkeyLogin = async () => {
+    setBusy('passkey');
+    setNotice(null);
+    // 자동 완성에 띄워 둔 요청을 먼저 거둔다 (패스키 요청은 한 번에 하나만)
+    autofill.current?.abort();
+    autofill.current = null;
+    await new Promise((r) => setTimeout(r, 0));
+    try {
+      const res = await loginWithPasskey();
+      if (res) {
+        await finish(res, 'passkey');
+        return;
+      }
+    } catch (err) {
+      setNotice(errorMessage(err));
+    }
+    setBusy(null);
+    setAutofillRun((n) => n + 1);
+  };
+
   const oauth = PROVIDERS.filter((p) => config?.providers[p.id]);
+  // 패스키는 이메일 로그인이 켜진 곳에서만 (등록하려면 먼저 이메일 · 외부 계정으로 들어와야 한다)
+  const showPasskey = passkeys && Boolean(config?.email);
   const invited = next.startsWith('/join/');
 
   const sendCode = async (address = email) => {
@@ -183,12 +300,9 @@ export function LoginPage() {
     setCodeError(null);
     try {
       const res = await verifyEmailLogin(sentTo, value);
-      if (res.status === 'needs_name') {
-        navigate(`/signup${next === '/' ? '' : `?next=${encodeURIComponent(next)}`}`, { replace: true });
-        return;
-      }
-      await completeLogin(res.user!);
-      toast.success(`다시 오셨네요, ${res.user!.name} 님!`);
+      // 처음 가입이면 이름을 정한 뒤 기억한다 (가입 화면)
+      if (res.status === 'needs_name') rememberLogin('email', sentTo);
+      await finish(res, 'email', sentTo);
     } catch (err) {
       setCodeError(errorMessage(err));
       if (err instanceof ApiError && err.data.reason === 'expired') setCode('');
@@ -227,7 +341,7 @@ export function LoginPage() {
             </div>
           ) : (
             <>
-              {oauth.length > 0 && (
+              {(oauth.length > 0 || showPasskey) && (
                 <div className="auth-providers">
                   {oauth.map((p) => (
                     <button
@@ -237,16 +351,25 @@ export function LoginPage() {
                       disabled={busy !== null}
                       onClick={() => {
                         setBusy(p.id);
+                        rememberLogin(p.id);
                         startOAuth(p.id, next);
                       }}
                     >
                       {busy === p.id ? <Spinner size={16} /> : p.icon}
                       <span>{p.label}</span>
+                      <RecentBadge show={last?.method === p.id} />
                     </button>
                   ))}
+                  {showPasskey && (
+                    <button type="button" className={cx('auth-provider', 'is-passkey', last?.method === 'passkey' && 'is-first')} disabled={busy !== null} onClick={() => void passkeyLogin()}>
+                      {busy === 'passkey' ? <Spinner size={16} /> : <Fingerprint size={18} />}
+                      <span>패스키로 로그인</span>
+                      <RecentBadge show={last?.method === 'passkey'} />
+                    </button>
+                  )}
                 </div>
               )}
-              {oauth.length > 0 && config?.email && (
+              {(oauth.length > 0 || showPasskey) && config?.email && (
                 <div className="auth-divider">
                   <span>또는 이메일로</span>
                 </div>
@@ -259,15 +382,40 @@ export function LoginPage() {
                     if (email.trim()) void sendCode(email.trim());
                   }}
                 >
-                  <Field label="이메일">
+                  <Field
+                    label={
+                      <>
+                        이메일 <RecentBadge show={last?.method === 'email' && Boolean(last.email) && email === last.email} />
+                      </>
+                    }
+                    hint={
+                      last?.email && email === last.email ? (
+                        <span className="auth-remembered">
+                          이 기기에서 마지막으로 쓴 이메일입니다.{' '}
+                          <button
+                            type="button"
+                            className="link small"
+                            onClick={() => {
+                              forgetLogin();
+                              setLast(null);
+                              setEmail('');
+                            }}
+                          >
+                            기억 지우기
+                          </button>
+                        </span>
+                      ) : undefined
+                    }
+                  >
                     <input
                       className="input input-lg"
                       type="email"
-                      autoComplete="email"
+                      // webauthn: 이 칸을 누르면 저장된 패스키도 자동 완성 목록에 나온다
+                      autoComplete={passkeys ? 'email webauthn' : 'email'}
                       placeholder="name@example.com"
                       value={email}
                       onChange={(e) => setEmail(e.target.value)}
-                      autoFocus={oauth.length === 0}
+                      autoFocus={oauth.length === 0 && !last?.email}
                       required
                     />
                   </Field>
@@ -284,6 +432,7 @@ export function LoginPage() {
               )}
               <p className="auth-foot muted small">
                 <ShieldCheck size={13} /> 비밀번호 없이 로그인합니다. 이메일은 로그인 확인에만 사용됩니다.
+                {passkeys && ' 이메일로 한 번 들어온 뒤 패스키를 등록하면 다음부터는 코드 없이 들어옵니다.'}
               </p>
             </>
           )}
@@ -409,8 +558,10 @@ export function SignupPage() {
     setError(null);
     try {
       const { user } = await completeSignup(draft);
+      rememberLogin(info?.provider ?? 'email', info?.provider === 'email' ? info.email ?? undefined : undefined);
       await completeLogin(user);
       toast.success(`환영합니다, ${user.name} 님!`, next.startsWith('/join/') ? '초대받은 템플릿으로 이동합니다.' : '첫 템플릿을 만들어 보세요.');
+      if (info?.provider === 'email') void offerPasskey();
     } catch (err) {
       if (err instanceof ApiError && err.data.reason === 'expired') {
         navigate(`/login?error=signup${next === '/' ? '' : `&next=${encodeURIComponent(next)}`}`, { replace: true });

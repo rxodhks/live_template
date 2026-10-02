@@ -92,6 +92,53 @@ async function raw(method: string, url: string, opts: { cookie?: string; body?: 
   return { status: res.status, data, cookies, setCookies, location: res.headers.get('location') };
 }
 
+const b64url = (b: Uint8Array | Buffer) => Buffer.from(b).toString('base64url');
+
+/** 테스트용 가짜 인증기: 브라우저 · 기기가 하는 일(P-256 키 만들기 · 서명)을 그대로 흉내 낸다 */
+class FakeAuthenticator {
+  private keys = crypto.generateKeyPairSync('ec', { namedCurve: 'P-256' });
+  private rawId = crypto.randomBytes(16);
+  private count = 0;
+  id = b64url(this.rawId);
+  private rpId: string;
+  constructor(rpId: string) {
+    this.rpId = rpId;
+  }
+
+  private authData(rpId: string, flags: number, extra = Buffer.alloc(0)) {
+    const counter = Buffer.alloc(4);
+    counter.writeUInt32BE(this.count);
+    return Buffer.concat([crypto.createHash('sha256').update(rpId).digest(), Buffer.from([flags]), counter, extra]);
+  }
+
+  create(challenge: string, origin: string) {
+    const len = Buffer.alloc(2);
+    len.writeUInt16BE(this.rawId.length);
+    const attested = Buffer.concat([Buffer.alloc(16), len, this.rawId]);
+    return {
+      id: this.id,
+      clientDataJSON: b64url(Buffer.from(JSON.stringify({ type: 'webauthn.create', challenge, origin }))),
+      authenticatorData: b64url(this.authData(this.rpId, 0x45, attested)),
+      publicKey: b64url(this.keys.publicKey.export({ type: 'spki', format: 'der' })),
+      algorithm: -7,
+      transports: ['internal'],
+    };
+  }
+
+  get(challenge: string, origin: string, opts: { uv?: boolean; rpId?: string } = {}) {
+    this.count++;
+    const clientData = Buffer.from(JSON.stringify({ type: 'webauthn.get', challenge, origin }));
+    const authData = this.authData(opts.rpId ?? this.rpId, opts.uv === false ? 0x01 : 0x05);
+    const signed = Buffer.concat([authData, crypto.createHash('sha256').update(clientData).digest()]);
+    return {
+      id: this.id,
+      clientDataJSON: b64url(clientData),
+      authenticatorData: b64url(authData),
+      signature: b64url(crypto.sign('sha256', signed, this.keys.privateKey)),
+    };
+  }
+}
+
 const SID = '__Host-madang_sid';
 const SIGNUP = '__Host-madang_signup';
 let emailSeq = 0;
@@ -316,14 +363,14 @@ describe('로그인', () => {
     const sessionCookie = signup.setCookies.find((c) => c.startsWith(SID))!;
     assert.match(sessionCookie, /HttpOnly/);
     assert.match(sessionCookie, /SameSite=Lax/);
-    assert.match(sessionCookie, /Max-Age=2592000/);
+    assert.match(sessionCookie, /Max-Age=7776000/, '쓰는 동안 90일씩 유지');
     // 가입 티켓은 한 번만
     assert.equal((await raw('POST', '/api/auth/signup', { cookie: ticket, body: { name: '두번째' } })).status, 401);
 
     const me = await raw('GET', '/api/me', { cookie: session });
     assert.equal(me.status, 200);
     assert.equal(me.data.user.id, signup.data.user.id);
-    assert.deepEqual(me.data.account, { email: email.toLowerCase(), providers: [] });
+    assert.deepEqual(me.data.account, { email: email.toLowerCase(), providers: [], passkeys: 0 });
 
     // 다시 로그인: 같은 이메일이면 이름 입력 없이 같은 계정
     await raw('POST', '/api/auth/logout', { cookie: session });
@@ -345,6 +392,73 @@ describe('로그인', () => {
     assert.ok(out.setCookies.some((c) => c.startsWith(`${SID}=;`) && c.includes('Max-Age=0')));
     assert.equal((await raw('GET', '/api/me', { cookie: session })).status, 401);
     assert.equal((await api('GET', '/me', u.token)).status, 401);
+  });
+
+  it('패스키: 등록하면 다음부터 이메일 · 코드 없이 로그인, 지우면 더 쓸 수 없다', async () => {
+    const u = await newUser('패스키');
+    const site = `http://localhost:${port}`;
+    const headers = { origin: site };
+    const auth = { ...headers, authorization: `Bearer ${u.token}` };
+    const device = new FakeAuthenticator('localhost');
+
+    // 로그인하지 않았으면 등록할 수 없다
+    assert.equal((await raw('POST', '/api/auth/passkey/register/options', { headers })).status, 401);
+    // 다른 사이트의 화면에서 보낸 요청은 받지 않는다 (개발 서버는 localhost만)
+    assert.equal((await raw('POST', '/api/auth/passkey/login/options', { headers: { origin: 'https://evil.example' } })).status, 403);
+
+    const opts = await raw('POST', '/api/auth/passkey/register/options', { headers: auth });
+    assert.equal(opts.status, 200, JSON.stringify(opts.data));
+    assert.equal(opts.data.rp.id, 'localhost');
+    assert.equal(Buffer.from(opts.data.user.id, 'base64url').toString(), u.user.id);
+    assert.deepEqual(opts.data.exclude, []);
+
+    // 다른 사이트(출처)에서 만든 응답 · 다른 챌린지는 받지 않는다
+    const evil = device.create(opts.data.challenge, 'https://evil.example');
+    assert.equal((await raw('POST', '/api/auth/passkey/register', { headers: auth, body: evil })).status, 400);
+    const opts2 = await raw('POST', '/api/auth/passkey/register/options', { headers: auth });
+    const forged = device.create(b64url(crypto.randomBytes(32)), site);
+    assert.equal((await raw('POST', '/api/auth/passkey/register', { headers: auth, body: forged })).status, 400);
+
+    const reg = await raw('POST', '/api/auth/passkey/register', { headers: auth, body: device.create(opts2.data.challenge, site) });
+    assert.equal(reg.status, 201, JSON.stringify(reg.data));
+    assert.equal(reg.data.passkey.id, device.id);
+    assert.equal((await api('GET', '/me', u.token)).data.account.passkeys, 1);
+
+    // 로그인: 쿠키 없이, 이메일도 코드도 없이
+    const login = async (sign: (challenge: string) => unknown) => {
+      const o = await raw('POST', '/api/auth/passkey/login/options', { headers });
+      assert.equal(o.status, 200, JSON.stringify(o.data));
+      assert.equal(o.data.rpId, 'localhost');
+      return raw('POST', '/api/auth/passkey/login', { headers, body: sign(o.data.challenge) });
+    };
+    const ok = await login((ch) => device.get(ch, site));
+    assert.equal(ok.status, 200, JSON.stringify(ok.data));
+    assert.equal(ok.data.status, 'signed_in');
+    assert.equal(ok.data.user.id, u.user.id);
+    assert.match(ok.setCookies.find((c) => c.startsWith(SID))!, /HttpOnly/);
+    assert.equal((await raw('GET', '/api/me', { cookie: `${SID}=${ok.cookies[SID]}` })).data.user.id, u.user.id);
+
+    // 같은 챌린지는 한 번만
+    const o = await raw('POST', '/api/auth/passkey/login/options', { headers });
+    const once = device.get(o.data.challenge, site);
+    assert.equal((await raw('POST', '/api/auth/passkey/login', { headers, body: once })).status, 200);
+    assert.equal((await raw('POST', '/api/auth/passkey/login', { headers, body: once })).status, 400);
+
+    // 서명이 틀리거나, 본인 확인(UV)을 하지 않았거나, 다른 사이트의 키면 거절
+    assert.equal((await login((ch) => ({ ...(device.get(ch, site) as object), signature: b64url(crypto.randomBytes(70)) }))).status, 400);
+    assert.equal((await login((ch) => device.get(ch, site, { uv: false }))).status, 400);
+    assert.equal((await login((ch) => device.get(ch, site, { rpId: 'evil.example' }))).status, 400);
+    // 다른 사람의 키(등록되지 않은 키)
+    assert.equal((await login((ch) => new FakeAuthenticator('localhost').get(ch, site))).data.reason, 'unknown_passkey');
+
+    // 목록 · 삭제
+    const list = await api('GET', '/me/passkeys', u.token);
+    assert.equal(list.data.passkeys.length, 1);
+    assert.ok(list.data.passkeys[0].lastUsedAt, '마지막 사용 시각');
+    const other = await newUser('남의패스키');
+    assert.equal((await api('DELETE', `/me/passkeys/${device.id}`, other.token)).status, 404, '다른 사람의 패스키는 지울 수 없다');
+    assert.equal((await api('DELETE', `/me/passkeys/${device.id}`, u.token)).status, 200);
+    assert.equal((await login((ch) => device.get(ch, site))).data.reason, 'unknown_passkey');
   });
 
   it('인증 코드를 5번 틀리면 새 코드를 받아야 한다', async () => {

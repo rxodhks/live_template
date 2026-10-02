@@ -10,6 +10,7 @@ import type {
   JoinStatus,
   MemberInfo,
   MyJoinRequest,
+  PasskeyInfo,
   PublicUser,
   OAuthProvider,
   Role,
@@ -22,6 +23,7 @@ import type { TemplateBroadcast } from '../../shared/protocol';
 import { USER_AVATARS, USER_COLORS, isHexColor } from '../../shared/colors';
 import type { Env } from './env';
 import { type Result, clampText, fail, isId, newId, ok, safeEqual, sha256Hex } from './util';
+import { type PasskeyAlg, PasskeyError, b64urlDecode, b64urlEncode, checkPublicKey, isPasskeyAlg, readAuthData, readClientData, verifySignature } from './passkey';
 
 /*
  * Directory — 계정 · 협업 템플릿 목록 · 멤버 · 초대 링크 · 참여 요청을 관리하는 단일 Durable Object.
@@ -34,7 +36,9 @@ const ROLE_LABEL: Record<Role, string> = { owner: '소유자', editor: '편집�
 export const hasRole = (role: Role, min: Role) => ROLE_RANK[role] >= ROLE_RANK[min];
 
 /** 로그인 유지 기간 (마지막으로 사용한 날부터) */
-export const SESSION_TTL_MS = 30 * 86_400_000;
+export const SESSION_TTL_MS = 90 * 86_400_000;
+/** 한 계정에 등록할 수 있는 패스키 수 */
+const MAX_PASSKEYS = 10;
 /** 이메일 인증 코드: 유효 시간 · 재발송 간격 · 틀릴 수 있는 횟수 */
 const CODE_TTL_MS = 10 * 60_000;
 const CODE_RESEND_MS = 30_000;
@@ -44,7 +48,29 @@ const CODE_MAX_FAILS_PER_DAY = 20;
 /** 휴지통 보관 기간: 지나면 영구 삭제 */
 export const TRASH_TTL_MS = 30 * 86_400_000;
 /** 외부 로그인 왕복 · 이름 입력까지 기다리는 시간 */
-const FLOW_TTL_MS = { oauth: 10 * 60_000, signup: 30 * 60_000 } as const;
+const FLOW_TTL_MS = { oauth: 10 * 60_000, signup: 30 * 60_000, passkey_reg: 10 * 60_000, passkey_auth: 10 * 60_000 } as const;
+
+/** 패스키 등록 · 로그인 요청에 담겨 오는 값 (모두 base64url) */
+export interface PasskeyRegistration {
+  id?: unknown;
+  clientDataJSON?: unknown;
+  authenticatorData?: unknown;
+  publicKey?: unknown;
+  algorithm?: unknown;
+  transports?: unknown;
+}
+export interface PasskeyAssertion {
+  id?: unknown;
+  clientDataJSON?: unknown;
+  authenticatorData?: unknown;
+  signature?: unknown;
+  userHandle?: unknown;
+}
+/** 패스키 사이트 (Worker가 정한다). origin이 null이면 개발 서버: localhost 화면만 */
+export interface PasskeySite {
+  origin: string | null;
+  rpId: string;
+}
 
 /** 인증을 마친 신원 (이메일 코드 또는 외부 계정) */
 export interface VerifiedIdentity {
@@ -60,6 +86,46 @@ export interface VerifiedIdentity {
 export type AuthOutcome = { status: 'signed_in'; user: PublicUser; session: string } | { status: 'needs_name'; ticket: string };
 
 type OAuthFlow = { provider: OAuthProvider; verifier: string; nonce: string; next: string };
+
+function parseTransports(raw: string): string[] {
+  try {
+    const v = JSON.parse(raw) as unknown;
+    return Array.isArray(v) ? v.filter((t): t is string => typeof t === 'string') : [];
+  } catch {
+    return [];
+  }
+}
+
+/** 패스키 목록에 보일 기기 이름 (등록할 때의 브라우저 · 운영체제) */
+export function deviceLabel(agent: string): string {
+  const os = /iPhone|iPad/.test(agent)
+    ? 'iOS'
+    : /Android/.test(agent)
+      ? 'Android'
+      : /Mac OS X|Macintosh/.test(agent)
+        ? 'macOS'
+        : /Windows/.test(agent)
+          ? 'Windows'
+          : /CrOS/.test(agent)
+            ? 'ChromeOS'
+            : /Linux/.test(agent)
+              ? 'Linux'
+              : '';
+  const browser = /Edg\//.test(agent)
+    ? 'Edge'
+    : /SamsungBrowser/.test(agent)
+      ? '삼성 인터넷'
+      : /Whale/.test(agent)
+        ? '웨일'
+        : /Firefox\//.test(agent)
+          ? 'Firefox'
+          : /Chrome\//.test(agent)
+            ? 'Chrome'
+            : /Safari\//.test(agent)
+              ? 'Safari'
+              : '';
+  return [browser, os].filter(Boolean).join(' · ') || '패스키';
+}
 
 /** 6자리 숫자 코드 */
 function sixDigits(): string {
@@ -155,6 +221,10 @@ export class Directory extends DurableObject<Env> {
       CREATE INDEX IF NOT EXISTS sessions_by_user ON sessions(user_id);
       CREATE TABLE IF NOT EXISTS email_codes (email TEXT PRIMARY KEY, hash TEXT NOT NULL, expires_at INTEGER NOT NULL,
         attempts INTEGER NOT NULL DEFAULT 0, sent_at INTEGER NOT NULL);
+      CREATE TABLE IF NOT EXISTS passkeys (id TEXT PRIMARY KEY, user_id TEXT NOT NULL, public_key TEXT NOT NULL, alg INTEGER NOT NULL,
+        sign_count INTEGER NOT NULL DEFAULT 0, transports TEXT NOT NULL DEFAULT '[]', name TEXT NOT NULL, created_at INTEGER NOT NULL,
+        last_used_at INTEGER);
+      CREATE INDEX IF NOT EXISTS passkeys_by_user ON passkeys(user_id);
       CREATE TABLE IF NOT EXISTS auth_flows (id TEXT PRIMARY KEY, kind TEXT NOT NULL, data TEXT NOT NULL, expires_at INTEGER NOT NULL);
       CREATE TABLE IF NOT EXISTS rate (key TEXT NOT NULL, bucket INTEGER NOT NULL, count INTEGER NOT NULL, expires_at INTEGER NOT NULL,
         PRIMARY KEY (key, bucket));
@@ -185,6 +255,7 @@ export class Directory extends DurableObject<Env> {
    *  · 이메일: 6자리 코드를 메일로 보내고 확인하면 로그인 (비밀번호 없음)
    *  · 외부 계정(구글 · 깃허브): 같은 외부 계정 → 같은 (확인된) 이메일의 계정 순으로 찾는다
    *  · 처음이면 가입 티켓을 주고, 이름을 정하면 계정을 만든다
+   *  · 패스키: 로그인한 계정에 기기의 키를 등록해 두면, 다음부터 이메일 · 코드 없이 지문 · 얼굴 · PIN으로 로그인
    *  · 세션 토큰은 해시만 저장한다
    */
 
@@ -427,7 +498,135 @@ export class Directory extends DurableObject<Env> {
       .exec<{ provider: OAuthProvider }>('SELECT provider FROM identities WHERE user_id = ? ORDER BY created_at', userId)
       .toArray()
       .map((r) => r.provider);
-    return { email, providers };
+    const passkeys = this.sql.exec<{ n: number }>('SELECT COUNT(*) AS n FROM passkeys WHERE user_id = ?', userId).toArray()[0]?.n ?? 0;
+    return { email, providers, passkeys };
+  }
+
+  /* ───────────── 패스키 ───────────── */
+
+  /** 등록 준비: 챌린지 · 사용자 핸들 · 이미 등록된 키(같은 기기에 중복 등록 방지) */
+  async passkeyRegisterOptions(userId: string): Promise<
+    Result<{ challenge: string; user: { id: string; name: string; displayName: string }; exclude: { id: string; transports: string[] }[] }>
+  > {
+    const user = this.user(userId);
+    if (!user) return fail(404, '사용자를 찾을 수 없습니다.');
+    const keys = this.sql.exec<{ id: string; transports: string }>('SELECT id, transports FROM passkeys WHERE user_id = ?', userId).toArray();
+    if (keys.length >= MAX_PASSKEYS) return fail(400, `패스키는 계정마다 ${MAX_PASSKEYS}개까지 등록할 수 있습니다. 쓰지 않는 패스키를 지운 뒤 다시 시도해 주세요.`);
+    const challenge = b64urlEncode(crypto.getRandomValues(new Uint8Array(32)));
+    this.putFlow(await sha256Hex(`reg:${challenge}`), 'passkey_reg', { userId });
+    this.sweep();
+    const email = this.sql.exec<{ email: string | null }>('SELECT email FROM users WHERE id = ?', userId).toArray()[0]?.email;
+    return ok({
+      challenge,
+      user: { id: b64urlEncode(new TextEncoder().encode(userId)), name: email ?? user.name, displayName: user.name },
+      exclude: keys.map((k) => ({ id: k.id, transports: parseTransports(k.transports) })),
+    });
+  }
+
+  /** 등록: 이 계정이 받은 챌린지에 대한 응답인지 · 이 사이트의 키인지 확인하고 공개 키를 저장 */
+  async passkeyRegister(userId: string, input: PasskeyRegistration, site: PasskeySite, agent: string): Promise<Result<PasskeyInfo>> {
+    try {
+      const id = b64urlEncode(b64urlDecode(input.id, 1400));
+      const clientData = b64urlDecode(input.clientDataJSON);
+      const authData = b64urlDecode(input.authenticatorData, 8192);
+      const publicKey = b64urlDecode(input.publicKey, 2048);
+      if (!isPasskeyAlg(input.algorithm)) return fail(400, '이 기기의 패스키 형식은 아직 지원하지 않습니다.');
+      const alg: PasskeyAlg = input.algorithm;
+      const { challenge } = readClientData(clientData, 'webauthn.create', site.origin);
+      const flowId = await sha256Hex(`reg:${challenge}`);
+      const flow = this.readFlow<{ userId: string }>(flowId, 'passkey_reg');
+      this.sql.exec('DELETE FROM auth_flows WHERE id = ?', flowId);
+      if (!flow || flow.userId !== userId) return fail(400, '패스키 등록 요청이 만료되었습니다. 다시 시도해 주세요.', { reason: 'expired' });
+      const parsed = await readAuthData(authData, site.rpId);
+      if (!parsed.credentialId || b64urlEncode(parsed.credentialId) !== id) return fail(400, '잘못된 패스키 응답입니다.');
+      await checkPublicKey(publicKey, alg);
+      const owner = this.sql.exec<{ user_id: string }>('SELECT user_id FROM passkeys WHERE id = ?', id).toArray()[0];
+      if (owner) return fail(409, '이미 등록된 패스키입니다.');
+      const count = this.sql.exec<{ n: number }>('SELECT COUNT(*) AS n FROM passkeys WHERE user_id = ?', userId).toArray()[0]?.n ?? 0;
+      if (count >= MAX_PASSKEYS) return fail(400, `패스키는 계정마다 ${MAX_PASSKEYS}개까지 등록할 수 있습니다.`);
+      const transports = Array.isArray(input.transports)
+        ? input.transports.filter((t): t is string => typeof t === 'string' && /^[a-z-]{1,16}$/.test(t)).slice(0, 8)
+        : [];
+      const now = Date.now();
+      const name = deviceLabel(agent);
+      this.sql.exec(
+        'INSERT INTO passkeys (id, user_id, public_key, alg, sign_count, transports, name, created_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?)',
+        id,
+        userId,
+        b64urlEncode(publicKey),
+        alg,
+        parsed.signCount,
+        JSON.stringify(transports),
+        name,
+        now,
+      );
+      return ok({ id, name, createdAt: now, lastUsedAt: null });
+    } catch (err) {
+      if (err instanceof PasskeyError) return fail(400, err.message);
+      throw err;
+    }
+  }
+
+  /** 로그인 준비: 누구인지 모르는 상태에서 챌린지만 준다 (기기가 이 사이트의 패스키를 골라 보여 준다) */
+  async passkeyLoginOptions(ip: string | null): Promise<Result<{ challenge: string }>> {
+    const wait = ip ? this.limit(`pk:${ip}`, 120, 3_600_000) : null;
+    if (wait) return fail(429, '로그인 요청이 너무 많습니다. 잠시 후 다시 시도해 주세요.', { retryAfter: wait });
+    const challenge = b64urlEncode(crypto.getRandomValues(new Uint8Array(32)));
+    this.putFlow(await sha256Hex(`auth:${challenge}`), 'passkey_auth', {});
+    this.sweep();
+    return ok({ challenge });
+  }
+
+  /** 패스키 로그인: 챌린지(한 번만) · 출처 · 사이트 · 본인 확인 · 서명 · 서명 횟수를 확인한 뒤 세션 */
+  async passkeyLogin(input: PasskeyAssertion, site: PasskeySite, agent: string): Promise<Result<AuthOutcome>> {
+    try {
+      const id = b64urlEncode(b64urlDecode(input.id, 1400));
+      const clientData = b64urlDecode(input.clientDataJSON);
+      const authData = b64urlDecode(input.authenticatorData, 8192);
+      const signature = b64urlDecode(input.signature, 2048);
+      const { challenge } = readClientData(clientData, 'webauthn.get', site.origin);
+      const flowId = await sha256Hex(`auth:${challenge}`);
+      const flow = this.readFlow(flowId, 'passkey_auth');
+      this.sql.exec('DELETE FROM auth_flows WHERE id = ?', flowId);
+      if (!flow) return fail(400, '로그인 요청이 만료되었습니다. 다시 시도해 주세요.', { reason: 'expired' });
+      const key = this.sql
+        .exec<{ user_id: string; public_key: string; alg: number; sign_count: number }>('SELECT user_id, public_key, alg, sign_count FROM passkeys WHERE id = ?', id)
+        .toArray()[0];
+      if (!key || !isPasskeyAlg(key.alg))
+        return fail(401, '등록되지 않은 패스키입니다. 이메일로 로그인한 뒤 패스키를 다시 등록해 주세요.', { reason: 'unknown_passkey' });
+      if (input.userHandle !== undefined && input.userHandle !== null && input.userHandle !== '') {
+        if (new TextDecoder().decode(b64urlDecode(input.userHandle, 128)) !== key.user_id) return fail(401, '잘못된 패스키 응답입니다.');
+      }
+      const parsed = await readAuthData(authData, site.rpId);
+      if (!(await verifySignature(b64urlDecode(key.public_key), key.alg, authData, clientData, signature))) return fail(401, '패스키 서명을 확인하지 못했습니다.');
+      // 서명 횟수가 줄었다면 키가 복제되었을 수 있다 (0만 보내는 기기도 많다)
+      if ((parsed.signCount > 0 || key.sign_count > 0) && parsed.signCount <= key.sign_count)
+        return fail(401, '이 패스키를 확인할 수 없습니다. 이메일로 로그인해 주세요.');
+      const user = this.user(key.user_id);
+      if (!user) return fail(401, '등록되지 않은 패스키입니다.', { reason: 'unknown_passkey' });
+      this.sql.exec('UPDATE passkeys SET sign_count = ?, last_used_at = ? WHERE id = ?', parsed.signCount, Date.now(), id);
+      return ok({ status: 'signed_in', user, session: await this.createSession(user.id, agent) });
+    } catch (err) {
+      if (err instanceof PasskeyError) return fail(400, err.message);
+      throw err;
+    }
+  }
+
+  async listPasskeys(userId: string): Promise<PasskeyInfo[]> {
+    return this.sql
+      .exec<{ id: string; name: string; created_at: number; last_used_at: number | null }>(
+        'SELECT id, name, created_at, last_used_at FROM passkeys WHERE user_id = ? ORDER BY created_at',
+        userId,
+      )
+      .toArray()
+      .map((r) => ({ id: r.id, name: r.name, createdAt: r.created_at, lastUsedAt: r.last_used_at }));
+  }
+
+  async deletePasskey(userId: string, id: string): Promise<Result<{ ok: true }>> {
+    const row = this.sql.exec<{ id: string }>('SELECT id FROM passkeys WHERE id = ? AND user_id = ?', id, userId).toArray()[0];
+    if (!row) return fail(404, '패스키를 찾을 수 없습니다.');
+    this.sql.exec('DELETE FROM passkeys WHERE id = ?', id);
+    return ok({ ok: true });
   }
 
   /**

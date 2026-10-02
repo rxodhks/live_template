@@ -1,5 +1,5 @@
 import type { AuthConfig, InviteOptions, OAuthProvider, PublicUser, Role, ShareUpload, TemplateVisibility } from '../../shared/types';
-import { type AuthOutcome, Directory, SESSION_TTL_MS, TRASH_TTL_MS, hasRole } from './directory';
+import { type AuthOutcome, Directory, type PasskeyAssertion, type PasskeyRegistration, type PasskeySite, SESSION_TTL_MS, TRASH_TTL_MS, hasRole } from './directory';
 import { TemplateRoom } from './room';
 import type { Env } from './env';
 import { CLIENT_VERSION, CLIENT_VERSION_HEADER, CLIENT_VERSION_PARAM } from '../../shared/protocol';
@@ -236,6 +236,51 @@ route('POST', '/api/auth/email/verify', async (c) => {
   const digits = typeof code === 'string' ? code.replace(/\D/g, '') : '';
   if (!addr || digits.length !== 6) throw new HttpError(400, '6자리 인증 코드를 입력해 주세요.');
   return signedIn(unwrap(await directory(c.env).verifyEmailCode(addr, digits, agentOf(c.req))));
+});
+
+/*
+ * 패스키: 이메일 코드로 한 번 로그인한 뒤 기기에 등록해 두면, 다음부터는 지문 · 얼굴 · PIN 한 번으로 로그인
+ * 사이트(RP ID)와 출처는 배포된 주소로 정한다. 개발 서버(내 컴퓨터)는 요청 주소 · Origin 헤더를 배포 주소로 바꿔 전달하므로
+ * localhost 화면(Vite · wrangler dev)을 받는다 (IP 주소는 패스키 사이트가 될 수 없다)
+ */
+function passkeySite(c: Ctx): PasskeySite {
+  if (isLocal(c.req)) return { origin: null, rpId: 'localhost' };
+  return { origin: c.url.origin, rpId: c.url.hostname };
+}
+
+route('POST', '/api/auth/passkey/register/options', async (c) => {
+  const user = await requireUser(c);
+  const site = passkeySite(c);
+  const opts = unwrap(await directory(c.env).passkeyRegisterOptions(user.id));
+  return json({ ...opts, rp: { id: site.rpId, name: 'Madang' } });
+});
+
+route('POST', '/api/auth/passkey/register', async (c) => {
+  const user = await requireUser(c);
+  const input = await body<PasskeyRegistration>(c.req, 32 * 1024);
+  return json({ passkey: unwrap(await directory(c.env).passkeyRegister(user.id, input, passkeySite(c), agentOf(c.req))) }, 201);
+});
+
+route('POST', '/api/auth/passkey/login/options', async (c) => {
+  const site = passkeySite(c);
+  const r = unwrap(await directory(c.env).passkeyLoginOptions(devMode(c) ? null : clientIp(c.req)));
+  return json({ ...r, rpId: site.rpId });
+});
+
+route('POST', '/api/auth/passkey/login', async (c) => {
+  const input = await body<PasskeyAssertion>(c.req, 32 * 1024);
+  return signedIn(unwrap(await directory(c.env).passkeyLogin(input, passkeySite(c), agentOf(c.req))));
+});
+
+route('GET', '/api/me/passkeys', async (c) => {
+  const user = await requireUser(c);
+  return json({ passkeys: await directory(c.env).listPasskeys(user.id) });
+});
+
+route('DELETE', '/api/me/passkeys/:id', async (c) => {
+  const user = await requireUser(c);
+  if (!/^[A-Za-z0-9_-]{1,1400}$/.test(c.params.id)) throw new HttpError(404, '패스키를 찾을 수 없습니다.');
+  return json(unwrap(await directory(c.env).deletePasskey(user.id, c.params.id)));
 });
 
 /* 외부 계정: 구글 · 깃허브 */
