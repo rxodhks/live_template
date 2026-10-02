@@ -149,6 +149,7 @@ function DocView({ item }: { item: YItem }) {
             ))}
           </select>
         )}
+        {!ws.canEdit && <span className="status-readonly">읽기 전용</span>}
         <DocStats editor={editor} />
         <Menu
           align="end"

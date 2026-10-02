@@ -5,6 +5,7 @@ import {
   History,
   Home,
   Keyboard,
+  MessageSquareHeart,
   LayoutDashboard,
   Lock,
   Palette,
@@ -109,6 +110,9 @@ export function LeftRail() {
       )}
 
       <div className="rail-group rail-bottom">
+        <button className="rail-item" data-tip="피드백 보내기" data-tip-side="right" aria-label="피드백 보내기" onClick={() => useUI.getState().setFeedbackOpen(true)}>
+          <MessageSquareHeart size={19} />
+        </button>
         <button className="rail-item" data-tip="키보드 단축키 (?)" data-tip-side="right" onClick={() => setShortcutsOpen(true)}>
           <Keyboard size={19} />
         </button>

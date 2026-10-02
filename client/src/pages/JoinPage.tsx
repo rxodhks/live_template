@@ -159,6 +159,11 @@ function JoinCard() {
             </span>
           ))}
         </div>
+        {onPhone() && (
+          <p className="join-pc-hint" role="note">
+            Madang은 PC 화면용입니다. 휴대폰에서는 화면이 잘려 보일 수 있으니 이 링크를 <b>PC 브라우저</b>에서 열어 주세요.
+          </p>
+        )}
         <div className="join-facts">
           <span>
             <Users size={13} /> 멤버 {t.memberCount}명
@@ -201,4 +206,13 @@ function JoinCard() {
       </div>
     </div>
   );
+}
+
+/** 휴대폰(터치 · 작은 화면)에서 열었는지 — 앱은 데스크톱 폭에 맞춰져 있어 안내한다 */
+function onPhone(): boolean {
+  try {
+    return window.matchMedia('(pointer: coarse)').matches && Math.min(window.screen.width, window.screen.height) < 820;
+  } catch {
+    return false;
+  }
 }

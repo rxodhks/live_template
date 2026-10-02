@@ -168,6 +168,10 @@ npm run deploy         # 화면 빌드 + wrangler deploy
 2. *Generate a new client secret*
 3. Secrets `GIT_CLIENT_ID`, `GIT_CLIENT_SECRET`
 
+**피드백 · 화면 오류 받기**
+- 앱 왼쪽 아래(와 프로필 메뉴)의 **피드백 보내기**로 온 의견은 저장되고 Workers Logs에 `[피드백]`으로 남습니다. Secret `FEEDBACK_EMAIL`(받을 주소)을 넣으면 Resend로 메일도 보냅니다 (`RESEND_API_KEY` 필요).
+- 사용자 브라우저에서 난 처리되지 않은 오류는 Workers Logs에 `[화면 오류]`로 남습니다 (*Workers & Pages → madang → Observability → Logs*에서 검색).
+
 ### 무료 요금제에서 얼마나 쓸 수 있나 (작성 시점 기준)
 
 | 항목 | 무료 한도 (매일 초기화) | 이 앱에서 쓰이는 곳 |

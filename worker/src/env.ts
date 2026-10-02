@@ -25,6 +25,8 @@ export interface Env {
    */
   TURNSTILE_SITE_KEY?: string;
   TURNSTILE_SECRET_KEY?: string;
+  /** 앱 안 "피드백 보내기"로 온 의견을 받을 메일 주소 (RESEND_API_KEY가 있을 때). 없으면 저장 · 로그에만 남긴다 */
+  FEEDBACK_EMAIL?: string;
   /** "1"이면 로컬(localhost)에서만 인증 코드를 응답에 담아 준다 — 개발 · 테스트용 */
   AUTH_DEV_MODE?: string;
 }

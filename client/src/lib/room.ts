@@ -51,6 +51,7 @@ export class RoomConnection {
 
   constructor(readonly templateId: string) {
     window.addEventListener('online', this.reconnectNow);
+    window.addEventListener('offline', this.dropNow);
     document.addEventListener('visibilitychange', this.onVisible);
     this.connect();
   }
@@ -112,6 +113,7 @@ export class RoomConnection {
   close(): void {
     this.closed = true;
     window.removeEventListener('online', this.reconnectNow);
+    window.removeEventListener('offline', this.dropNow);
     document.removeEventListener('visibilitychange', this.onVisible);
     this.cleanup();
     try {
@@ -163,6 +165,8 @@ export class RoomConnection {
     this.ws = ws;
 
     ws.onmessage = (e) => {
+      // 오프라인 알림으로 먼저 내려놓은 연결이 늦게 받은 메시지는 버린다
+      if (this.ws !== ws) return;
       if (e.data === 'pong') {
         if (this.pongTimer) clearTimeout(this.pongTimer);
         this.pongTimer = null;
@@ -251,6 +255,26 @@ export class RoomConnection {
     this.retryTimer = null;
     this.attempt = 0;
     this.connect();
+  };
+
+  /**
+   * 브라우저가 인터넷이 끊겼다고 알려 주면 바로 오프라인으로 바꾼다.
+   * 끊긴 연결은 닫기 응답도 오지 않아 ping 시간 초과(최대 35초)까지 "저장 중"으로 보였다.
+   * 다시 연결되면 'online' 이벤트(또는 재시도)로 접속하고, 상태 벡터 비교로 빠진 변경을 다시 보낸다.
+   */
+  private dropNow = () => {
+    const ws = this.ws;
+    if (this.closed || !ws) return;
+    this.ws = null;
+    this.cleanup();
+    this.setOthers((set) => set.clear());
+    this.setStatus('offline');
+    try {
+      ws.close(4003, 'offline');
+    } catch {
+      /* 무시 */
+    }
+    this.scheduleRetry();
   };
 
   private onVisible = () => {

@@ -41,3 +41,22 @@ export async function sendLoginCode(env: Env, to: string, code: string): Promise
   });
   if (!res.ok) throw new Error(`Resend ${res.status}: ${(await res.text().catch(() => '')).slice(0, 300)}`);
 }
+
+const escape = (s: string) => s.replace(/[&<>"']/g, (ch) => `&#${ch.charCodeAt(0)};`);
+
+/** 앱 안 "피드백 보내기"로 온 의견을 운영자에게 */
+export async function sendFeedback(env: Env, to: string, from: { name: string; id: string }, message: string, context: Record<string, unknown>): Promise<void> {
+  const lines = Object.entries(context).map(([k, v]) => `${k}: ${typeof v === 'string' ? v : JSON.stringify(v)}`);
+  const res = await fetch('https://api.resend.com/emails', {
+    method: 'POST',
+    headers: { authorization: `Bearer ${env.RESEND_API_KEY}`, 'content-type': 'application/json' },
+    body: JSON.stringify({
+      from: env.EMAIL_FROM || DEFAULT_FROM,
+      to: [to],
+      subject: `[Madang 피드백] ${from.name}: ${message.replace(/\s+/g, ' ').slice(0, 40)}`,
+      text: `${from.name} (${from.id})\n\n${message}\n\n---\n${lines.join('\n')}`,
+      html: `<p><b>${escape(from.name)}</b> <span style="color:#889096">(${escape(from.id)})</span></p><p style="white-space:pre-wrap">${escape(message)}</p><hr><pre style="color:#687076;font-size:12px;white-space:pre-wrap">${escape(lines.join('\n'))}</pre>`,
+    }),
+  });
+  if (!res.ok) throw new Error(`Resend ${res.status}: ${(await res.text().catch(() => '')).slice(0, 300)}`);
+}

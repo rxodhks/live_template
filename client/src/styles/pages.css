@@ -970,3 +970,14 @@
   display: flex;
   flex-direction: column;
 }
+
+/* 휴대폰에서 연 초대 링크: PC에서 열어 달라는 안내 */
+.join-pc-hint {
+  margin: 4px 0 0;
+  padding: 10px 12px;
+  border-radius: 10px;
+  background: var(--warning-soft);
+  color: var(--text);
+  font-size: 13px;
+  line-height: 1.5;
+}

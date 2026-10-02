@@ -251,6 +251,7 @@ function CreatedLink({ invite, templateName, inviter, onNew }: { invite: InviteI
           복사
         </Button>
       </div>
+      <p className="muted small invite-pc-hint">받는 분께 PC 브라우저에서 열어 달라고 알려 주세요. 휴대폰 화면은 아직 지원하지 않습니다.</p>
       <div className="invite-created-actions">
         <Button
           size="sm"

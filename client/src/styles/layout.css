@@ -489,3 +489,30 @@ body.is-resizing {
   border-color: transparent;
   color: #fff;
 }
+
+/* 저장 한도 안내 — 편집 화면 아래쪽에 고정 (따라가기 배너보다 위에) */
+.too-large-banner {
+  position: absolute;
+  left: 50%;
+  bottom: 84px;
+  transform: translateX(-50%);
+  z-index: 42;
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  width: min(720px, calc(100% - 32px));
+  padding: 10px 12px 10px 14px;
+  background: var(--warning-soft);
+  color: var(--text);
+  border: 1px solid var(--warning);
+  border-radius: 12px;
+  box-shadow: var(--shadow-lg, 0 8px 24px rgba(0, 0, 0, 0.12));
+  font-size: 13px;
+  line-height: 1.5;
+}
+.too-large-banner > span {
+  flex: 1;
+}
+.too-large-banner .btn {
+  flex-shrink: 0;
+}
