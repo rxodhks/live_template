@@ -174,6 +174,15 @@ npm run deploy         # 화면 빌드 + wrangler deploy
 2. *Generate a new client secret*
 3. Secrets `GIT_CLIENT_ID`, `GIT_CLIENT_SECRET`
 
+### 테스트 사이트 (staging)
+
+main에 합치면 바로 https://madang.party 에 배포되므로, 그 전에 브랜치를 **https://staging.madang.party** 에 띄워 확인할 수 있습니다.
+
+- **배포 방법**: PR에 `staging` 라벨을 붙이면 그 PR의 브랜치가 테스트 사이트에 배포되고, 라벨이 붙어 있는 동안 새로 올린 커밋도 다시 배포됩니다. Actions 탭의 **Deploy to staging → Run workflow**에서 브랜치를 골라 직접 배포할 수도 있습니다.
+- 테스트 사이트는 하나뿐이라 마지막으로 배포한 브랜치가 보입니다. 다 봤으면 라벨을 떼 주세요.
+- 다른 Worker(`madang-staging`)라서 **계정 · 템플릿 저장소가 실제 사이트와 완전히 분리**됩니다. 화면 아래에 "테스트 사이트" 표시가 나옵니다.
+- 로그인: 이메일(인증 코드)은 실제 사이트와 같은 설정을 씁니다. 봇 확인(Turnstile)을 켰다면 Turnstile 위젯의 호스트 이름에 `staging.madang.party`를 추가해 주세요. Google · GitHub 로그인은 콜백 주소가 달라 기본으로 꺼져 있고, 쓰려면 테스트용 OAuth 설정을 `STAGING_GOOGLE_CLIENT_ID/SECRET` · `STAGING_GIT_CLIENT_ID/SECRET` 저장소 Secret으로 넣습니다.
+
 ### 무료 요금제에서 얼마나 쓸 수 있나 (작성 시점 기준)
 
 | 항목 | 무료 한도 (매일 초기화) | 이 앱에서 쓰이는 곳 |

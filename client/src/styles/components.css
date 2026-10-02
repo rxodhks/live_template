@@ -1299,3 +1299,20 @@ body:has(.narrow-notice) .toast-viewport {
   font-size: 13px;
   border-bottom: 1px dashed var(--border);
 }
+
+/* 테스트 사이트 표시 */
+.staging-badge {
+  position: fixed;
+  left: 50%;
+  bottom: 10px;
+  transform: translateX(-50%);
+  z-index: 9999;
+  padding: 4px 12px;
+  border-radius: 999px;
+  background: var(--warning);
+  color: #fff;
+  font-size: 12px;
+  font-weight: 600;
+  pointer-events: none;
+  box-shadow: var(--shadow-sm);
+}

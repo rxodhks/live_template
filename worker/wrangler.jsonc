@@ -27,5 +27,21 @@
   },
   // 무료 요금제에서는 SQLite 저장소를 쓰는 Durable Object만 사용할 수 있다
   "migrations": [{ "tag": "v1", "new_sqlite_classes": ["Directory", "TemplateRoom"] }],
-  "observability": { "enabled": true }
+  "observability": { "enabled": true },
+  "env": {
+    // 테스트 사이트 (https://staging.madang.party): main에 합치기 전에 브랜치를 실제 환경처럼 띄워 본다.
+    // 다른 Worker라 계정 · 템플릿 저장소(Durable Objects)가 실제 사이트와 완전히 분리된다.
+    // 배포: PR에 'staging' 라벨을 붙이거나 Actions의 Deploy to staging (.github/workflows/deploy-staging.yml)
+    "staging": {
+      "name": "madang-staging",
+      "routes": [{ "pattern": "staging.madang.party", "custom_domain": true }],
+      "durable_objects": {
+        "bindings": [
+          { "name": "DIRECTORY", "class_name": "Directory" },
+          { "name": "ROOM", "class_name": "TemplateRoom" }
+        ]
+      },
+      "migrations": [{ "tag": "v1", "new_sqlite_classes": ["Directory", "TemplateRoom"] }]
+    }
+  }
 }
