@@ -4,6 +4,11 @@
   X-Frame-Options: DENY
   X-Content-Type-Options: nosniff
   Referrer-Policy: strict-origin-when-cross-origin
+  # 최소한의 콘텐츠 보안 정책: 프레임 금지(X-Frame-Options의 표준 대체) · <base> 바꿔치기 · 플러그인(object/embed) 금지.
+  # 스크립트 출처 제한은 화면 전체 점검이 필요해 아직 넣지 않았다
+  Content-Security-Policy: frame-ancestors 'none'; base-uri 'self'; object-src 'none'
+  # 한 번 https로 연 브라우저는 1년 동안 http로 접속하지 않는다 (하위 도메인은 포함하지 않음)
+  Strict-Transport-Security: max-age=31536000
 
 # /assets/ 파일과 /runtimes/<id>-<해시>/ 폴더는 이름에 내용 해시가 붙어 바뀌지 않으므로
 # 브라우저가 1년 동안 다시 묻지 않고 쓴다. index.html 등 나머지는 기본값(매번 확인)을 유지해

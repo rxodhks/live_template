@@ -592,6 +592,8 @@ describe('로그인', () => {
       assert.equal(res.status, 200);
       assert.equal(res.headers.get('x-frame-options'), 'DENY', p);
       assert.equal(res.headers.get('x-content-type-options'), 'nosniff', p);
+      assert.match(res.headers.get('content-security-policy') ?? '', /frame-ancestors 'none'/, p);
+      assert.match(res.headers.get('strict-transport-security') ?? '', /max-age=\d+/, p);
     }
   });
 
