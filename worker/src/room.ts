@@ -26,6 +26,7 @@ import { type ClientMessage, MAX_DOC_BYTES, type NoteJoinData, type ServerMessag
 import { ACTIVITY, CLIENT_REPORTABLE, COALESCE_WINDOW_MS } from '../../shared/activity';
 import type { Env } from './env';
 import { type Result, clampText, fail, fromB64, isId, newId, ok, safeEqual, sha256Hex, toB64 } from './util';
+import { versionsToDrop } from './versions';
 
 /*
  * TemplateRoom — 협업 템플릿 하나 = Durable Object 하나.
@@ -59,8 +60,6 @@ const ACL_RECHECK_MS = 60_000;
 const CHUNK_BYTES = 1_000_000;
 /** 버전 기록: 변경이 있으면 1시간마다 문서 전체를 저장, 48시간 이내는 모두 · 그 뒤로는 하루 하나씩 30일까지 보관 */
 const VERSION_INTERVAL_MS = 60 * 60 * 1000;
-const VERSION_KEEP_ALL_MS = 48 * 60 * 60 * 1000;
-const VERSION_KEEP_DAILY_MS = 30 * 86_400_000;
 
 /**
  * 저장하지 않는 순간 정보(커서 · 화면 위치/선택 · 펜 미리보기 · 텍스트 커서 · 행동 라벨) 한도: 사람마다 초당 평균 60개, 몰아서 200개까지
@@ -730,19 +729,10 @@ export class TemplateRoom extends DurableObject<Env> {
     this.saveVersion(Y.encodeStateAsUpdate(this.doc));
   }
 
-  /** 48시간 이내는 모두, 그 뒤로는 날짜마다 마지막 버전 하나씩 30일까지 */
+  /** 48시간 이내는 모두, 그 뒤로는 날짜마다 마지막 버전 하나씩 30일까지, 모두 합쳐 64MB까지 (versions.ts) */
   private pruneVersions(now: number): void {
-    const rows = this.sql.exec<{ id: number; at: number }>('SELECT id, at FROM versions ORDER BY at DESC').toArray();
-    const days = new Set<number>();
-    const drop: number[] = [];
-    for (const r of rows) {
-      const age = now - r.at;
-      if (age <= VERSION_KEEP_ALL_MS) continue;
-      const day = Math.floor((r.at + 9 * 3_600_000) / 86_400_000); // 한국 시간 기준 날짜
-      if (age > VERSION_KEEP_DAILY_MS || days.has(day)) drop.push(r.id);
-      else days.add(day);
-    }
-    for (const id of drop) {
+    const rows = this.sql.exec<{ id: number; at: number; size: number }>('SELECT id, at, size FROM versions').toArray();
+    for (const id of versionsToDrop(rows, now)) {
       this.sql.exec('DELETE FROM version_parts WHERE version_id = ?', id);
       this.sql.exec('DELETE FROM versions WHERE id = ?', id);
     }

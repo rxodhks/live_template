@@ -1356,6 +1356,19 @@ describe('피드백 · 화면 오류', () => {
     const big = await backup(u, newTemplateId(), { 'big.txt': 'x'.repeat(14 * 1024 * 1024) }, '한글 이름의 큰 템플릿');
     assert.equal(big.status, 201, JSON.stringify(big.data).slice(0, 200));
   });
+
+  it('템플릿은 사람마다 하루 20개까지 올릴 수 있다 (같은 템플릿 재시도는 세지 않는다)', async () => {
+    const u = await newUser('많이올림');
+    const first = newTemplateId();
+    assert.equal((await backup(u, first, { 'a.txt': '1' })).status, 201);
+    for (let i = 1; i < 20; i++) assert.equal((await backup(u, newTemplateId(), { 'a.txt': String(i) })).status, 201, `${i + 1}번째`);
+    const over = await backup(u, newTemplateId(), { 'a.txt': '21' });
+    assert.equal(over.status, 429);
+    assert.equal(over.data.reason, 'upload_limit');
+    assert.ok(over.data.retryAfter > 0 && over.data.retryAfter <= 86_400);
+    assert.equal((await backup(u, first, { 'a.txt': '1' })).status, 201, '이미 올린 템플릿을 다시 보내는 것은 된다');
+    assert.equal((await backup(await newUser('다른사람'), newTemplateId(), { 'a.txt': 'x' })).status, 201, '다른 사람에게는 영향 없음');
+  });
 });
 
 describe('영속성', () => {

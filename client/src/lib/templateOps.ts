@@ -96,7 +96,8 @@ export function backupPending(): Promise<number> {
           await backupTemplate(t);
           done++;
         } catch (err) {
-          if (err instanceof ApiError && err.status === 0) break;
+          // 오프라인이거나 오늘 올릴 수 있는 수를 다 썼으면 (하루 상한) 나머지는 다음에. 이 기기에는 그대로 남아 있다
+          if (err instanceof ApiError && (err.status === 0 || err.status === 429)) break;
           console.warn('개인 템플릿 백업 실패', t.id, err);
         }
       }

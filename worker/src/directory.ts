@@ -64,6 +64,12 @@ const PASSKEY_REAUTH_MS = 10 * 60_000;
 const KNOWN_DEVICE_TTL_MS = 400 * 86_400_000;
 /** 휴지통 보관 기간: 지나면 영구 삭제 */
 export const TRASH_TTL_MS = 30 * 86_400_000;
+/**
+ * 템플릿 올리기(개인 공간 백업 · 협업 공간 전환) 상한: 사람마다 하루 20개.
+ * 올릴 때마다 최대 16MB를 저장해서, 상한이 없으면 가입한 누구나 몇 분 만에 계정 전체 저장 공간을 채울 수 있었다
+ * (새 계정 하나로 15MB 템플릿 4개를 8초에 올려 저장소가 6MB → 232MB). 같은 템플릿을 다시 올리는 재시도는 세지 않는다
+ */
+export const TEMPLATE_UPLOADS_PER_DAY = 20;
 /** 외부 로그인 왕복 · 이름 입력까지 기다리는 시간 */
 const FLOW_TTL_MS = { oauth: 10 * 60_000, signup: 30 * 60_000, passkey_reg: 10 * 60_000, passkey_auth: 10 * 60_000 } as const;
 
@@ -1025,6 +1031,10 @@ export class Directory extends DurableObject<Env> {
     if (!name) return fail(400, '템플릿 이름을 입력해 주세요.');
     const features = sanitizeFeatures(input.features);
     if (!features) return fail(400, '기능을 하나 이상 선택해 주세요.');
+    const retryAfter = this.limit(`upload:${userId}`, TEMPLATE_UPLOADS_PER_DAY, 86_400_000);
+    if (retryAfter !== null) {
+      return fail(429, `템플릿은 하루에 ${TEMPLATE_UPLOADS_PER_DAY}개까지 클라우드에 올릴 수 있습니다. 내일 다시 시도해 주세요.`, { retryAfter, reason: 'upload_limit' });
+    }
     const now = Date.now();
     const createdAt = typeof input.createdAt === 'number' && input.createdAt > 0 && input.createdAt <= now ? input.createdAt : now;
     const emoji = typeof input.emoji === 'string' && input.emoji && input.emoji.length <= 8 ? input.emoji : '🗂️';
