@@ -54,6 +54,16 @@ const VERSION_INTERVAL_MS = 60 * 60 * 1000;
 const VERSION_KEEP_ALL_MS = 48 * 60 * 60 * 1000;
 const VERSION_KEEP_DAILY_MS = 30 * 86_400_000;
 
+/**
+ * 저장하지 않는 순간 정보(커서 · 화면 위치/선택 · 펜 미리보기 · 텍스트 커서 · 행동 라벨) 한도: 사람마다 초당 평균 60개, 몰아서 200개까지
+ * (서버가 밀려 쌓인 메시지를 한꺼번에 처리할 때 정상 사용자의 메시지를 버리지 않도록 넉넉히).
+ * 실제 화면은 모두 합쳐도 초당 40개 안팎이다(커서 10 · 위치 10 · 펜 12.5 · 텍스트 커서 7).
+ * 한도가 없으면 한 사람(뷰어도)이 쏟아낸 메시지가 방 전체에 접속자 수만큼 퍼져, 다른 사람의 편집 전달이 수십 초씩 밀렸다.
+ */
+const EPHEMERAL_RATE = 60;
+const EPHEMERAL_BURST = 200;
+const EPHEMERAL_TYPES: ReadonlySet<string> = new Set(['aw', 'live', 'presence', 'cursor', 'action', 'activity']);
+
 const VIEW_MODULES: ReadonlySet<ViewModule> = new Set(['overview', 'design', 'code', 'docs', 'notes', 'timeline', 'members', 'settings']);
 
 interface Attachment {
@@ -131,6 +141,8 @@ export class TemplateRoom extends DurableObject<Env> {
   private actions = new Map<string, { label: string; at: number }>();
   private leaveTimers = new Map<string, ReturnType<typeof setTimeout>>();
   private lastTouch = 0;
+  /** 순간 정보 한도 (사용자 ID → 남은 개수). 잠들면 비워지지만 한도라서 괜찮다 */
+  private ephemeral = new Map<string, { tokens: number; at: number }>();
 
   constructor(ctx: DurableObjectState, env: Env) {
     super(ctx, env);
@@ -336,6 +348,8 @@ export class TemplateRoom extends DurableObject<Env> {
     }
     const a = this.att(ws);
     if (!a) return;
+    // 한도를 넘는 순간 정보는 조용히 버린다 (다음 메시지가 최신 상태를 다시 싣는다)
+    if (EPHEMERAL_TYPES.has(msg.t) && !this.allowEphemeral(a.user.id)) return;
     const ack = (id: number, result: { ok: true; data?: unknown } | { ok: false; status: number; error: string }) =>
       this.send(ws, result.ok ? { t: 'ack', id, ok: true, data: result.data } : { t: 'ack', id, ok: false, status: result.status, error: result.error });
 
@@ -531,6 +545,17 @@ export class TemplateRoom extends DurableObject<Env> {
       }
     }
     if (changed) ws.serializeAttachment(a);
+    return true;
+  }
+
+  private allowEphemeral(userId: string): boolean {
+    const now = Date.now();
+    const b = this.ephemeral.get(userId) ?? { tokens: EPHEMERAL_BURST, at: now };
+    b.tokens = Math.min(EPHEMERAL_BURST, b.tokens + ((now - b.at) / 1000) * EPHEMERAL_RATE);
+    b.at = now;
+    this.ephemeral.set(userId, b);
+    if (b.tokens < 1) return false;
+    b.tokens -= 1;
     return true;
   }
 

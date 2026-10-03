@@ -1176,6 +1176,31 @@ describe('남용 방지', () => {
     await sleep(500);
   });
 
+  it('커서 같은 순간 정보를 쏟아내도 방 전체로 퍼지는 양에는 한도가 있다 (문서 변경은 그대로)', async () => {
+    const a = new Client(id, o.token);
+    const b = new Client(id, e.token);
+    await a.ready();
+    await b.ready();
+    await syncDoc(a);
+    const { doc } = await syncDoc(b);
+    const t0 = Date.now();
+    for (let i = 0; i < 1000; i++) b.send({ t: 'cursor', c: { x: i, y: i } });
+    // 쏟아낸 뒤에 보낸 문서 변경은 버려지지 않고 전달된다
+    const sv = Y.encodeStateVector(doc);
+    doc.getText('flood').insert(0, 'after');
+    const saved = b.request({ t: 'update', u: b64(Y.encodeStateAsUpdate(doc, sv)) });
+    await a.waitType('update', () => true, 10_000);
+    assert.equal((await saved).ok, true);
+    const elapsed = (Date.now() - t0) / 1000;
+    const relayed = a.messages.filter((m) => m.t === 'cursor').length;
+    // 한도: 몰아서 200개 + 초당 60개 (실제 화면은 초당 10개)
+    assert.ok(relayed <= 200 + Math.ceil(elapsed * 60) + 5, `중계된 커서 ${relayed}개 (${elapsed.toFixed(1)}초)`);
+    assert.ok(relayed >= 100, `정상 범위의 커서는 중계한다 (${relayed}개)`);
+    a.close();
+    b.close();
+    await sleep(300);
+  });
+
   it('문서가 너무 커지면 더 이상 받지 않는다 (16MB)', async () => {
     const c = new Client(id, e.token);
     await c.ready();
