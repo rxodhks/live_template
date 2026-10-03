@@ -8,6 +8,23 @@
     <meta name="description" content="디자인 · 코딩 · 문서를 한 마당에서 함께 만드는 실시간 협업 템플릿. 내 방에서 시작해, 마당에서 함께." />
     <title>Madang · 함께 만드는 작업 마당</title>
     <link rel="icon" href="/favicon.svg" type="image/svg+xml" />
+    <script>
+      // 앱 파일(JS)을 받고 실행하는 동안 기다리지 않도록, 시작하자마자 필요한 API 요청을 먼저 보낸다
+      // (lib/api.ts가 같은 요청을 한 번 이 응답으로 대신한다). 서버 주소를 따로 쓰면(VITE_API_BASE) 빌드할 때 끈다.
+      (function () {
+        if ('%API_PREFETCH%' !== 'on' || !window.fetch) return;
+        var p = (window.__ltPrefetch = {});
+        function get(path) {
+          p[path] = fetch('/api' + path, { credentials: 'same-origin', headers: { '%CLIENT_VERSION_HEADER%': '%CLIENT_VERSION%' } });
+          p[path].catch(function () {});
+        }
+        get('/me');
+        // 이 기기에 로그인 정보가 남아 있으면 앱은 서버 확인을 기다리지 않고 템플릿 목록부터 부른다
+        try {
+          if (localStorage.getItem('lt.account')) get('/templates');
+        } catch (e) {}
+      })();
+    </script>
     <!-- 글꼴 CSS(일반 요청)와 글꼴 파일(CORS 요청)은 연결을 따로 쓴다 -->
     <link rel="preconnect" href="https://cdn.jsdelivr.net" />
     <link rel="preconnect" href="https://cdn.jsdelivr.net" crossorigin />
