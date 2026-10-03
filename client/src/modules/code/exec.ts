@@ -53,10 +53,15 @@ export function execInfo(langId: string): ExecInfo {
 }
 
 /** 실행할 수 없는 언어 안내 */
-export function unsupportedMessage(langName: string): OutputLine[] {
+export function unsupportedMessage(langName: string, langId?: string): OutputLine[] {
+  if (langId === 'plaintext')
+    return [
+      line('system', '일반 텍스트 파일은 실행할 수 없습니다.'),
+      line('info', '상단의 언어 선택에서 언어를 고르거나 파일 이름에 확장자(.py, .js 등)를 붙이면 그 언어로 실행할 수 있습니다.'),
+    ];
   return [
     line('system', `${langName}은(는) 아직 사이트 안에서 실행할 수 없습니다.`),
-    line('info', '컴파일이 필요한 언어(C · C++ · Java · Go · Rust · Kotlin · Swift · C# · Shell)는 서버 실행 환경이 필요해 준비 중입니다. 코드를 내려받아 로컬에서 실행해 보세요.'),
+    line('info', 'C · C++ · Java · Go · Rust · Kotlin · Swift · C# · Shell은 서버 실행 환경이 필요해 준비 중입니다. 코드를 내려받아 로컬에서 실행해 보세요.'),
     line('info', '사이트 안에서 바로 실행: JavaScript · TypeScript · Python · SQL · Lua · Ruby · PHP / 미리보기: HTML · JSX · TSX · Markdown / 검사 · 변환: JSON · YAML · SCSS'),
   ];
 }
@@ -197,19 +202,30 @@ export async function buildReactPreview(doc: Y.Doc, entry: string): Promise<stri
     new Function('exports', 'require', 'module', 'React', modules[name] + '\\n//# sourceURL=' + encodeURI(name))(mod.exports, req, mod, React);
     return mod.exports;
   }
+  function showError(e) {
+    var root = document.getElementById('root');
+    root.innerHTML = '<pre style="color:#dc2626;white-space:pre-wrap;font:13px ui-monospace,monospace;padding:16px"></pre>';
+    root.querySelector('pre').textContent = String(e && e.message ? e.message : e);
+  }
   try {
     var exp = req('./' + ${JSON.stringify(entry)});
     var Comp = exp && (exp.default || exp.App);
     var root = document.getElementById('root');
     if (typeof Comp === 'function' || (Comp && typeof Comp === 'object' && Comp.$$typeof)) {
-      if (!root.hasChildNodes()) ReactDOM.createRoot(root).render(React.createElement(Comp));
+      // 그리는 중에 난 오류(정의되지 않은 변수 등)도 빈 화면 대신 미리보기에 보여 준다
+      if (!root.hasChildNodes())
+        ReactDOM.createRoot(root, {
+          onUncaughtError: function (e) {
+            console.error(e && e.message ? e.message : e);
+            setTimeout(function () { showError(e); });
+          },
+        }).render(React.createElement(Comp));
     } else if (!root.hasChildNodes() && !document.body.dataset.rendered) {
       root.innerHTML = '<p style="font:14px system-ui;color:#888;padding:16px">export default 로 내보낸 컴포넌트(또는 App)가 없습니다. 예) export default function App() { return &lt;h1&gt;안녕하세요&lt;/h1&gt; }</p>';
     }
   } catch (e) {
     console.error(e && e.message ? e.message : e);
-    document.getElementById('root').innerHTML = '<pre style="color:#dc2626;white-space:pre-wrap;font:13px ui-monospace,monospace;padding:16px"></pre>';
-    document.querySelector('#root pre').textContent = String(e && e.message ? e.message : e);
+    showError(e);
   }
 })();`;
   return `<!doctype html><html><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">${PREVIEW_CONSOLE}

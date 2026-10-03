@@ -25,11 +25,35 @@ const PREVIEW_CONSOLE = `<script>(function(){var p=function(l,a){try{parent.post
  */
 const PREVIEW_WATCHDOG = `<script>(function(){var b=function(m){try{parent.postMessage({__ltBeat:m||1},'*')}catch(e){}};b();setInterval(b,500);['alert','confirm','prompt'].forEach(function(k){var o=window[k];if(typeof o!=='function')return;window[k]=function(){b('modal');try{return o.apply(window,arguments)}finally{b()}}})})();<\/script>`;
 
-/** 미리보기 문서 맨 앞(head 안)에 멈춤 감지 신호를 넣는다 */
+/*
+ * 미리보기 보안 정책 — 미리보기 코드가 템플릿 내용 · 입력값을 바깥 서버로 보내지 못하게 fetch · XHR · WebSocket ·
+ * 다른 창(iframe) 열기 · 폼 전송을 막는다. CDN의 스크립트 · 스타일 · 이미지 · 글꼴은 웹 페이지를 만들 때 필요해 허용한다.
+ * (미리보기 iframe은 allow-same-origin 없이 샌드박스되어 있어 이 사이트의 로그인 정보에는 원래 닿지 않는다)
+ */
+export const PREVIEW_CSP = [
+  "default-src 'none'",
+  "script-src 'unsafe-inline' 'unsafe-eval' blob: data: https:",
+  "style-src 'unsafe-inline' blob: data: https:",
+  'img-src blob: data: https:',
+  'font-src blob: data: https:',
+  'media-src blob: data: https:',
+  'worker-src blob:',
+  "connect-src 'none'",
+  "frame-src 'none'",
+  "form-action 'none'",
+  "base-uri 'none'",
+].join('; ');
+const PREVIEW_CSP_META = `<meta http-equiv="Content-Security-Policy" content="${PREVIEW_CSP}">`;
+
+/**
+ * 미리보기 문서 맨 앞에 보안 정책과 멈춤 감지 신호를 넣는다.
+ * 사용자 코드보다 먼저 와야 하므로 <head> 안이 아니라 문서 맨 앞(doctype 바로 뒤)에 둔다.
+ */
 export function withPreviewWatchdog(html: string): string {
-  if (/<head[^>]*>/i.test(html)) return html.replace(/<head[^>]*>/i, (m) => `${m}${PREVIEW_WATCHDOG}`);
-  if (/<!doctype[^>]*>/i.test(html)) return html.replace(/<!doctype[^>]*>/i, (m) => `${m}${PREVIEW_WATCHDOG}`);
-  return PREVIEW_WATCHDOG + html;
+  const prefix = PREVIEW_CSP_META + PREVIEW_WATCHDOG;
+  // doctype보다 앞에 다른 내용을 두면 화면이 호환 모드로 그려지므로, doctype(앞의 주석 포함)이 있으면 그 뒤에 둔다
+  const doctype = /^\s*(?:<!--[\s\S]*?-->\s*)*<!doctype[^>]*>/i.exec(html);
+  return doctype ? doctype[0] + prefix + html.slice(doctype[0].length) : prefix + html;
 }
 
 export function hasHtml(doc: Y.Doc): boolean {

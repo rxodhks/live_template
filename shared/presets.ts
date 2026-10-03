@@ -67,7 +67,8 @@ export const BLANK_CONTENT: Required<Pick<Preset, 'code' | 'docs' | 'design'>> =
   code: [
     {
       name: 'main.js',
-      content: "// 함께 코딩해 보세요! 상단의 ▶ 실행 버튼으로 JavaScript를 바로 실행할 수 있습니다.\nconsole.log('Hello, Madang!');\n",
+      // starters.ts의 JavaScript 시작 코드와 같다 (첫 화면이 언어별 시작 코드 전체를 불러오지 않도록 여기에 그대로 둔다)
+      content: "// 함께 코딩해 보세요! 상단의 ▶ 실행 버튼으로 JavaScript 코드를 바로 실행할 수 있습니다.\nconsole.log('Hello, Madang!');\n",
     },
   ],
   docs: [

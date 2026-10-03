@@ -44,7 +44,7 @@ async function main({ entry, files, stdin }) {
     await lua.doString('dofile("/app/' + entry.replace(/"/g, '\\"') + '")');
   } catch (err) {
     flush();
-    out('error', String((err && err.message) || err).replace(/\[string "[^"]*"\]:\d+:\s*/, ''));
+    out('error', cleanLuaError(String((err && err.message) || err)));
     const e = new Error('lua');
     e.__reported = true;
     throw e;
@@ -52,4 +52,15 @@ async function main({ entry, files, stdin }) {
     flush();
     lua.global.close();
   }
+}
+
+/** 오류에서 내부 실행 줄(dofile)과 /app/ 경로를 감춘다 */
+function cleanLuaError(msg) {
+  const lines = msg
+    .replace(/\[string "[^"]*"\]:\d+:\s*/, '')
+    .split('\n')
+    .filter((l) => !/^\s*\[C\]: in function 'dofile'|^\s*\[string "dofile\(/.test(l));
+  // 남은 호출 줄이 없으면 'stack traceback:' 머리말도 뺀다
+  if (/^stack traceback:$/.test((lines[lines.length - 1] || '').trim())) lines.pop();
+  return lines.join('\n').replace(/\/app\//g, '').trim();
 }

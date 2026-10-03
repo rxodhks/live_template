@@ -18,7 +18,21 @@ async function main({ code, name, setup }) {
   }
   let n = 0;
   let failed = false;
-  for (const stmt of db.iterateStatements(code)) {
+  const it = db.iterateStatements(code);
+  for (;;) {
+    let stmt;
+    try {
+      const r = it.next();
+      if (r.done) break;
+      stmt = r.value;
+    } catch (err) {
+      // 문장을 읽다가 난 문법 오류 — 아직 실행하지 않은 나머지 부분을 보여 준다
+      const rest = (it.getRemainingSQL ? it.getRemainingSQL() : '').trim();
+      const short = rest.replace(/\s+/g, ' ').slice(0, 80) + (rest.length > 80 ? '…' : '');
+      out('error', n + 1 + '번째 문장에서 오류: ' + err.message + (short ? '\n  → ' + short : ''));
+      failed = true;
+      break;
+    }
     n++;
     const text = stmt.getSQL().trim();
     const short = text.replace(/\s+/g, ' ').slice(0, 80) + (text.length > 80 ? '…' : '');
