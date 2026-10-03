@@ -15,10 +15,12 @@ interface Plan {
   appDb: string | null;
   /** 지울 템플릿 문서 사본 */
   docs: string[];
+  /** 로그아웃: 코드 실행 입력값(lt.stdin.*)처럼 이 기기에 남긴 작업 내용도 지운다 */
+  logout?: boolean;
 }
 
 export function scheduleDeviceClear(userId: string, cloudTemplateIds: string[], keepAppDb: boolean): void {
-  const plan: Plan = { appDb: keepAppDb ? null : appDbName(userId), docs: cloudTemplateIds.map(docDbName) };
+  const plan: Plan = { appDb: keepAppDb ? null : appDbName(userId), docs: cloudTemplateIds.map(docDbName), logout: true };
   try {
     sessionStorage.setItem(KEY, JSON.stringify(plan));
   } catch {
@@ -49,8 +51,8 @@ export async function runDeviceClear(): Promise<void> {
   if (!plan) return;
   await Promise.all([...(plan.appDb ? [plan.appDb] : []), ...plan.docs].map(drop));
   try {
-    // 보드별 화면 위치 등 템플릿마다 남긴 화면 설정
-    for (const k of Object.keys(localStorage)) if (k.startsWith('lt.vp.')) localStorage.removeItem(k);
+    // 보드별 화면 위치 등 템플릿마다 남긴 화면 설정 · 로그아웃이면 코드 실행 입력값도
+    for (const k of Object.keys(localStorage)) if (k.startsWith('lt.vp.') || (plan.logout && k.startsWith('lt.stdin.'))) localStorage.removeItem(k);
   } catch {
     /* 무시 */
   }

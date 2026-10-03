@@ -95,6 +95,7 @@ export function DocEditor({ fragment, awareness, user, readOnly, placeholder, do
   const editor = useEditor(
     {
       editable: !readOnly,
+      editorProps: { attributes: { role: 'textbox', 'aria-label': '문서 본문', 'aria-multiline': 'true' } },
       extensions: [
         // trailingNode는 문서를 열기만 해도 빈 문단을 추가해 동시 편집 시 문단이 늘어나므로 끈다
         // 코드 블록은 문법 색이 들어간 것으로 바꿔 쓴다 (같은 이름 · 속성)

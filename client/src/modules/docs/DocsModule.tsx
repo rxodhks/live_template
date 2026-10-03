@@ -2,7 +2,6 @@ import { useEffect, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import type * as Y from 'yjs';
 import type { Editor } from '@tiptap/react';
-import { useEditorState } from '@tiptap/react';
 import { Copy, Download, FilePlus2, FileText, Infinity as InfinityIcon, MoreHorizontal, Printer, Ruler, Trash2 } from 'lucide-react';
 import { getDocs, readPageSetup, type YItem } from '@shared/schema';
 import { useWorkspace, viewPath } from '../../workspace/context';
@@ -231,15 +230,34 @@ function DocStats({ editor }: { editor: Editor | null }) {
   return <DocStatsInner editor={editor} />;
 }
 
+/** 글자 수 · 단어 수는 문서 전체를 훑으므로, 입력할 때마다가 아니라 내용이 바뀐 뒤 잠깐 쉬었을 때 센다 */
+const STATS_DELAY_MS = 300;
+
+function countStats(e: Editor): { chars: number; words: number } {
+  // 에디터가 교체/파기되는 순간에는 storage가 비어 있을 수 있다
+  const cc = !e.isDestroyed ? e.storage.characterCount : undefined;
+  return { chars: cc ? (cc.characters() as number) : 0, words: cc ? (cc.words() as number) : 0 };
+}
+
 function DocStatsInner({ editor }: { editor: Editor }) {
-  const stats = useEditorState({
-    editor,
-    selector: ({ editor: e }) => {
-      // 에디터가 교체/파기되는 순간에는 storage가 비어 있을 수 있다
-      const cc = e && !e.isDestroyed ? e.storage.characterCount : undefined;
-      return { chars: cc ? (cc.characters() as number) : 0, words: cc ? (cc.words() as number) : 0 };
-    },
-  });
+  // 키 입력마다 세면 긴 문서(1500문단 · CPU 4배 감속)에서 입력 한 번이 화면에 반영되기까지 약 25ms 더 걸렸다
+  const [stats, setStats] = useState(() => countStats(editor));
+  useEffect(() => {
+    setStats(countStats(editor));
+    let timer: ReturnType<typeof setTimeout> | null = null;
+    // update: 내용이 바뀐 트랜잭션만 (선택 이동은 제외, 다른 사람의 편집은 포함)
+    const onUpdate = () => {
+      timer ??= setTimeout(() => {
+        timer = null;
+        setStats(countStats(editor));
+      }, STATS_DELAY_MS);
+    };
+    editor.on('update', onUpdate);
+    return () => {
+      editor.off('update', onUpdate);
+      if (timer) clearTimeout(timer);
+    };
+  }, [editor]);
   const minutes = Math.max(1, Math.round(stats.chars / 500));
   return (
     <span className="doc-stats" data-tip="공백 포함 글자 수 · 읽는 데 걸리는 대략적인 시간">

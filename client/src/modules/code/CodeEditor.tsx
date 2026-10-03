@@ -97,6 +97,7 @@ export function CodeEditor({ file, readOnly, wrap, tabSize, onCursor, onRun }: P
       state: EditorState.create({
         doc: ytext.toString(),
         extensions: [
+          EditorView.contentAttributes.of({ 'aria-label': '코드 편집기' }),
           lineNumbers(),
           highlightActiveLineGutter(),
           highlightSpecialChars(),

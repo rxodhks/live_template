@@ -3,7 +3,7 @@ import { BrowserRouter, Navigate, Route, Routes, useLocation } from 'react-route
 import { Monitor, X } from 'lucide-react';
 import { isTypingTarget } from './lib/util';
 import { lazyWithPreload, whenIdle } from './lib/lazy';
-import { bootSession, claimLegacyAccount } from './lib/auth';
+import { bootSession, claimLegacyAccount, hasCachedAccount } from './lib/auth';
 import { backupPending } from './lib/templateOps';
 import { useSession } from './store/session';
 import { useTemplates } from './store/templates';
@@ -18,14 +18,17 @@ import { Dashboard } from './pages/Dashboard';
 import { GlobalTimeline } from './pages/GlobalTimeline';
 
 // 처음 화면에 필요 없는 페이지는 들어갈 때 불러온다
-const LoginPage = lazy(() => import('./pages/Auth').then((m) => ({ default: m.LoginPage })));
-const SignupPage = lazy(() => import('./pages/Auth').then((m) => ({ default: m.SignupPage })));
 const PrivacyPage = lazy(() => import('./pages/Legal').then((m) => ({ default: m.PrivacyPage })));
 const TermsPage = lazy(() => import('./pages/Legal').then((m) => ({ default: m.TermsPage })));
 const JoinPage = lazy(() => import('./pages/JoinPage').then((m) => ({ default: m.JoinPage })));
-// 둘 다 Suspense 없이 불러온다 (lib/lazy.ts) — Suspense 대체 화면이 한 번 나오면 그 뒤 300ms 동안 다른 화면 전환도 늦어진다
+// 아래 화면은 Suspense 없이 불러온다 (lib/lazy.ts) — Suspense 대체 화면이 한 번 나오면 그 뒤 300ms 동안 다른 화면 전환도 늦어진다
 const Workspace = lazyWithPreload(() => import('./workspace/Workspace').then((m) => m.Workspace), BootScreen);
 const PageSetupHost = lazyWithPreload(() => import('./modules/docs/page/PageSetupDialog').then((m) => m.PageSetupHost));
+const LoginPage = lazyWithPreload(() => import('./pages/Auth').then((m) => m.LoginPage), BootScreen);
+const SignupPage = lazyWithPreload(() => import('./pages/Auth').then((m) => m.SignupPage), BootScreen);
+
+// 이 기기에 로그인 정보가 없으면 로그인 화면으로 갈 가능성이 높다 — 로그인 확인(/api/me)을 기다리는 동안 함께 받는다
+if (!hasCachedAccount()) LoginPage.preload();
 
 // 템플릿 주소로 바로 들어왔다면(새로고침 · 링크) 로그인 확인과 함께 템플릿 화면도 받기 시작한다
 if (window.location.pathname.startsWith('/t/')) Workspace.preload();

@@ -95,6 +95,7 @@ export function Avatar({ user, size = 28, status, tooltip, className, onClick }:
       className={cx('avatar', status && `avatar-${status}`, onClick && 'avatar-btn', className)}
       style={{ width: size, height: size, fontSize: size * 0.52, ['--user-color' as string]: user.color }}
       data-tip={tooltip === false ? undefined : tooltip ?? user.name}
+      role={onClick ? undefined : 'img'}
       aria-label={user.name}
       onClick={onClick}
     >
@@ -265,6 +266,7 @@ export function Menu({ trigger, items, align = 'start', header, width = 220 }: M
     const maxLeft = window.innerWidth - width - 8;
     setPos({ top, left: Math.max(8, Math.min(left, maxLeft)) });
   }, [open, align, width]);
+  const shown = open && !!pos;
 
   useEffect(() => {
     if (!open) return;
@@ -272,14 +274,29 @@ export function Menu({ trigger, items, align = 'start', header, width = 220 }: M
       if (menuRef.current?.contains(e.target as Node) || btnRef.current?.contains(e.target as Node)) return;
       setOpen(false);
     };
-    const onKey = (e: KeyboardEvent) => e.key === 'Escape' && setOpen(false);
+    // 키보드: 열면 첫 항목에 포커스 · ↑↓로 이동 · Esc/Tab으로 닫는다
+    const menuItems = () => [...(menuRef.current?.querySelectorAll<HTMLElement>('[role=menuitem]:not(:disabled)') ?? [])];
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key === 'Escape' || e.key === 'Tab') {
+        // Tab은 버튼에 포커스를 돌려준 뒤 기본 동작으로 버튼 다음 요소로 이동한다
+        setOpen(false);
+        btnRef.current?.focus();
+      } else if (e.key === 'ArrowDown' || e.key === 'ArrowUp') {
+        const all = menuItems();
+        if (!all.length) return;
+        e.preventDefault();
+        const i = all.indexOf(document.activeElement as HTMLElement);
+        all[(i + (e.key === 'ArrowDown' ? 1 : all.length - 1)) % all.length].focus();
+      }
+    };
+    if (shown && !menuRef.current?.contains(document.activeElement)) menuItems()[0]?.focus();
     window.addEventListener('mousedown', onDown);
     window.addEventListener('keydown', onKey);
     return () => {
       window.removeEventListener('mousedown', onDown);
       window.removeEventListener('keydown', onKey);
     };
-  }, [open]);
+  }, [open, shown]);
 
   const list = open ? (typeof items === 'function' ? items() : items) : [];
 

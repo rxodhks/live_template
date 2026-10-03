@@ -206,10 +206,10 @@ class Client {
     this.ws.send(JSON.stringify(msg));
   }
 
-  async request<T = any>(msg: object): Promise<{ ok: boolean; data: T; error?: string; status?: number }> {
+  async request<T = any>(msg: object, ms?: number): Promise<{ ok: boolean; data: T; error?: string; status?: number }> {
     const id = ++this.seq;
     this.send({ ...msg, id });
-    return this.waitType('ack', (m) => m.id === id);
+    return this.waitType('ack', (m) => m.id === id, ms);
   }
 
   async ready() {
@@ -592,6 +592,8 @@ describe('로그인', () => {
       assert.equal(res.status, 200);
       assert.equal(res.headers.get('x-frame-options'), 'DENY', p);
       assert.equal(res.headers.get('x-content-type-options'), 'nosniff', p);
+      assert.match(res.headers.get('content-security-policy') ?? '', /frame-ancestors 'none'/, p);
+      assert.match(res.headers.get('strict-transport-security') ?? '', /max-age=\d+/, p);
     }
   });
 
@@ -1176,6 +1178,32 @@ describe('남용 방지', () => {
     await sleep(500);
   });
 
+  it('커서 같은 순간 정보를 쏟아내도 방 전체로 퍼지는 양에는 한도가 있다 (문서 변경은 그대로)', async () => {
+    const a = new Client(id, o.token);
+    const b = new Client(id, e.token);
+    await a.ready();
+    await b.ready();
+    await syncDoc(a);
+    const { doc } = await syncDoc(b);
+    const t0 = Date.now();
+    for (let i = 0; i < 1000; i++) b.send({ t: 'cursor', c: { x: i, y: i } });
+    // 쏟아낸 뒤에 보낸 문서 변경은 버려지지 않고 전달된다
+    const sv = Y.encodeStateVector(doc);
+    doc.getText('flood').insert(0, 'after');
+    // 쏟아낸 1000개를 먼저 받아 처리한 뒤에 도착하므로 느린 CI에서는 몇 초 걸린다
+    const saved = b.request({ t: 'update', u: b64(Y.encodeStateAsUpdate(doc, sv)) }, 20_000);
+    await a.waitType('update', () => true, 20_000);
+    assert.equal((await saved).ok, true);
+    const elapsed = (Date.now() - t0) / 1000;
+    const relayed = a.messages.filter((m) => m.t === 'cursor').length;
+    // 한도: 몰아서 200개 + 초당 60개 (실제 화면은 초당 10개)
+    assert.ok(relayed <= 200 + Math.ceil(elapsed * 60) + 5, `중계된 커서 ${relayed}개 (${elapsed.toFixed(1)}초)`);
+    assert.ok(relayed >= 100, `정상 범위의 커서는 중계한다 (${relayed}개)`);
+    a.close();
+    b.close();
+    await sleep(300);
+  });
+
   it('문서가 너무 커지면 더 이상 받지 않는다 (16MB)', async () => {
     const c = new Client(id, e.token);
     await c.ready();
@@ -1213,6 +1241,84 @@ describe('남용 방지', () => {
     assert.equal(res.status, 413, '깨어난 뒤 첫 변경도 상한을 넘으면 거절');
     c.close();
     await sleep(2500);
+  });
+
+  it('잠금 해제하지 않은 비밀 노트에는 이름이 무엇이든 쓰거나 중계하지 못한다', async () => {
+    const a = new Client(id, e.token);
+    const b = new Client(id, o.token);
+    await a.ready();
+    await b.ready();
+    // 'constructor' 같은 이름은 Object 기본 속성과 겹쳐 잠금 해제된 것으로 오인됐었다
+    for (const name of ['constructor', '__proto__', 'toString', 'hasOwnProperty']) {
+      const res = await a.request({ t: 'note:update', noteId: name, data: 'x' });
+      assert.equal(res.status, 401, name);
+    }
+    a.send({ t: 'note:aw', noteId: 'constructor', data: 'x' });
+    await sleep(300);
+    assert.ok(!b.messages.some((m) => m.t === 'note:update' || m.t === 'note:aw'), '다른 사람에게 중계하지 않는다');
+    a.close();
+    b.close();
+    await sleep(300);
+  });
+
+  it('채팅은 연결마다 10초에 20개까지 (저장소 쓰기 한도 보호)', async () => {
+    const c = new Client(id, e.token);
+    await c.ready();
+    const results = await Promise.all(Array.from({ length: 25 }, (_, i) => c.request({ t: 'chat', text: `빠른 메시지 ${i}` })));
+    assert.equal(results.filter((r) => r.ok).length, 20);
+    assert.ok(results.filter((r) => !r.ok).every((r) => r.status === 429));
+    c.close();
+    await sleep(300);
+  });
+
+  it('로그아웃하면 그 세션으로 열린 실시간 연결도 닫힌다 (다른 기기의 연결은 그대로)', async () => {
+    const start = await raw('POST', '/api/auth/email/start', { body: { email: e.email } });
+    const login = await raw('POST', '/api/auth/email/verify', { body: { email: e.email, code: start.data.devCode } });
+    const other = login.cookies[SID];
+    assert.ok(other);
+    const mine = new Client(id, other);
+    const elsewhere = new Client(id, e.token);
+    await mine.ready();
+    await elsewhere.ready();
+    assert.equal((await raw('POST', '/api/auth/logout', { cookie: `${SID}=${other}` })).status, 200);
+    // 서버가 닫기를 보내면 CLOSING(2) 이상이 된다 (로컬 런타임은 TCP 종료까지 시간이 걸려 onclose를 기다리지 않는다)
+    for (let i = 0; i < 20 && mine.ws.readyState === WebSocket.OPEN; i++) await sleep(100);
+    assert.ok(mine.ws.readyState >= WebSocket.CLOSING, '로그아웃한 세션의 연결은 닫힌다');
+    assert.equal(elsewhere.ws.readyState, WebSocket.OPEN, '같은 사람의 다른 세션 연결은 남는다');
+    assert.ok((await elsewhere.request({ t: 'chat', text: '아직 연결됨' })).ok);
+    elsewhere.close();
+    await sleep(300);
+  });
+
+  it('다른 기기를 로그아웃시키면 (하나 · 모두) 그 기기의 실시간 연결도 닫힌다', async () => {
+    const login = async () => {
+      const start = await raw('POST', '/api/auth/email/start', { body: { email: e.email } });
+      const r = await raw('POST', '/api/auth/email/verify', { body: { email: e.email, code: start.data.devCode } });
+      assert.ok(r.cookies[SID], JSON.stringify(r.data));
+      return r.cookies[SID];
+    };
+    const phone = await login();
+    const tablet = await login();
+    const phoneWs = new Client(id, phone);
+    const tabletWs = new Client(id, tablet);
+    const mineWs = new Client(id, e.token);
+    await Promise.all([phoneWs.ready(), tabletWs.ready(), mineWs.ready()]);
+    const closed = async (c: Client) => {
+      for (let i = 0; i < 20 && c.ws.readyState === WebSocket.OPEN; i++) await sleep(100);
+      return c.ws.readyState >= WebSocket.CLOSING;
+    };
+    const sessions = (await raw('GET', '/api/me/sessions', { cookie: `${SID}=${phone}` })).data.sessions;
+    const phoneId = sessions.find((s: any) => s.current).id;
+    assert.equal((await raw('DELETE', `/api/me/sessions/${phoneId}`, { cookie: `${SID}=${e.token}` })).status, 200);
+    assert.ok(await closed(phoneWs), '로그아웃시킨 기기의 연결은 닫힌다');
+    assert.equal(tabletWs.ws.readyState, WebSocket.OPEN, '다른 기기는 그대로');
+    const others = await raw('POST', '/api/me/sessions/logout-others', { cookie: `${SID}=${e.token}` });
+    assert.equal(others.status, 200);
+    assert.deepEqual(Object.keys(others.data), ['removed'], '연결 정리용 내부 값은 응답에 싣지 않는다');
+    assert.ok(await closed(tabletWs), '모두 로그아웃하면 다른 기기 연결도 닫힌다');
+    assert.equal(mineWs.ws.readyState, WebSocket.OPEN, '지금 기기는 그대로');
+    mineWs.close();
+    await sleep(300);
   });
 });
 

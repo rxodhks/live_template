@@ -43,9 +43,12 @@ test('이메일로 가입 → 패스키 등록 → 로그아웃 → 패스키 �
   const passkeyButton = page.getByRole('button', { name: /패스키로 로그인/ });
   await expect(passkeyButton).toContainText('최근 사용');
 
-  await cdp.send('WebAuthn.setAutomaticPresenceSimulation', { authenticatorId, enabled: true });
+  await expect(passkeyButton).toBeEnabled();
   const login = page.waitForResponse((r) => r.url().endsWith('/api/auth/passkey/login') && r.request().method() === 'POST');
-  await passkeyButton.click();
+  await cdp.send('WebAuthn.setAutomaticPresenceSimulation', { authenticatorId, enabled: true });
+  // 사용자 확인을 다시 켜는 순간 이메일 칸에 띄워 둔 자동 완성 요청이 먼저 끝나 화면이 바뀔 수 있다
+  // (로그인 화면이 빨리 뜰수록 자주 생긴다). 어느 쪽으로 들어가든 패스키 한 번으로 로그인하면 된다
+  await passkeyButton.click({ timeout: 3_000 }).catch(() => {});
   expect((await login).status()).toBe(200);
   await expectDashboard(page, '패스키 사용자');
 

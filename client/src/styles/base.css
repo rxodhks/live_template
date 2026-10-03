@@ -10,7 +10,8 @@
   --border-strong: #d1d5dc;
   --text: #16181d;
   --text-2: #4a5060;
-  --text-3: #868c99;
+  /* 보조 글자: 흰 바탕 · 회색 바탕 · 선택된 바탕(accent-soft) 모두에서 4.5:1 이상 (WCAG AA) */
+  --text-3: #646a77;
   --accent: #5b5bd6;
   --accent-hover: #4b4bc5;
   --accent-soft: #eeeefd;
@@ -18,15 +19,15 @@
   --on-accent: #ffffff;
   --danger: #d93f45;
   --danger-soft: #fdeded;
-  --success: #248a5a;
+  --success: #1d774d;
   --success-soft: #e5f5ed;
-  --warning: #c26a07;
+  --warning: #a65a05;
   --warning-soft: #fdf1df;
   --info: #0b6bcb;
   --info-soft: #e6f0fb;
-  --feature-design: #c93a92;
-  --feature-code: #0a7fdc;
-  --feature-docs: #248a5a;
+  --feature-design: #b02a7d;
+  --feature-code: #0868b5;
+  --feature-docs: #1d774d;
   --feature-notes: #8e4ec6;
   --canvas-bg: #f3f4f7;
   --grid-dot: #c5cad3;
@@ -58,9 +59,9 @@
     --border-strong: #3a3f4a;
     --text: #eceef2;
     --text-2: #aab0bc;
-    --text-3: #717886;
-    --accent: #7c7cf2;
-    --accent-hover: #8f8ff6;
+    --text-3: #8e94a0;
+    --accent: #6262e0;
+    --accent-hover: #7272ea;
     --accent-soft: #24244a;
     --accent-text: #a5a5ff;
     --on-accent: #ffffff;
@@ -97,9 +98,9 @@
   --border-strong: #3a3f4a;
   --text: #eceef2;
   --text-2: #aab0bc;
-  --text-3: #717886;
-  --accent: #7c7cf2;
-  --accent-hover: #8f8ff6;
+  --text-3: #8e94a0;
+  --accent: #6262e0;
+  --accent-hover: #7272ea;
   --accent-soft: #24244a;
   --accent-text: #a5a5ff;
   --on-accent: #ffffff;

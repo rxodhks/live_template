@@ -53,7 +53,11 @@ function NotesList() {
         <h1>
           <Lock size={22} /> 비밀 노트
         </h1>
-        <p className="muted">이 템플릿의 멤버 중 비밀번호를 아는 사람만 열어 볼 수 있는 숨겨진 노트입니다. 여러 명이 동시에 열어 실시간으로 함께 편집할 수 있습니다.</p>
+        <p className="muted">
+          {ws.isPrivate
+            ? '비밀번호를 아는 사람만 열어 볼 수 있는 숨겨진 노트입니다. 팀원을 초대한 뒤에도 비밀번호를 모르면 열 수 없습니다.'
+            : '이 템플릿의 멤버 중 비밀번호를 아는 사람만 열어 볼 수 있는 숨겨진 노트입니다. 여러 명이 동시에 열어 실시간으로 함께 편집할 수 있습니다.'}
+        </p>
       </header>
       <div className="security-note">
         <ShieldCheck size={18} />
@@ -72,7 +76,7 @@ function NotesList() {
       )}
       {ws.notes.length === 0 ? (
         <EmptyState icon={<KeyRound size={30} />} title="아직 비밀 노트가 없습니다">
-          API 키, 계정 정보, 민감한 회의 내용처럼 팀 안에서만 공유할 내용을 적어 두세요.
+          {ws.isPrivate ? 'API 키, 계정 정보처럼 비밀번호로 잠가 둘 내용을 적어 두세요.' : 'API 키, 계정 정보, 민감한 회의 내용처럼 팀 안에서만 공유할 내용을 적어 두세요.'}
         </EmptyState>
       ) : (
         <div className="note-grid">

@@ -846,6 +846,7 @@ export function DesignCanvas({ board, onApi, onZoom, onAddArtboard }: Props) {
         ws.publishCursor(null);
         setEraserAt(null);
       }}
+      role="application"
       aria-label={`디자인 보드 ${boardName}`}
     >
       <svg

@@ -47,12 +47,30 @@ const NOTE_LOCKOUT_MS = 5 * 60 * 1000;
 const MAX_BLOB_CHARS = 1_500_000;
 /** 한 사람이 한 방에 열 수 있는 연결 수 (탭 여러 개는 충분히, 무한히 여는 것은 막는다) */
 const MAX_SOCKETS_PER_USER = 12;
+/**
+ * 연결 하나가 10초에 보낼 수 있는 채팅 · 활동 기록 수. 둘 다 보낼 때마다 저장소에 한 줄씩 쓰므로
+ * (무료 요금제는 하루 쓰기 횟수 한도가 계정 전체에 걸린다) 뷰어 한 명이 몇 분 만에 한도를 써 버리지 못하게 한다.
+ */
+const RATE_WINDOW_MS = 10_000;
+const RATE_LIMIT = { chat: 20, activity: 30 } as const;
+/** 멤버 제거 · 권한 변경 직후 이 시간 안에 들어오는 연결은 Directory에 권한을 다시 확인한다 (확인과 연결 사이의 경쟁) */
+const ACL_RECHECK_MS = 60_000;
 /** SQLite 값 하나는 2MB까지라서 큰 문서 상태는 나눠 저장한다 */
 const CHUNK_BYTES = 1_000_000;
 /** 버전 기록: 변경이 있으면 1시간마다 문서 전체를 저장, 48시간 이내는 모두 · 그 뒤로는 하루 하나씩 30일까지 보관 */
 const VERSION_INTERVAL_MS = 60 * 60 * 1000;
 const VERSION_KEEP_ALL_MS = 48 * 60 * 60 * 1000;
 const VERSION_KEEP_DAILY_MS = 30 * 86_400_000;
+
+/**
+ * 저장하지 않는 순간 정보(커서 · 화면 위치/선택 · 펜 미리보기 · 텍스트 커서 · 행동 라벨) 한도: 사람마다 초당 평균 60개, 몰아서 200개까지
+ * (서버가 밀려 쌓인 메시지를 한꺼번에 처리할 때 정상 사용자의 메시지를 버리지 않도록 넉넉히).
+ * 실제 화면은 모두 합쳐도 초당 40개 안팎이다(커서 10 · 위치 10 · 펜 12.5 · 텍스트 커서 7).
+ * 한도가 없으면 한 사람(뷰어도)이 쏟아낸 메시지가 방 전체에 접속자 수만큼 퍼져, 다른 사람의 편집 전달이 수십 초씩 밀렸다.
+ */
+const EPHEMERAL_RATE = 60;
+const EPHEMERAL_BURST = 200;
+const EPHEMERAL_TYPES: ReadonlySet<string> = new Set(['aw', 'live', 'presence', 'cursor', 'action', 'activity']);
 
 const VIEW_MODULES: ReadonlySet<ViewModule> = new Set(['overview', 'design', 'code', 'docs', 'notes', 'timeline', 'members', 'settings']);
 
@@ -77,6 +95,16 @@ type NoteRow = {
   verifier_hash: string;
   snapshot: string;
 };
+
+/**
+ * 이 연결이 잠금 해제한 노트의 만료 시각 (없으면 0).
+ * notes는 일반 객체라 'constructor' · '__proto__' 같은 이름은 Object 기본 속성이 걸리므로 자기 속성만 본다.
+ */
+function unlockedUntil(a: Attachment, noteId: unknown): number {
+  if (typeof noteId !== 'string' || !Object.hasOwn(a.notes, noteId)) return 0;
+  const exp = a.notes[noteId];
+  return typeof exp === 'number' ? exp : 0;
+}
 
 function sanitizeView(v: unknown): PresenceView {
   const obj = (v ?? {}) as Partial<PresenceView>;
@@ -130,7 +158,11 @@ export class TemplateRoom extends DurableObject<Env> {
   private selections = new Map<string, string[]>();
   private actions = new Map<string, { label: string; at: number }>();
   private leaveTimers = new Map<string, ReturnType<typeof setTimeout>>();
+  /** 연결(sid)마다 채팅 · 활동 기록 보낸 횟수 (RATE_WINDOW_MS 구간) — 잠들면 비워지는 것으로 충분하다 */
+  private budgets = new Map<string, { at: number; chat: number; activity: number }>();
   private lastTouch = 0;
+  /** 순간 정보 한도 (사용자 ID → 남은 개수). 잠들면 비워지지만 한도라서 괜찮다 */
+  private ephemeral = new Map<string, { tokens: number; at: number }>();
 
   constructor(ctx: DurableObjectState, env: Env) {
     super(ctx, env);
@@ -228,10 +260,19 @@ export class TemplateRoom extends DurableObject<Env> {
     if (request.headers.get('Upgrade') !== 'websocket') return new Response('WebSocket이 필요합니다.', { status: 426 });
     // 헤더 값은 Latin-1만 허용되므로 Worker에서 URI 인코딩해서 넘긴다 (한글 이름·이모지)
     const user = JSON.parse(decodeURIComponent(request.headers.get('x-lt-user') ?? 'null')) as PublicUser | null;
-    const role = request.headers.get('x-lt-role') as Role | null;
+    let role = request.headers.get('x-lt-role') as Role | null;
     const templateId = request.headers.get('x-lt-template') ?? '';
+    const session = request.headers.get('x-lt-session') ?? '';
     if (!user || !role || !templateId) return new Response('잘못된 요청', { status: 400 });
     if (!this.templateId) this.setMetaValue('templateId', templateId);
+
+    // Worker가 권한을 확인한 뒤 이 연결이 도착하기 전에 멤버에서 빠졌거나 권한이 바뀌었을 수 있다.
+    // (그 사이에 보낸 kick · setRole은 아직 없는 이 연결을 닫지 못한다) 최근에 바뀐 사람이면 다시 확인한다.
+    if (Date.now() - Number(this.meta(`acl:${user.id}`) ?? 0) < ACL_RECHECK_MS) {
+      const fresh = await this.directory.access(templateId, user.id);
+      if (!fresh.ok) return new Response(fresh.error, { status: fresh.status });
+      role = fresh.data.role;
+    }
 
     // 기다려야 하는 일은 연결을 받기 전에 끝낸다.
     // 받은 뒤에 기다리면 그사이 들어온 사람의 접속 알림이 welcome보다 먼저 도착하고,
@@ -245,7 +286,8 @@ export class TemplateRoom extends DurableObject<Env> {
     }
     const pair = new WebSocketPair();
     const [client, server] = Object.values(pair);
-    this.ctx.acceptWebSocket(server, [user.id]);
+    // 태그: 사람별(내보내기) · 로그인 세션별(로그아웃하면 그 세션의 연결만 닫기)
+    this.ctx.acceptWebSocket(server, session ? [user.id, `s:${session}`] : [user.id]);
     const a: Attachment = { sid: newId(10), user, role, view: { module: 'overview', itemId: null }, viewport: null, idle: false, synced: false, aw: [], notes: {} };
     server.serializeAttachment(a);
 
@@ -297,6 +339,7 @@ export class TemplateRoom extends DurableObject<Env> {
     this.cursors.delete(a.sid);
     this.selections.delete(a.sid);
     this.actions.delete(a.sid);
+    this.budgets.delete(a.sid);
     // 다른 연결이 넘겨받은 커서는 지우지 않는다
     const owners = this.awarenessOwners();
     const mine = a.aw.filter((id) => !owners.has(id) || owners.get(id)!.sid === a.sid);
@@ -336,6 +379,8 @@ export class TemplateRoom extends DurableObject<Env> {
     }
     const a = this.att(ws);
     if (!a) return;
+    // 한도를 넘는 순간 정보는 조용히 버린다 (다음 메시지가 최신 상태를 다시 싣는다)
+    if (EPHEMERAL_TYPES.has(msg.t) && !this.allowEphemeral(a.user.id)) return;
     const ack = (id: number, result: { ok: true; data?: unknown } | { ok: false; status: number; error: string }) =>
       this.send(ws, result.ok ? { t: 'ack', id, ok: true, data: result.data } : { t: 'ack', id, ok: false, status: result.status, error: result.error });
 
@@ -424,6 +469,7 @@ export class TemplateRoom extends DurableObject<Env> {
         const input = msg.input as ActivityInput;
         if (!input || !CLIENT_REPORTABLE.has(input.type)) return;
         if (a.role === 'viewer' && input.type !== 'code.run') return;
+        if (!this.allow(a.sid, 'activity')) return;
         const clean = {
           type: input.type,
           targetId: clampText(input.targetId, 64) || undefined,
@@ -439,6 +485,7 @@ export class TemplateRoom extends DurableObject<Env> {
       case 'chat': {
         const text = typeof msg.text === 'string' ? msg.text.trim().slice(0, 2000) : '';
         if (!text) return ack(msg.id, { ok: false, status: 400, error: '메시지를 입력해 주세요.' });
+        if (!this.allow(a.sid, 'chat')) return ack(msg.id, { ok: false, status: 429, error: '메시지를 너무 빨리 보내고 있습니다. 잠시 후 다시 보내 주세요.' });
         const message: ChatMessage = { id: newId(), user: a.user, text, at: Date.now() };
         this.sql.exec('INSERT INTO chat (id, at, json) VALUES (?, ?, ?)', message.id, message.at, JSON.stringify(message));
         if (Math.random() < 0.05) {
@@ -465,7 +512,7 @@ export class TemplateRoom extends DurableObject<Env> {
         return ack(msg.id, { ok: true, data });
       }
       case 'note:leave': {
-        if (a.notes[msg.noteId]) {
+        if (unlockedUntil(a, msg.noteId)) {
           delete a.notes[msg.noteId];
           ws.serializeAttachment(a);
         }
@@ -480,7 +527,7 @@ export class TemplateRoom extends DurableObject<Env> {
         if (msg.t === 'note:update') {
           this.sql.exec('INSERT INTO note_updates (note_id, data) VALUES (?, ?)', msg.noteId, msg.data);
           const uid = this.sql.exec<{ uid: number }>('SELECT last_insert_rowid() AS uid').one().uid;
-          this.broadcast({ t: 'note:update', noteId: msg.noteId, data: msg.data, uid }, { exceptSid: a.sid, filter: (o) => !!o.notes[msg.noteId] });
+          this.broadcast({ t: 'note:update', noteId: msg.noteId, data: msg.data, uid }, { exceptSid: a.sid, filter: (o) => unlockedUntil(o, msg.noteId) > 0 });
           this.touchNote(msg.noteId);
           return ack(msg.id, { ok: true, data: { uid } });
         }
@@ -492,10 +539,21 @@ export class TemplateRoom extends DurableObject<Env> {
       }
       case 'note:aw': {
         if (!this.noteOpen(ws, a, msg.noteId) || typeof msg.data !== 'string' || msg.data.length > 20_000) return;
-        this.broadcast({ t: 'note:aw', noteId: msg.noteId, data: msg.data }, { exceptSid: a.sid, filter: (o) => !!o.notes[msg.noteId] });
+        this.broadcast({ t: 'note:aw', noteId: msg.noteId, data: msg.data }, { exceptSid: a.sid, filter: (o) => unlockedUntil(o, msg.noteId) > 0 });
         return;
       }
     }
+  }
+
+  /** 연결별 채팅 · 활동 기록 빈도 제한 (고정 구간) */
+  private allow(sid: string, kind: keyof typeof RATE_LIMIT): boolean {
+    const now = Date.now();
+    let b = this.budgets.get(sid);
+    if (!b || now - b.at >= RATE_WINDOW_MS) {
+      b = { at: now, chat: 0, activity: 0 };
+      this.budgets.set(sid, b);
+    }
+    return ++b[kind] <= RATE_LIMIT[kind];
   }
 
   /**
@@ -531,6 +589,17 @@ export class TemplateRoom extends DurableObject<Env> {
       }
     }
     if (changed) ws.serializeAttachment(a);
+    return true;
+  }
+
+  private allowEphemeral(userId: string): boolean {
+    const now = Date.now();
+    const b = this.ephemeral.get(userId) ?? { tokens: EPHEMERAL_BURST, at: now };
+    b.tokens = Math.min(EPHEMERAL_BURST, b.tokens + ((now - b.at) / 1000) * EPHEMERAL_RATE);
+    b.at = now;
+    this.ephemeral.set(userId, b);
+    if (b.tokens < 1) return false;
+    b.tokens -= 1;
     return true;
   }
 
@@ -827,7 +896,7 @@ export class TemplateRoom extends DurableObject<Env> {
   }
 
   private noteOpen(ws: WebSocket, a: Attachment, noteId: string): boolean {
-    const exp = a.notes[noteId];
+    const exp = unlockedUntil(a, noteId);
     if (!exp) return false;
     if (exp < Date.now()) {
       delete a.notes[noteId];
@@ -934,7 +1003,7 @@ export class TemplateRoom extends DurableObject<Env> {
   private lockNoteEverywhere(noteId: string, reason: 'password' | 'deleted'): void {
     this.sql.exec('DELETE FROM note_tickets WHERE note_id = ?', noteId);
     for (const { ws, a } of this.sockets()) {
-      if (!a.notes[noteId]) continue;
+      if (!unlockedUntil(a, noteId)) continue;
       delete a.notes[noteId];
       ws.serializeAttachment(a);
       this.send(ws, { t: 'note:locked', noteId, reason });
@@ -1074,7 +1143,13 @@ export class TemplateRoom extends DurableObject<Env> {
     this.broadcast({ t: 'template', template });
   }
 
+  /** 멤버 제거 · 권한 변경 시각 — 그 직후 도착하는 연결은 권한을 다시 확인한다 (fetch 참고) */
+  private markAclChange(userId: string): void {
+    this.setMetaValue(`acl:${userId}`, String(Date.now()));
+  }
+
   async setRole(userId: string, role: Role): Promise<void> {
+    this.markAclChange(userId);
     for (const { ws, a } of this.sockets()) {
       if (a.user.id !== userId) continue;
       a.role = role;
@@ -1097,10 +1172,23 @@ export class TemplateRoom extends DurableObject<Env> {
   }
 
   async kick(userId: string, reason: 'removed' | 'left'): Promise<void> {
+    this.markAclChange(userId);
     for (const ws of this.ctx.getWebSockets(userId)) {
       this.send(ws, { t: 'kicked', reason });
       try {
         ws.close(4001, reason);
+      } catch {
+        /* 무시 */
+      }
+    }
+  }
+
+  /** 로그아웃: 그 로그인 세션으로 열린 연결만 닫는다 (화면은 다시 접속하려다 로그인 화면으로 간다) */
+  async endSession(session: string): Promise<void> {
+    if (!session) return;
+    for (const ws of this.ctx.getWebSockets(`s:${session}`)) {
+      try {
+        ws.close(4003, 'logout');
       } catch {
         /* 무시 */
       }

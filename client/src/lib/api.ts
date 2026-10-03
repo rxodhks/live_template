@@ -33,15 +33,33 @@ export class ApiError extends Error {
 let onUnauthorized: (() => void) | null = null;
 export const setUnauthorizedHandler = (fn: () => void) => void (onUnauthorized = fn);
 
+/** 미리 보낸 요청을 앱 시작 직후에만 쓴다 — 그 뒤에 같은 요청을 부르면 새로 받아야 최신이다 */
+const PREFETCH_MAX_AGE_MS = 30_000;
+
+/**
+ * index.html이 앱 파일을 받기 전에 먼저 보낸 GET 요청(/me, /templates)의 응답 — 경로마다 한 번만 쓴다.
+ * (앱 파일을 받고 실행하는 동안 서버 왕복을 함께 기다리게 해 첫 화면이 그만큼 빨리 뜬다)
+ */
+function takePrefetch(path: string): Promise<Response> | undefined {
+  const store = (window as { __ltPrefetch?: Record<string, Promise<Response> | undefined> }).__ltPrefetch;
+  const res = store?.[path];
+  if (!res) return undefined;
+  delete store[path];
+  return performance.now() < PREFETCH_MAX_AGE_MS ? res : undefined;
+}
+
 export async function api<T>(method: 'GET' | 'POST' | 'PATCH' | 'DELETE', path: string, body?: unknown): Promise<T> {
   let res: Response;
   try {
-    res = await fetch(apiUrl(path), {
-      method,
-      credentials: 'same-origin',
-      headers: { [CLIENT_VERSION_HEADER]: String(CLIENT_VERSION), ...(body !== undefined ? { 'content-type': 'application/json' } : {}) },
-      body: body !== undefined ? JSON.stringify(body) : undefined,
-    });
+    res =
+      // 미리 보낸 요청이 실패했으면 새로 보낸다
+      (method === 'GET' && !API_BASE ? await takePrefetch(path)?.catch(() => undefined) : undefined) ??
+      (await fetch(apiUrl(path), {
+        method,
+        credentials: 'same-origin',
+        headers: { [CLIENT_VERSION_HEADER]: String(CLIENT_VERSION), ...(body !== undefined ? { 'content-type': 'application/json' } : {}) },
+        body: body !== undefined ? JSON.stringify(body) : undefined,
+      }));
   } catch {
     throw new ApiError(0, '서버에 연결할 수 없습니다. 네트워크 상태를 확인해 주세요.');
   }

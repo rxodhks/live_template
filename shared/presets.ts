@@ -77,7 +77,7 @@ export const BLANK_CONTENT: Required<Pick<Preset, 'code' | 'docs' | 'design'>> =
       emoji: '📄',
       blocks: [
         { type: 'heading', level: 1, text: '새 문서' },
-        { type: 'paragraph', text: '여기에 내용을 작성하세요. 여러 사람이 동시에 편집할 수 있습니다.' },
+        { type: 'paragraph', text: '여기에 내용을 작성하세요. 팀원을 초대하면 함께 편집할 수 있습니다.' },
       ],
     },
   ],
