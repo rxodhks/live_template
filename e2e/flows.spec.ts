@@ -243,4 +243,7 @@ test('다른 탭에서 로그아웃하면 템플릿을 열어 둔 탭도 로그�
 
   // 사본이 지워지는 순간 첫 탭도 로그인이 끝난 것을 알아차린다 (입력이 조용히 사라지지 않도록)
   await page.waitForURL(/\/login/, { timeout: 15_000 });
+  // 로그아웃하면 서버가 그 세션의 실시간 연결을 닫고, 다시 접속하려던 연결과 권한 확인은 401로 거절된다 (그 뒤 로그인 화면으로)
+  for (let i = errors.list.length - 1; i >= 0; i--) if (/WebSocket connection to .*\/ws\?.*failed/.test(errors.list[i])) errors.list.splice(i, 1);
+  allowFailedRequests(errors, [401], /^\/api\/templates\/[^/]+$/);
 });
