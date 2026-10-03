@@ -197,3 +197,50 @@ export function wrapText(text: string, fontSize: number, maxWidth: number): stri
 
 export const TEXT_FONT = FONT_FAMILY;
 export const lineHeight = (fontSize: number) => Math.round(fontSize * 1.35);
+
+/** 점 p에서 선분 ab까지의 거리 */
+function pointSegDist(px: number, py: number, ax: number, ay: number, bx: number, by: number): number {
+  const dx = bx - ax;
+  const dy = by - ay;
+  const len = dx * dx + dy * dy;
+  const t = len ? Math.max(0, Math.min(1, ((px - ax) * dx + (py - ay) * dy) / len)) : 0;
+  return Math.hypot(px - (ax + t * dx), py - (ay + t * dy));
+}
+
+/**
+ * 펜 선의 점을 월드 좌표로 [[x0,y0,x1,y1,...]] 한 줄로 돌려준다.
+ * 지우개가 점 사이를 지나가도 잘리도록 점 간격이 step 이하가 되게 사이를 채운다
+ */
+export function penRun(s: Shape, step: number): number[] {
+  const pts = s.points ?? [];
+  const out: number[] = [];
+  for (let i = 0; i < pts.length; i += 2) {
+    const x = s.x + pts[i] * s.w;
+    const y = s.y + pts[i + 1] * s.h;
+    if (out.length) {
+      const px = out[out.length - 2];
+      const py = out[out.length - 1];
+      const n = Math.floor(Math.hypot(x - px, y - py) / step);
+      for (let k = 1; k <= n; k++) out.push(px + ((x - px) * k) / (n + 1), py + ((y - py) * k) / (n + 1));
+    }
+    out.push(x, y);
+  }
+  return out;
+}
+
+/** 지우개가 a→b로 지나가며 닿은(reach 이내) 점을 빼고 남은 조각들. 점이 2개 미만인 조각은 버린다 */
+export function eraseRun(run: number[], ax: number, ay: number, bx: number, by: number, reach: number): number[][] | null {
+  const pieces: number[][] = [];
+  let cur: number[] = [];
+  let cut = false;
+  for (let i = 0; i < run.length; i += 2) {
+    if (pointSegDist(run[i], run[i + 1], ax, ay, bx, by) <= reach) {
+      cut = true;
+      if (cur.length >= 4) pieces.push(cur);
+      cur = [];
+    } else cur.push(run[i], run[i + 1]);
+  }
+  if (!cut) return null;
+  if (cur.length >= 4) pieces.push(cur);
+  return pieces;
+}

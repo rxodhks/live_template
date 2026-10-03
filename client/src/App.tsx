@@ -28,6 +28,15 @@ const PageSetupHost = lazyWithPreload(() => import('./modules/docs/page/PageSetu
 
 // 템플릿 주소로 바로 들어왔다면(새로고침 · 링크) 로그인 확인과 함께 템플릿 화면도 받기 시작한다
 if (window.location.pathname.startsWith('/t/')) Workspace.preload();
+// 주소가 가리키는 에디터도 함께 받는다 — 템플릿 화면 파일을 받은 뒤에야 받기 시작하면 그만큼 늦게 열린다
+const EDITORS: Record<string, () => Promise<unknown>> = {
+  docs: () => import('./modules/docs/DocsModule'),
+  code: () => import('./modules/code/CodeModule'),
+  design: () => import('./modules/design/DesignModule'),
+  notes: () => import('./modules/notes/NotesModule'),
+};
+const editor = /^\/t\/[^/]+\/([^/]+)/.exec(window.location.pathname)?.[1];
+if (editor && Object.hasOwn(EDITORS, editor)) void EDITORS[editor]().catch(() => {});
 
 /** 협업 템플릿 목록을 다시 확인하는 간격 */
 const REFRESH_MS = 60_000;
