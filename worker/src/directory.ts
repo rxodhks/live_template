@@ -23,7 +23,7 @@ import type {
 import type { TemplateBroadcast } from '../../shared/protocol';
 import { USER_AVATARS, USER_COLORS, isHexColor } from '../../shared/colors';
 import type { Env } from './env';
-import { sendLoginAlert } from './mail';
+import { type SecurityAlertKind, sendSecurityAlert } from './mail';
 import { type Result, clampText, fail, isId, newId, ok, safeEqual, sha256Hex, wsSessionKey } from './util';
 import { type PasskeyAlg, PasskeyError, b64urlDecode, b64urlEncode, checkPublicKey, isPasskeyAlg, readAuthData, readClientData, verifySignature } from './passkey';
 
@@ -50,10 +50,16 @@ const CODE_MAX_FAILS_PER_DAY = 20;
 /** 주소마다 하루에 받을 수 있는 인증 코드 메일 수 (다른 사람이 내 주소를 넣어 메일을 계속 보내는 것 방지) */
 export const CODE_MAX_MAILS_PER_DAY = 10;
 /**
- * 사이트 전체에서 하루에 보내는 메일(인증 코드 · 새 기기 로그인 알림) 상한.
- * Resend 무료 요금제는 하루 100통이라 여유를 두고 90통. 요금제를 올리면 MAIL_DAILY_LIMIT 설정으로 바꾼다
+ * 사이트 전체 하루 메일 상한 (Resend 무료 요금제는 하루 100통).
+ * 인증 코드와 보안 알림의 한도를 나눠, 알림이 많이 나가도 인증 코드는 막히지 않게 한다.
+ *  · 인증 코드: 80통 (요금제를 올리면 MAIL_DAILY_LIMIT 설정으로 바꾼다)
+ *  · 보안 알림(새 기기 로그인 · 새 패스키): 사이트 전체 15통, 계정마다 3통
  */
-export const DEFAULT_MAIL_DAILY_LIMIT = 90;
+export const DEFAULT_MAIL_DAILY_LIMIT = 80;
+const ALERT_MAILS_PER_DAY = 15;
+const ALERT_MAILS_PER_ACCOUNT_PER_DAY = 3;
+/** 패스키 등록은 로그인한 지 10분 안에만 (빼앗긴 세션으로 몰래 패스키를 심는 것 방지) */
+const PASSKEY_REAUTH_MS = 10 * 60_000;
 /** 한 번이라도 로그인한 기기를 기억하는 기간 (이 기간 안에 다시 쓰면 '새 기기'로 알리지 않는다) */
 const KNOWN_DEVICE_TTL_MS = 400 * 86_400_000;
 /** 휴지통 보관 기간: 지나면 영구 삭제 */
@@ -317,11 +323,20 @@ export class Directory extends DurableObject<Env> {
     this.sql.exec('DELETE FROM known_devices WHERE seen_at < ?', now - KNOWN_DEVICE_TTL_MS);
   }
 
-  /** 오늘 보낸 메일 수를 하나 늘린다. 사이트 전체 하루 상한에 닿았으면 false */
+  /** 오늘 보낸 인증 코드 메일 수를 하나 늘린다. 사이트 전체 하루 상한에 닿았으면 false */
   private takeMailQuota(): boolean {
     const max = Number(this.env.MAIL_DAILY_LIMIT) || DEFAULT_MAIL_DAILY_LIMIT;
     if (this.limit('mail:day', max, 86_400_000) === null) return true;
-    console.warn(`[메일 한도] 오늘 보낼 수 있는 메일 ${max}통을 모두 썼습니다 (UTC 자정에 초기화)`);
+    console.warn(`[메일 한도] 오늘 보낼 수 있는 인증 코드 메일 ${max}통을 모두 썼습니다 (UTC 자정에 초기화)`);
+    return false;
+  }
+
+  /** 보안 알림 메일 한도: 계정마다 · 사이트 전체 (인증 코드 한도와 따로) */
+  private takeAlertQuota(userId: string): boolean {
+    if (this.limit(`alertd:${userId}`, ALERT_MAILS_PER_ACCOUNT_PER_DAY, 86_400_000) !== null) return false;
+    // 사이트 전체 한도는 실제로 메일을 보낼 때만 센다 (개발 서버 · 테스트는 로그만 남긴다)
+    if (!this.env.RESEND_API_KEY || this.limit('alert:day', ALERT_MAILS_PER_DAY, 86_400_000) === null) return true;
+    console.warn(`[메일 한도] 오늘 보낼 수 있는 보안 알림 메일 ${ALERT_MAILS_PER_DAY}통을 모두 썼습니다 (UTC 자정에 초기화)`);
     return false;
   }
 
@@ -344,17 +359,18 @@ export class Directory extends DurableObject<Env> {
     return { hash, isNew: others };
   }
 
-  /** 새 기기 로그인 알림 메일 (메일 주소가 있는 계정만, 사이트 하루 상한 안에서) */
-  private alertNewDevice(userId: string, client: LoginClient, at: number): void {
+  /** 보안 알림 메일: 새 기기 로그인 · 새 패스키 (메일 주소가 있는 계정만, 알림 하루 상한 안에서) */
+  private securityAlert(userId: string, kind: SecurityAlertKind, client: LoginClient, at: number): void {
     const email = this.sql.exec<{ email: string | null }>('SELECT email FROM users WHERE id = ?', userId).toArray()[0]?.email;
     if (!email) return;
+    const label = kind === 'login' ? '새 기기 로그인 알림' : '새 패스키 등록 알림';
     const alert = { device: deviceLabel(client.agent, '알 수 없는 기기'), place: client.place, at, origin: client.origin };
+    if (!this.takeAlertQuota(userId)) return;
     if (!this.env.RESEND_API_KEY) {
-      console.log(`[개발 모드] ${email} 새 기기 로그인 알림: ${alert.device} ${alert.place}`);
+      console.log(`[개발 모드] ${email} ${label}: ${alert.device} ${alert.place}`);
       return;
     }
-    if (!this.takeMailQuota()) return;
-    this.ctx.waitUntil(sendLoginAlert(this.env, email, alert).catch((err) => console.error('새 기기 로그인 알림 메일 발송 실패', err)));
+    this.ctx.waitUntil(sendSecurityAlert(this.env, email, kind, alert).catch((err) => console.error(`${label} 메일 발송 실패`, err)));
   }
 
   private putFlow(id: string, kind: keyof typeof FLOW_TTL_MS, data: unknown): void {
@@ -389,7 +405,7 @@ export class Directory extends DurableObject<Env> {
       client.agent.slice(0, 200),
       device.hash,
     );
-    if (device.isNew) this.alertNewDevice(userId, client, now);
+    if (device.isNew) this.securityAlert(userId, 'login', client, now);
     this.sql.exec('UPDATE users SET last_seen_at = ? WHERE id = ?', now, userId);
     this.sweep();
     return token;
@@ -616,6 +632,16 @@ export class Directory extends DurableObject<Env> {
 
   /* 로그인된 기기 (세션) */
 
+  /** 이 세션으로 로그인한 지 10분이 지났으면 다시 로그인하라는 오류 (패스키처럼 계정에 새 로그인 수단을 더할 때) */
+  private async recentLogin(userId: string, token: string | null): Promise<Result<never> | null> {
+    const row =
+      token && token.length <= 100
+        ? this.sql.exec<{ created_at: number }>('SELECT created_at FROM sessions WHERE hash = ? AND user_id = ?', await sha256Hex(token), userId).toArray()[0]
+        : undefined;
+    if (row && Date.now() - row.created_at <= PASSKEY_REAUTH_MS) return null;
+    return fail(403, '보안을 위해 로그인한 지 10분 안에만 패스키를 추가할 수 있습니다. 로그아웃한 뒤 다시 로그인하고 추가해 주세요.', { reason: 'reauth' });
+  }
+
   private async currentSession(token: string | null): Promise<{ id: string; user_id: string; device: string | null } | null> {
     if (!(await this.authenticate(token))) return null;
     return (
@@ -680,11 +706,13 @@ export class Directory extends DurableObject<Env> {
   /* ───────────── 패스키 ───────────── */
 
   /** 등록 준비: 챌린지 · 사용자 핸들 · 이미 등록된 키(같은 기기에 중복 등록 방지) */
-  async passkeyRegisterOptions(userId: string): Promise<
+  async passkeyRegisterOptions(userId: string, token: string | null): Promise<
     Result<{ challenge: string; user: { id: string; name: string; displayName: string }; exclude: { id: string; transports: string[] }[] }>
   > {
     const user = this.user(userId);
     if (!user) return fail(404, '사용자를 찾을 수 없습니다.');
+    const recent = await this.recentLogin(userId, token);
+    if (recent) return recent;
     const keys = this.sql.exec<{ id: string; transports: string }>('SELECT id, transports FROM passkeys WHERE user_id = ?', userId).toArray();
     if (keys.length >= MAX_PASSKEYS) return fail(400, `패스키는 계정마다 ${MAX_PASSKEYS}개까지 등록할 수 있습니다. 쓰지 않는 패스키를 지운 뒤 다시 시도해 주세요.`);
     const challenge = b64urlEncode(crypto.getRandomValues(new Uint8Array(32)));
@@ -699,8 +727,10 @@ export class Directory extends DurableObject<Env> {
   }
 
   /** 등록: 이 계정이 받은 챌린지에 대한 응답인지 · 이 사이트의 키인지 확인하고 공개 키를 저장 */
-  async passkeyRegister(userId: string, input: PasskeyRegistration, site: PasskeySite, agent: string): Promise<Result<PasskeyInfo>> {
+  async passkeyRegister(userId: string, token: string | null, input: PasskeyRegistration, site: PasskeySite, client: LoginClient): Promise<Result<PasskeyInfo>> {
     try {
+      const recent = await this.recentLogin(userId, token);
+      if (recent) return recent;
       const id = b64urlEncode(b64urlDecode(input.id, 1400));
       const clientData = b64urlDecode(input.clientDataJSON);
       const authData = b64urlDecode(input.authenticatorData, 8192);
@@ -723,7 +753,7 @@ export class Directory extends DurableObject<Env> {
         ? input.transports.filter((t): t is string => typeof t === 'string' && /^[a-z-]{1,16}$/.test(t)).slice(0, 8)
         : [];
       const now = Date.now();
-      const name = deviceLabel(agent);
+      const name = deviceLabel(client.agent);
       this.sql.exec(
         'INSERT INTO passkeys (id, user_id, public_key, alg, sign_count, transports, name, created_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?)',
         id,
@@ -735,6 +765,7 @@ export class Directory extends DurableObject<Env> {
         name,
         now,
       );
+      this.securityAlert(userId, 'passkey', client, now);
       return ok({ id, name, createdAt: now, lastUsedAt: null });
     } catch (err) {
       if (err instanceof PasskeyError) return fail(400, err.message);

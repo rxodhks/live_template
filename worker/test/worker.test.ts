@@ -351,11 +351,17 @@ describe('로그인', () => {
     const phoneAgain = await emailLogin(email, phone.device);
     await waitLog();
     assert.equal(alertsFor(email), 2);
+    // 알림 메일은 계정마다 하루 3통까지 (인증 코드 메일 한도와 따로)
+    const tablet = await emailLogin(email);
+    const laptop = await emailLogin(email);
+    await waitLog();
+    assert.equal(alertsFor(email), 3, '계정마다 하루 3통까지만 알린다');
 
     // 이 기기만 남기고 모두 로그아웃
     const others = await raw('POST', '/api/me/sessions/logout-others', { cookie: `${SID}=${pc.token}` });
     assert.equal(others.status, 200);
-    assert.equal(others.data.removed, 2);
+    assert.equal(others.data.removed, 4);
+    for (const s of [tablet, laptop]) assert.equal((await raw('GET', '/api/me', { cookie: `${SID}=${s.token}; ${s.device}` })).status, 401);
     assert.equal((await raw('GET', '/api/me', { cookie: `${SID}=${pc2.token}` })).status, 401);
     assert.equal((await raw('GET', '/api/me', { cookie: `${SID}=${phoneAgain.token}` })).status, 401);
     assert.equal((await raw('GET', '/api/me', { cookie: `${SID}=${pc.token}` })).status, 200);
@@ -511,6 +517,8 @@ describe('로그인', () => {
     assert.equal(reg.status, 201, JSON.stringify(reg.data));
     assert.equal(reg.data.passkey.id, device.id);
     assert.equal((await api('GET', '/me', u.token)).data.account.passkeys, 1);
+    await sleep(300);
+    assert.ok(workerLog.includes(`${u.email} 새 패스키 등록 알림`), '패스키를 등록하면 계정 메일로 알린다');
 
     // 로그인: 쿠키 없이, 이메일도 코드도 없이
     const login = async (sign: (challenge: string) => unknown) => {

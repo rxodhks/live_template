@@ -74,8 +74,27 @@ export interface LoginAlert {
 const kst = (at: number) =>
   new Intl.DateTimeFormat('ko-KR', { timeZone: 'Asia/Seoul', dateStyle: 'long', timeStyle: 'short' }).format(new Date(at)) + ' (한국 시간)';
 
-/** 처음 보는 기기에서 로그인했을 때 계정 주인에게 알린다 */
-export async function sendLoginAlert(env: Env, to: string, alert: LoginAlert): Promise<void> {
+/** 보안 알림 종류: 처음 보는 기기의 로그인 · 새 패스키 등록 */
+export type SecurityAlertKind = 'login' | 'passkey';
+
+const ALERT_COPY: Record<SecurityAlertKind, { title: string; lead: string; subject: string; fix: string }> = {
+  login: {
+    title: '새 기기에서 로그인했습니다',
+    lead: '처음 보는 기기(또는 브라우저)에서 내 Madang 계정으로 로그인했습니다.',
+    subject: '새 기기 로그인',
+    fix: '바로 로그인한 뒤 <b>프로필 수정 → 로그인된 기기</b>에서 <b>다른 기기 모두 로그아웃</b>을 누르고, <b>패스키</b> 목록에 모르는 패스키가 있으면 삭제해 주세요.',
+  },
+  passkey: {
+    title: '새 패스키가 등록되었습니다',
+    lead: '내 Madang 계정에 새 패스키가 등록되었습니다. 이 패스키로는 이메일 · 인증 코드 없이 로그인할 수 있습니다.',
+    subject: '새 패스키 등록',
+    fix: '바로 로그인한 뒤 <b>프로필 수정 → 패스키</b>에서 이 패스키를 삭제하고, <b>로그인된 기기</b>에서 <b>다른 기기 모두 로그아웃</b>을 눌러 주세요.',
+  },
+};
+
+/** 계정 보안 알림: 처음 보는 기기에서 로그인했거나 새 패스키가 등록되었을 때 계정 주인에게 알린다 */
+export async function sendSecurityAlert(env: Env, to: string, kind: SecurityAlertKind, alert: LoginAlert): Promise<void> {
+  const copy = ALERT_COPY[kind];
   const rows: [string, string][] = [
     ['기기', alert.device],
     ['시간', kst(alert.at)],
@@ -87,20 +106,20 @@ export async function sendLoginAlert(env: Env, to: string, alert: LoginAlert): P
   const html = `<!doctype html><html lang="ko"><body style="margin:0;padding:32px 16px;background:#f8f9fa;font-family:-apple-system,BlinkMacSystemFont,'Apple SD Gothic Neo','Malgun Gothic',sans-serif;color:#11181c">
 <div style="max-width:440px;margin:0 auto;background:#fff;border-radius:16px;padding:32px 28px;border:1px solid #e6e8eb">
 <div style="font-size:18px;font-weight:700;margin-bottom:20px"><span style="display:inline-block;width:22px;height:22px;border:3px solid #11181c;border-radius:6px;vertical-align:-5px;margin-right:8px;box-sizing:border-box"></span>Madang</div>
-<h1 style="font-size:20px;margin:0 0 8px">새 기기에서 로그인했습니다</h1>
-<p style="margin:0 0 16px;color:#687076;font-size:14px;line-height:1.6">처음 보는 기기(또는 브라우저)에서 내 Madang 계정으로 로그인했습니다.</p>
+<h1 style="font-size:20px;margin:0 0 8px">${copy.title}</h1>
+<p style="margin:0 0 16px;color:#687076;font-size:14px;line-height:1.6">${copy.lead}</p>
 <table style="font-size:14px;border-collapse:collapse;margin:0 0 20px">${table}</table>
 <p style="margin:0 0 8px;font-size:14px;line-height:1.6">본인이라면 이 메일은 무시해도 됩니다.</p>
-<p style="margin:0 0 20px;font-size:14px;line-height:1.6"><b>본인이 아니라면</b> 바로 로그인한 뒤 <b>프로필 수정 → 로그인된 기기</b>에서 <b>다른 기기 모두 로그아웃</b>을 눌러 주세요. 메일 계정의 비밀번호도 바꾸는 것이 좋습니다.</p>
+<p style="margin:0 0 20px;font-size:14px;line-height:1.6"><b>본인이 아니라면</b> ${copy.fix} 메일 계정의 비밀번호도 바꾸는 것이 좋습니다.</p>
 <a href="${escape(alert.origin)}/" style="display:inline-block;background:#11181c;color:#fff;text-decoration:none;padding:10px 18px;border-radius:10px;font-size:14px;font-weight:600">Madang 열기</a>
 </div>
 <p style="text-align:center;color:#adb5bd;font-size:12px;margin:16px 0 0">Madang · 함께 만드는 작업 마당 · madang.party</p>
 </body></html>`;
-  const text = `Madang: 새 기기에서 로그인했습니다\n\n${rows.map(([k, v]) => `${k}: ${v}`).join('\n')}\n\n본인이라면 이 메일은 무시해도 됩니다.\n본인이 아니라면 로그인한 뒤 프로필 수정 → 로그인된 기기에서 "다른 기기 모두 로그아웃"을 눌러 주세요. 메일 계정의 비밀번호도 바꾸는 것이 좋습니다.\n\n${alert.origin}/`;
+  const text = `Madang: ${copy.title}\n\n${copy.lead}\n\n${rows.map(([k, v]) => `${k}: ${v}`).join('\n')}\n\n본인이라면 이 메일은 무시해도 됩니다.\n본인이 아니라면 ${copy.fix.replace(/<\/?b>/g, '')} 메일 계정의 비밀번호도 바꾸는 것이 좋습니다.\n\n${alert.origin}/`;
   const res = await fetch('https://api.resend.com/emails', {
     method: 'POST',
     headers: { authorization: `Bearer ${env.RESEND_API_KEY}`, 'content-type': 'application/json' },
-    body: JSON.stringify({ from: env.EMAIL_FROM || DEFAULT_FROM, to: [to], subject: `Madang 새 기기 로그인: ${alert.device}`, html, text }),
+    body: JSON.stringify({ from: env.EMAIL_FROM || DEFAULT_FROM, to: [to], subject: `Madang ${copy.subject}: ${alert.device}`, html, text }),
   });
   if (!res.ok) throw new Error(`Resend ${res.status}: ${(await res.text().catch(() => '')).slice(0, 300)}`);
 }

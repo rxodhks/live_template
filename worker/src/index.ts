@@ -279,14 +279,14 @@ function passkeySite(c: Ctx): PasskeySite {
 route('POST', '/api/auth/passkey/register/options', async (c) => {
   const user = await requireUser(c);
   const site = passkeySite(c);
-  const opts = unwrap(await directory(c.env).passkeyRegisterOptions(user.id));
+  const opts = unwrap(await directory(c.env).passkeyRegisterOptions(user.id, tokenOf(c.req)));
   return json({ ...opts, rp: { id: site.rpId, name: 'Madang' } });
 });
 
 route('POST', '/api/auth/passkey/register', async (c) => {
   const user = await requireUser(c);
   const input = await body<PasskeyRegistration>(c.req, 32 * 1024);
-  return json({ passkey: unwrap(await directory(c.env).passkeyRegister(user.id, input, passkeySite(c), agentOf(c.req))) }, 201);
+  return json({ passkey: unwrap(await directory(c.env).passkeyRegister(user.id, tokenOf(c.req), input, passkeySite(c), clientOf(c))) }, 201);
 });
 
 route('POST', '/api/auth/passkey/login/options', async (c) => {
