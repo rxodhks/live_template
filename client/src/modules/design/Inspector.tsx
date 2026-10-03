@@ -127,6 +127,28 @@ function UnitSelect({ unit, onChange }: { unit: PageUnit; onChange: (u: PageUnit
   );
 }
 
+/** PNG · SVG 내보내기 버튼 + 배경 투명 선택 (보드 · 아트보드 · 선택한 도형 공통) */
+function ExportButtons({ disabled, onExport }: { disabled?: boolean; onExport: (format: 'png' | 'svg', transparent: boolean) => Promise<void> }) {
+  const clear = useDesign((s) => s.clearExport);
+  const toggle = useDesign((s) => s.toggleClearExport);
+  const run = (format: 'png' | 'svg') => void onExport(format, clear).catch((e) => toast.error(`${format.toUpperCase()} 내보내기 실패`, String(e)));
+  return (
+    <>
+      <div className="insp-buttons">
+        <Button size="sm" icon={<Download size={14} />} disabled={disabled} onClick={() => run('png')}>
+          PNG
+        </Button>
+        <Button size="sm" icon={<Download size={14} />} disabled={disabled} onClick={() => run('svg')}>
+          SVG
+        </Button>
+      </div>
+      <label className="insp-check">
+        <input type="checkbox" checked={clear} onChange={toggle} /> 배경 투명 (배경 없이 저장)
+      </label>
+    </>
+  );
+}
+
 /** 오른쪽 속성 패널 — 선택한 도형이 없으면 보드 설정 */
 export function Inspector({ board }: { board: YItem }) {
   const ws = useWorkspace();
@@ -185,14 +207,10 @@ export function Inspector({ board }: { board: YItem }) {
           </button>
         </div>
         <h3>내보내기</h3>
-        <div className="insp-buttons">
-          <Button size="sm" icon={<Download size={14} />} disabled={!count} onClick={() => void exportSvg(name, sortedShapes(map), background)}>
-            SVG
-          </Button>
-          <Button size="sm" icon={<Download size={14} />} disabled={!count} onClick={() => void exportPng(name, sortedShapes(map), background).catch((e) => toast.error('PNG 내보내기 실패', String(e)))}>
-            PNG
-          </Button>
-        </div>
+        <ExportButtons
+          disabled={!count}
+          onExport={(format, clear) => (format === 'png' ? exportPng(name, sortedShapes(map), background, 2, clear) : exportSvg(name, sortedShapes(map), background, clear))}
+        />
         <p className="insp-help">
           도형 {count}개 · 도형을 선택하면 색상, 선, 텍스트, 위치를 바꿀 수 있습니다. 여러 사람이 같은 도형을 동시에 바꾸면 마지막 변경이 반영됩니다.
         </p>
@@ -277,14 +295,7 @@ export function Inspector({ board }: { board: YItem }) {
             </Button>
           </div>
           <h4>아트보드 내보내기</h4>
-          <div className="insp-buttons">
-            <Button size="sm" icon={<Download size={14} />} onClick={() => void exportFrame(frame, shapes, 'png').catch((e) => toast.error('PNG 내보내기 실패', String(e)))}>
-              PNG
-            </Button>
-            <Button size="sm" icon={<Download size={14} />} onClick={() => void exportFrame(frame, shapes, 'svg')}>
-              SVG
-            </Button>
-          </div>
+          <ExportButtons onExport={(format, clear) => exportFrame(frame, shapes, format, 2, clear)} />
         </>
       )}
 
@@ -377,6 +388,20 @@ export function Inspector({ board }: { board: YItem }) {
               <span className="insp-help">가운데 점을 끌면 휘어집니다</span>
             </div>
           )}
+        </>
+      )}
+
+      {!frame && (
+        <>
+          <h4>선택한 것만 내보내기</h4>
+          <ExportButtons
+            onExport={(format, clear) => {
+              const picked = new Set(withFrameChildren(shapes, selected).map((s) => s.id));
+              const list = sortedShapes(map).filter((s) => picked.has(s.id));
+              const fileName = `${name || '보드'}-선택`;
+              return format === 'png' ? exportPng(fileName, list, background, 2, clear) : exportSvg(fileName, list, background, clear);
+            }}
+          />
         </>
       )}
 

@@ -1,6 +1,7 @@
-import { ArrowUpRight, Circle, Diamond, Frame, Hand, Minus, MousePointer2, Pencil, Redo2, Square, StickyNote, Type, Undo2 } from 'lucide-react';
-import { useDesign, type Tool } from './store';
+import { ArrowUpRight, Circle, Diamond, Eraser, Frame, Hand, Highlighter, Minus, MousePointer2, Pencil, Redo2, Square, StickyNote, Type, Undo2 } from 'lucide-react';
+import { HIGHLIGHTER_OPACITY, PEN_COLORS, PEN_WIDTHS, useDesign, type Tool } from './store';
 import { IconButton } from '../../components/ui';
+import { cx } from '../../lib/util';
 
 const TOOLS: { tool: Tool; label: string; key: string; icon: React.ReactNode }[] = [
   { tool: 'select', label: '선택', key: 'V', icon: <MousePointer2 size={17} /> },
@@ -11,6 +12,7 @@ const TOOLS: { tool: Tool; label: string; key: string; icon: React.ReactNode }[]
   { tool: 'line', label: '선', key: 'L', icon: <Minus size={17} /> },
   { tool: 'arrow', label: '화살표', key: 'A', icon: <ArrowUpRight size={17} /> },
   { tool: 'pen', label: '펜', key: 'P', icon: <Pencil size={17} /> },
+  { tool: 'eraser', label: '지우개 (문지른 부분만 지움)', key: 'E', icon: <Eraser size={17} /> },
   { tool: 'text', label: '텍스트', key: 'T', icon: <Type size={17} /> },
   { tool: 'sticky', label: '스티키 노트', key: 'S', icon: <StickyNote size={17} /> },
 ];
@@ -20,6 +22,7 @@ export function DesignToolbar({ readOnly, onUndo, onRedo, onAddArtboard }: { rea
   const tool = useDesign((s) => s.tool);
   const setTool = useDesign((s) => s.setTool);
   return (
+    <>
     <div className="design-toolbar" role="toolbar" aria-label="디자인 도구">
       {TOOLS.map((t, i) => (
         <span key={t.tool} className="tool-slot">
@@ -44,6 +47,42 @@ export function DesignToolbar({ readOnly, onUndo, onRedo, onAddArtboard }: { rea
       </IconButton>
       <IconButton label="다시 실행" disabled={readOnly} onClick={onRedo}>
         <Redo2 size={17} />
+      </IconButton>
+    </div>
+    {tool === 'pen' && !readOnly && <PenOptions />}
+    </>
+  );
+}
+
+/** 펜을 고르면 도구 모음 아래에 뜨는 색 · 굵기 · 형광펜 설정 (그리기 전에 미리 고른다) */
+function PenOptions() {
+  const pen = useDesign((s) => s.pen);
+  const setPen = useDesign((s) => s.setPen);
+  return (
+    <div className="pen-options" role="toolbar" aria-label="펜 설정">
+      {PEN_COLORS.map((c) => (
+        <button
+          key={c}
+          className={cx('pen-swatch', pen.color === c && 'is-selected')}
+          style={{ background: c }}
+          onClick={() => setPen({ color: c })}
+          aria-label={`펜 색 ${c}`}
+          aria-pressed={pen.color === c}
+          data-tip={c}
+        />
+      ))}
+      <label className={cx('pen-swatch is-custom', !PEN_COLORS.includes(pen.color) && 'is-selected')} data-tip="직접 선택" style={!PEN_COLORS.includes(pen.color) ? { background: pen.color } : undefined}>
+        <input type="color" value={pen.color} onChange={(e) => setPen({ color: e.target.value })} aria-label="펜 색 직접 선택" />
+      </label>
+      <span className="tb-sep" />
+      {PEN_WIDTHS.map((w, i) => (
+        <IconButton key={w.width} label={`${w.label} ${w.width}px (${i + 1})`} active={pen.width === w.width} onClick={() => setPen({ width: w.width })}>
+          <span className="pen-width-dot" style={{ width: w.width + 2, height: w.width + 2, background: pen.color, opacity: pen.highlighter ? HIGHLIGHTER_OPACITY + 0.25 : 1 }} />
+        </IconButton>
+      ))}
+      <span className="tb-sep" />
+      <IconButton label="형광펜 (반투명)" active={pen.highlighter} onClick={() => setPen({ highlighter: !pen.highlighter })}>
+        <Highlighter size={16} />
       </IconButton>
     </div>
   );

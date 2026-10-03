@@ -10,10 +10,10 @@ import { useYField } from '../../hooks/useY';
 import { RemoteCursor, useViewers, ACTION_BUBBLE_MS } from '../../components/Cursors';
 import { useLive, type RemotePen } from '../../store/live';
 import type { LivePen } from '@shared/protocol';
-import { isTypingTarget, throttle } from '../../lib/util';
-import { useDesign, type Tool } from './store';
+import { isTypingTarget, newId, throttle } from '../../lib/util';
+import { HIGHLIGHTER_OPACITY, PEN_WIDTHS, useDesign, type Tool } from './store';
 import { ShapeView } from './ShapeView';
-import { type Box, type Handle, bendAt, boundsOf, contains, intersects, isLine, lineGeom, lineHeight, linePath, resizeBox, snapAngle, snapTo, unionBounds, wrapText, TEXT_FONT } from './geometry';
+import { type Box, type Handle, bendAt, eraseRun, penRun, boundsOf, contains, intersects, isLine, lineGeom, lineHeight, linePath, resizeBox, snapAngle, snapTo, unionBounds, wrapText, TEXT_FONT } from './geometry';
 import { DEFAULT_SIZE, copyShapes, defaultShape, deleteShapes, insertShapes, maxZ, newFrame, updateShapes, useShapes, withFrameChildren, type ShapeMap } from './ops';
 import { promptDialog } from '../../components/ui';
 import { storePx } from '../docs/page/pageSizes';
@@ -25,12 +25,13 @@ type Drag =
   | { kind: 'create'; id: string; start: { x: number; y: number }; type: Shape['type'] }
   | { kind: 'pen'; shape: Shape; points: number[]; sent: number; announced: boolean; timer: ReturnType<typeof setTimeout> | null }
   | { kind: 'marquee'; start: { x: number; y: number }; base: string[] }
+  | { kind: 'erase'; last: { x: number; y: number }; cut: Map<string, number[][]> }
   | { kind: 'pinch'; startDist: number; startMid: { x: number; y: number }; orig: Viewport };
 
 const dist = (a: { x: number; y: number }, b: { x: number; y: number }) => Math.max(1, Math.hypot(a.x - b.x, a.y - b.y));
 const mid = (a: { x: number; y: number }, b: { x: number; y: number }) => ({ x: (a.x + b.x) / 2, y: (a.y + b.y) / 2 });
 
-const TOOL_KEYS: Record<string, Tool> = { v: 'select', h: 'hand', r: 'rect', o: 'ellipse', d: 'diamond', l: 'line', a: 'arrow', p: 'pen', t: 'text', s: 'sticky' };
+const TOOL_KEYS: Record<string, Tool> = { v: 'select', h: 'hand', r: 'rect', o: 'ellipse', d: 'diamond', l: 'line', a: 'arrow', p: 'pen', e: 'eraser', t: 'text', s: 'sticky' };
 const TEXT_TYPES = new Set(['rect', 'ellipse', 'diamond', 'sticky', 'text']);
 /** 그리는 중인 펜 선의 새 점을 모아 보내는 간격 */
 const PEN_LIVE_MS = 80;
@@ -40,6 +41,8 @@ const MIN_ZOOM = 0.1;
 const MAX_ZOOM = 5;
 /** 휘기 손잡이를 직선 가까이(화면 px) 가져가면 곧은 화살표로 붙는다 */
 const BEND_SNAP_PX = 6;
+/** 지우개 반지름 (화면 px) */
+const ERASER_PX = 10;
 
 /** 복사/붙여넣기용 (탭 안에서 유지) */
 let clipboard: Shape[] = [];
@@ -102,6 +105,9 @@ export function DesignCanvas({ board, onApi, onZoom, onAddArtboard }: Props) {
   const [dragKind, setDragKind] = useState<Drag['kind'] | null>(null);
   /** 내가 그리고 있는 펜 선 (손을 뗄 때 한 번만 문서에 저장) */
   const [draft, setDraft] = useState<{ points: number[]; stroke: string; strokeWidth: number; opacity: number } | null>(null);
+  /** 지우개로 문지른 펜 선 → 남은 조각들 (월드 좌표, 손을 뗄 때 한 번에 저장) · 지우개 위치 */
+  const [erasing, setErasing] = useState<ReadonlyMap<string, number[][]>>(() => new Map());
+  const [eraserAt, setEraserAt] = useState<{ x: number; y: number } | null>(null);
   const [, bump] = useState(0);
 
   const undo = useMemo(() => new Y.UndoManager(map, { captureTimeout: 400 }), [map]);
@@ -285,6 +291,7 @@ export function DesignCanvas({ board, onApi, onZoom, onAddArtboard }: Props) {
       sendPen(d, 'cancel');
       setDraft(null);
     }
+    if (d?.kind === 'erase') setErasing(new Map());
     ws.provider.setLive?.(false);
     drag.current = null;
     setMarquee(null);
@@ -358,11 +365,22 @@ export function DesignCanvas({ board, onApi, onZoom, onAddArtboard }: Props) {
       return;
     }
 
+    if (tool === 'eraser') {
+      const d: Drag = { kind: 'erase', last: p, cut: new Map() };
+      beginDrag(d, e.pointerId);
+      eraseAlong(d, p);
+      ws.action('🧽 지우개로 지우는 중');
+      return;
+    }
+
     // 도형 만들기
     const x = snapTo(p.x, snap);
     const y = snapTo(p.y, snap);
-    const shape = defaultShape(tool as Shape['type'], x, y, maxZ(map) + 1, me.id);
+    let shape = defaultShape(tool as Shape['type'], x, y, maxZ(map) + 1, me.id);
     if (tool === 'pen') {
+      // 미리 고른 펜 색 · 굵기 · 형광펜
+      const pen = useDesign.getState().pen;
+      shape = { ...shape, stroke: pen.color, strokeWidth: pen.width, opacity: pen.highlighter ? HIGHLIGHTER_OPACITY : 1 };
       // 그리는 동안은 문서에 쓰지 않고 내 화면에만 그린다. 다른 사람에게는 새 점만 짧게 중계
       const d: Drag = { kind: 'pen', shape, points: [p.x, p.y], sent: 0, announced: false, timer: null };
       beginDrag(d, e.pointerId);
@@ -394,6 +412,7 @@ export function DesignCanvas({ board, onApi, onZoom, onAddArtboard }: Props) {
       return;
     }
     const p = toWorld(e.clientX, e.clientY);
+    if (tool === 'eraser' && e.pointerType !== 'touch') setEraserAt(p);
     // 펜으로 그리는 중에는 선 끝이 곧 커서 위치라 따로 보내지 않는다
     if (d?.kind !== 'pen') ws.publishCursor(p);
     if (!d) return;
@@ -474,6 +493,9 @@ export function DesignCanvas({ board, onApi, onZoom, onAddArtboard }: Props) {
         if (!d.timer) d.timer = setTimeout(() => sendPen(d), PEN_LIVE_MS);
         return;
       }
+      case 'erase':
+        eraseAlong(d, p);
+        return;
       case 'marquee': {
         const box = { x: Math.min(d.start.x, p.x), y: Math.min(d.start.y, p.y), w: Math.abs(p.x - d.start.x), h: Math.abs(p.y - d.start.y) };
         setMarquee(box);
@@ -534,10 +556,57 @@ export function DesignCanvas({ board, onApi, onZoom, onAddArtboard }: Props) {
         ws.action('✏️ 펜 드로잉 추가');
         report('design.shape.add', SHAPE_LABEL.pen);
       }
+    } else if (d.kind === 'erase') {
+      setErasing(new Map());
+      // 문지른 선은 지우고 남은 조각을 같은 모양 · 순서의 새 선으로 (한 번 문지른 것은 한 번의 실행 취소로)
+      const ids: string[] = [];
+      const pieces: Shape[] = [];
+      for (const [id, runs] of d.cut) {
+        const s = map.get(id);
+        if (!s || s.locked) continue;
+        ids.push(id);
+        for (const run of runs) pieces.push({ ...s, id: newId(), ...penPatch(run) });
+      }
+      if (ids.length) {
+        undo.stopCapturing();
+        map.doc!.transact(() => {
+          deleteShapes(map, ids);
+          insertShapes(map, pieces);
+        });
+        ws.action('🧽 지우개로 지움');
+        report('design.edit', `지우개 ${ids.length}개 선`);
+      }
     } else if ((d.kind === 'move' && d.moved) || d.kind === 'resize') {
       report('design.edit');
     }
     undo.stopCapturing();
+  };
+
+  /** 지우개가 지난 위치에서 p까지 지나가며 닿은 부분만 펜 선에서 잘라 낸다 (잠긴 선은 그대로) */
+  const eraseAlong = (d: Extract<Drag, { kind: 'erase' }>, p: { x: number; y: number }) => {
+    const r = ERASER_PX / viewRef.current.zoom;
+    const { last } = d;
+    let changed = false;
+    for (const s of shapesRef.current) {
+      if (s.type !== 'pen' || s.locked) continue;
+      const reach = r + s.strokeWidth / 2;
+      // 바운딩 박스로 먼저 걸러낸다
+      if (Math.max(last.x, p.x) < s.x - reach || Math.min(last.x, p.x) > s.x + s.w + reach || Math.max(last.y, p.y) < s.y - reach || Math.min(last.y, p.y) > s.y + s.h + reach) continue;
+      const runs = d.cut.get(s.id) ?? [penRun(s, Math.max(r / 2, 0.5))];
+      let touched = false;
+      const next: number[][] = [];
+      for (const run of runs) {
+        const left = eraseRun(run, last.x, last.y, p.x, p.y, reach);
+        if (left) touched = true;
+        next.push(...(left ?? [run]));
+      }
+      if (touched) {
+        d.cut.set(s.id, next);
+        changed = true;
+      }
+    }
+    d.last = p;
+    if (changed) setErasing(new Map(d.cut));
   };
 
   const onDoubleClick = (e: React.MouseEvent) => {
@@ -694,6 +763,10 @@ export function DesignCanvas({ board, onApi, onZoom, onAddArtboard }: Props) {
         onAddArtboardRef.current?.();
         return;
       }
+      if (st.tool === 'pen' && !mod && !e.altKey && !e.shiftKey && /^Digit[1-3]$/.test(e.code)) {
+        st.setPen({ width: PEN_WIDTHS[Number(e.code.slice(5)) - 1].width });
+        return;
+      }
       if (!mod && !e.altKey && TOOL_KEYS[key]) st.setTool(TOOL_KEYS[key]);
     };
     const onKeyUp = (e: KeyboardEvent) => {
@@ -761,7 +834,7 @@ export function DesignCanvas({ board, onApi, onZoom, onAddArtboard }: Props) {
   const handleSize = (isTouch ? 16 : 9) / view.zoom;
   const gridStep = 24 * view.zoom;
   const cursorClass =
-    dragKind === 'pan' ? 'is-panning' : tool === 'hand' || spaceDown ? 'is-hand' : tool !== 'select' && !readOnly ? 'is-crosshair' : '';
+    dragKind === 'pan' ? 'is-panning' : tool === 'hand' || spaceDown ? 'is-hand' : tool === 'eraser' && !readOnly ? 'is-crosshair is-eraser' : tool !== 'select' && !readOnly ? 'is-crosshair' : '';
 
   return (
     <div
@@ -769,7 +842,10 @@ export function DesignCanvas({ board, onApi, onZoom, onAddArtboard }: Props) {
       ref={wrapRef}
       tabIndex={0}
       style={{ background: background || undefined }}
-      onPointerLeave={() => ws.publishCursor(null)}
+      onPointerLeave={() => {
+        ws.publishCursor(null);
+        setEraserAt(null);
+      }}
       aria-label={`디자인 보드 ${boardName}`}
     >
       <svg
@@ -791,9 +867,18 @@ export function DesignCanvas({ board, onApi, onZoom, onAddArtboard }: Props) {
         </defs>
         {showGrid && <rect width="100%" height="100%" fill={`url(#grid-${boardId})`} />}
         <g transform={`translate(${view.x} ${view.y}) scale(${view.zoom})`}>
-          {shapes.map((s) => (
-            <ShapeView key={s.id} shape={s} zoom={view.zoom} hit={isTouch ? 28 : 12} hideText={editingId === s.id} />
-          ))}
+          {shapes.map((s) =>
+            erasing.has(s.id) ? (
+              // 지우개로 문지르는 중인 선: 남은 조각만 보여 준다 (손을 떼면 저장)
+              <g key={s.id} opacity={s.opacity} pointerEvents="none">
+                {erasing.get(s.id)!.map((run, i) => (
+                  <path key={i} d={pathOf(run, run.length)} fill="none" stroke={s.stroke} strokeWidth={s.strokeWidth} strokeLinecap="round" strokeLinejoin="round" />
+                ))}
+              </g>
+            ) : (
+              <ShapeView key={s.id} shape={s} zoom={view.zoom} hit={isTouch ? 28 : 12} hideText={editingId === s.id} />
+            ),
+          )}
 
           {/* 다른 사람이 지금 그리고 있는 펜 선 */}
           {livePens.map((p) => (
@@ -848,6 +933,7 @@ export function DesignCanvas({ board, onApi, onZoom, onAddArtboard }: Props) {
               )}
             </g>
           )}
+          {tool === 'eraser' && !readOnly && eraserAt && <circle cx={eraserAt.x} cy={eraserAt.y} r={ERASER_PX / view.zoom} className="eraser-ring" strokeWidth={1 / view.zoom} />}
           {marquee && <rect x={marquee.x} y={marquee.y} width={marquee.w} height={marquee.h} className="marquee" strokeWidth={1 / view.zoom} />}
         </g>
       </svg>
