@@ -31,7 +31,18 @@ export interface SandboxRun {
   onEnd?(ok: boolean): void;
 }
 
-const SANDBOX_HTML = `<!doctype html><meta charset="utf-8"><script>
+/*
+ * 실행 환경 보안 정책 — 워커(blob 주소로 만들어 이 정책을 물려받는다)에서 바깥으로 나가는 요청을 막는다.
+ * 사용자 코드가 템플릿 파일 · 입력값을 다른 서버로 보내지 못한다. 파이썬 추가 패키지(numpy 등)를 받는 CDN만 허용한다.
+ */
+export const SANDBOX_CSP = [
+  "default-src 'none'",
+  "script-src 'unsafe-inline' 'unsafe-eval' 'wasm-unsafe-eval' blob:",
+  'worker-src blob:',
+  'connect-src blob: data: https://cdn.jsdelivr.net/pyodide/',
+].join('; ');
+
+const SANDBOX_HTML = `<!doctype html><meta charset="utf-8"><meta http-equiv="Content-Security-Policy" content="${SANDBOX_CSP}"><script>
 var w = null;
 addEventListener('message', function (e) {
   var d = e.data;

