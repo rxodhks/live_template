@@ -1239,6 +1239,53 @@ describe('남용 방지', () => {
     c.close();
     await sleep(2500);
   });
+
+  it('잠금 해제하지 않은 비밀 노트에는 이름이 무엇이든 쓰거나 중계하지 못한다', async () => {
+    const a = new Client(id, e.token);
+    const b = new Client(id, o.token);
+    await a.ready();
+    await b.ready();
+    // 'constructor' 같은 이름은 Object 기본 속성과 겹쳐 잠금 해제된 것으로 오인됐었다
+    for (const name of ['constructor', '__proto__', 'toString', 'hasOwnProperty']) {
+      const res = await a.request({ t: 'note:update', noteId: name, data: 'x' });
+      assert.equal(res.status, 401, name);
+    }
+    a.send({ t: 'note:aw', noteId: 'constructor', data: 'x' });
+    await sleep(300);
+    assert.ok(!b.messages.some((m) => m.t === 'note:update' || m.t === 'note:aw'), '다른 사람에게 중계하지 않는다');
+    a.close();
+    b.close();
+    await sleep(300);
+  });
+
+  it('채팅은 연결마다 10초에 20개까지 (저장소 쓰기 한도 보호)', async () => {
+    const c = new Client(id, e.token);
+    await c.ready();
+    const results = await Promise.all(Array.from({ length: 25 }, (_, i) => c.request({ t: 'chat', text: `빠른 메시지 ${i}` })));
+    assert.equal(results.filter((r) => r.ok).length, 20);
+    assert.ok(results.filter((r) => !r.ok).every((r) => r.status === 429));
+    c.close();
+    await sleep(300);
+  });
+
+  it('로그아웃하면 그 세션으로 열린 실시간 연결도 닫힌다 (다른 기기의 연결은 그대로)', async () => {
+    const start = await raw('POST', '/api/auth/email/start', { body: { email: e.email } });
+    const login = await raw('POST', '/api/auth/email/verify', { body: { email: e.email, code: start.data.devCode } });
+    const other = login.cookies[SID];
+    assert.ok(other);
+    const mine = new Client(id, other);
+    const elsewhere = new Client(id, e.token);
+    await mine.ready();
+    await elsewhere.ready();
+    assert.equal((await raw('POST', '/api/auth/logout', { cookie: `${SID}=${other}` })).status, 200);
+    // 서버가 닫기를 보내면 CLOSING(2) 이상이 된다 (로컬 런타임은 TCP 종료까지 시간이 걸려 onclose를 기다리지 않는다)
+    for (let i = 0; i < 20 && mine.ws.readyState === WebSocket.OPEN; i++) await sleep(100);
+    assert.ok(mine.ws.readyState >= WebSocket.CLOSING, '로그아웃한 세션의 연결은 닫힌다');
+    assert.equal(elsewhere.ws.readyState, WebSocket.OPEN, '같은 사람의 다른 세션 연결은 남는다');
+    assert.ok((await elsewhere.request({ t: 'chat', text: '아직 연결됨' })).ok);
+    elsewhere.close();
+    await sleep(300);
+  });
 });
 
 describe('피드백 · 화면 오류', () => {

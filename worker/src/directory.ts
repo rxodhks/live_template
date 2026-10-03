@@ -567,8 +567,24 @@ export class Directory extends DurableObject<Env> {
     return toUser(row);
   }
 
-  async logout(token: string | null): Promise<void> {
-    if (token && token.length <= 100) this.sql.exec('DELETE FROM sessions WHERE hash = ?', await sha256Hex(token));
+  /**
+   * 세션을 지우고, 그 사람이 멤버인 템플릿 목록을 돌려준다 (그 세션으로 열린 실시간 연결을 닫도록).
+   * 접속자 목록(online)은 참고용이라 늦게 반영될 수 있어 쓰지 않는다.
+   */
+  async logout(token: string | null): Promise<{ templateIds: string[] }> {
+    if (!token || token.length > 100) return { templateIds: [] };
+    const hash = await sha256Hex(token);
+    const userId = this.sql.exec<{ user_id: string }>('SELECT user_id FROM sessions WHERE hash = ?', hash).toArray()[0]?.user_id;
+    this.sql.exec('DELETE FROM sessions WHERE hash = ?', hash);
+    if (!userId) return { templateIds: [] };
+    const templateIds = this.sql
+      .exec<{ id: string }>(
+        'SELECT t.id FROM templates t JOIN members m ON m.template_id = t.id WHERE m.user_id = ? AND t.deleted_at IS NULL ORDER BY t.updated_at DESC LIMIT 200',
+        userId,
+      )
+      .toArray()
+      .map((r) => r.id);
+    return { templateIds };
   }
 
   /**

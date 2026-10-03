@@ -18,7 +18,7 @@ import {
   withCookies,
 } from './auth';
 import { sendFeedback, sendLoginCode } from './mail';
-import { HttpError, isId, json, newId, safeEqual, unwrap } from './util';
+import { HttpError, isId, json, newId, safeEqual, sha256Hex, unwrap } from './util';
 
 export { Directory, TemplateRoom };
 
@@ -73,6 +73,9 @@ function requireCurrentClient(req: Request): void {
   if ((Number(raw) || 0) >= CLIENT_VERSION) return;
   throw new HttpError(raw === null ? 403 : 426, '마당이 새 버전으로 업데이트되었습니다. 페이지를 새로고침한 뒤 이어서 작업해 주세요.', { reason: 'outdated' });
 }
+
+/** 실시간 연결을 로그인 세션별로 묶는 값 (세션 토큰의 해시 앞부분 — 연결 태그로 쓴다) */
+const sessionKey = async (token: string) => (await sha256Hex(`ws:${token}`)).slice(0, 32);
 
 const clientIp = (req: Request) => req.headers.get('cf-connecting-ip') ?? 'local';
 const agentOf = (req: Request) => req.headers.get('user-agent') ?? '';
@@ -370,7 +373,13 @@ route('POST', '/api/auth/signup', async (c) => {
 });
 
 route('POST', '/api/auth/logout', async (c) => {
-  await directory(c.env).logout(tokenOf(c.req));
+  const token = tokenOf(c.req);
+  const { templateIds } = await directory(c.env).logout(token);
+  // 이 세션으로 열려 있던 실시간 연결도 닫는다 (세션을 지워도 이미 열린 연결은 그대로 남아 편집할 수 있었다)
+  if (token && templateIds.length) {
+    const session = await sessionKey(token);
+    c.exec.waitUntil(Promise.allSettled(templateIds.map((id) => room(c.env, id).endSession(session))));
+  }
   return withCookies(json({ ok: true }), [clearCookie(COOKIE.session), clearCookie(COOKIE.signup)]);
 });
 
@@ -530,6 +539,10 @@ route('GET', '/api/templates/:id/ws', async (c) => {
   headers.set('x-lt-user', encodeURIComponent(JSON.stringify(user)));
   headers.set('x-lt-role', role);
   headers.set('x-lt-template', templateId);
+  // 로그아웃할 때 이 세션의 연결만 찾아 닫을 수 있도록 (토큰 자체가 아닌 해시)
+  const token = tokenOf(c.req);
+  if (token) headers.set('x-lt-session', await sessionKey(token));
+  else headers.delete('x-lt-session');
   // 대기 중인 참여 요청도 함께 넘겨 방이 Directory를 다시 부르지 않게 한다 (너무 크면 방이 직접 읽는다)
   const pending = encodeURIComponent(JSON.stringify(requests ?? []));
   headers.delete('x-lt-requests');
