@@ -476,7 +476,8 @@
 .passkey-head p {
   margin-top: 2px;
 }
-.passkey-list {
+.passkey-list,
+.session-list {
   display: flex;
   flex-direction: column;
   gap: 6px;
@@ -484,7 +485,8 @@
   margin: 0;
   padding: 0;
 }
-.passkey-list li {
+.passkey-list li,
+.session-list li {
   display: flex;
   align-items: center;
   gap: 10px;
@@ -492,7 +494,17 @@
   border-radius: 8px;
   background: var(--surface-2, var(--surface-hover));
 }
-.passkey-list li > div {
+.session-current {
+  margin-left: 6px;
+  padding: 1px 6px;
+  border-radius: 999px;
+  background: var(--accent-soft, var(--surface-hover));
+  color: var(--accent, inherit);
+  font-size: 11px;
+  font-weight: 600;
+}
+.passkey-list li > div,
+.session-list li > div {
   flex: 1;
   min-width: 0;
   display: flex;

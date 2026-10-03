@@ -60,3 +60,47 @@ export async function sendFeedback(env: Env, to: string, from: { name: string; i
   });
   if (!res.ok) throw new Error(`Resend ${res.status}: ${(await res.text().catch(() => '')).slice(0, 300)}`);
 }
+
+export interface LoginAlert {
+  /** 브라우저 · 운영체제 */
+  device: string;
+  /** 대략적인 위치 (도시, 국가) — 모르면 빈 문자열 */
+  place: string;
+  at: number;
+  /** 사이트 주소 (https://madang.party) */
+  origin: string;
+}
+
+const kst = (at: number) =>
+  new Intl.DateTimeFormat('ko-KR', { timeZone: 'Asia/Seoul', dateStyle: 'long', timeStyle: 'short' }).format(new Date(at)) + ' (한국 시간)';
+
+/** 처음 보는 기기에서 로그인했을 때 계정 주인에게 알린다 */
+export async function sendLoginAlert(env: Env, to: string, alert: LoginAlert): Promise<void> {
+  const rows: [string, string][] = [
+    ['기기', alert.device],
+    ['시간', kst(alert.at)],
+    ...(alert.place ? ([['대략적인 위치', alert.place]] as [string, string][]) : []),
+  ];
+  const table = rows
+    .map(([k, v]) => `<tr><td style="padding:6px 12px 6px 0;color:#687076;white-space:nowrap">${k}</td><td style="padding:6px 0;font-weight:600">${escape(v)}</td></tr>`)
+    .join('');
+  const html = `<!doctype html><html lang="ko"><body style="margin:0;padding:32px 16px;background:#f8f9fa;font-family:-apple-system,BlinkMacSystemFont,'Apple SD Gothic Neo','Malgun Gothic',sans-serif;color:#11181c">
+<div style="max-width:440px;margin:0 auto;background:#fff;border-radius:16px;padding:32px 28px;border:1px solid #e6e8eb">
+<div style="font-size:18px;font-weight:700;margin-bottom:20px"><span style="display:inline-block;width:22px;height:22px;border:3px solid #11181c;border-radius:6px;vertical-align:-5px;margin-right:8px;box-sizing:border-box"></span>Madang</div>
+<h1 style="font-size:20px;margin:0 0 8px">새 기기에서 로그인했습니다</h1>
+<p style="margin:0 0 16px;color:#687076;font-size:14px;line-height:1.6">처음 보는 기기(또는 브라우저)에서 내 Madang 계정으로 로그인했습니다.</p>
+<table style="font-size:14px;border-collapse:collapse;margin:0 0 20px">${table}</table>
+<p style="margin:0 0 8px;font-size:14px;line-height:1.6">본인이라면 이 메일은 무시해도 됩니다.</p>
+<p style="margin:0 0 20px;font-size:14px;line-height:1.6"><b>본인이 아니라면</b> 바로 로그인한 뒤 <b>프로필 수정 → 로그인된 기기</b>에서 <b>다른 기기 모두 로그아웃</b>을 눌러 주세요. 메일 계정의 비밀번호도 바꾸는 것이 좋습니다.</p>
+<a href="${escape(alert.origin)}/" style="display:inline-block;background:#11181c;color:#fff;text-decoration:none;padding:10px 18px;border-radius:10px;font-size:14px;font-weight:600">Madang 열기</a>
+</div>
+<p style="text-align:center;color:#adb5bd;font-size:12px;margin:16px 0 0">Madang · 함께 만드는 작업 마당 · madang.party</p>
+</body></html>`;
+  const text = `Madang: 새 기기에서 로그인했습니다\n\n${rows.map(([k, v]) => `${k}: ${v}`).join('\n')}\n\n본인이라면 이 메일은 무시해도 됩니다.\n본인이 아니라면 로그인한 뒤 프로필 수정 → 로그인된 기기에서 "다른 기기 모두 로그아웃"을 눌러 주세요. 메일 계정의 비밀번호도 바꾸는 것이 좋습니다.\n\n${alert.origin}/`;
+  const res = await fetch('https://api.resend.com/emails', {
+    method: 'POST',
+    headers: { authorization: `Bearer ${env.RESEND_API_KEY}`, 'content-type': 'application/json' },
+    body: JSON.stringify({ from: env.EMAIL_FROM || DEFAULT_FROM, to: [to], subject: `Madang 새 기기 로그인: ${alert.device}`, html, text }),
+  });
+  if (!res.ok) throw new Error(`Resend ${res.status}: ${(await res.text().catch(() => '')).slice(0, 300)}`);
+}

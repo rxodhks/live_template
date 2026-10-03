@@ -18,21 +18,22 @@ const persistDir = fs.mkdtempSync(path.join(os.tmpdir(), 'lt-worker-'));
 const port = 18_700 + Math.floor(Math.random() * 200);
 const base = `http://127.0.0.1:${port}`;
 let proc: ChildProcess | null = null;
+/** wrangler dev 출력 (개발 모드의 메일 대신 남기는 로그를 확인한다) */
+let workerLog = '';
 const sockets: Client[] = [];
 
 async function startWorker() {
   // AUTH_DEV_MODE: 메일 대신 응답으로 인증 코드를 받는다 (localhost에서만 동작)
   // GIT_*: 깃허브 외부 로그인 시작 · 되돌아오기 검증용 가짜 설정 (실제 깃허브와는 통신이 실패한다)
   const vars = ['AUTH_DEV_MODE:1', 'GIT_CLIENT_ID:test-client', 'GIT_CLIENT_SECRET:test-secret'].flatMap((v) => ['--var', v]);
-  proc = spawn('npx', ['wrangler', 'dev', '--port', String(port), '--ip', '127.0.0.1', '--persist-to', persistDir, '--log-level', 'warn', ...vars], {
+  proc = spawn('npx', ['wrangler', 'dev', '--port', String(port), '--ip', '127.0.0.1', '--persist-to', persistDir, '--log-level', 'log', ...vars], {
     cwd: workerDir,
     stdio: ['ignore', 'pipe', 'pipe'],
     env: { ...process.env, WRANGLER_SEND_METRICS: 'false', CI: '1' },
     detached: true,
   });
-  let log = '';
-  proc.stdout?.on('data', (d) => (log += d));
-  proc.stderr?.on('data', (d) => (log += d));
+  proc.stdout?.on('data', (d) => (workerLog += d));
+  proc.stderr?.on('data', (d) => (workerLog += d));
   for (let i = 0; i < 120; i++) {
     try {
       const res = await fetch(`${base}/api/health`);
@@ -42,7 +43,7 @@ async function startWorker() {
     }
     await sleep(500);
   }
-  throw new Error(`wrangler dev가 시작되지 않았습니다\n${log}`);
+  throw new Error(`wrangler dev가 시작되지 않았습니다\n${workerLog}`);
 }
 
 async function stopWorker() {
@@ -141,6 +142,7 @@ class FakeAuthenticator {
 
 const SID = '__Host-madang_sid';
 const SIGNUP = '__Host-madang_signup';
+const DEVICE = '__Host-madang_dev';
 let emailSeq = 0;
 
 /** 이메일 인증 코드로 가입하고 세션 토큰을 받는다 */
@@ -290,6 +292,92 @@ after(async () => {
 });
 
 describe('로그인', () => {
+  /** 이미 있는 계정에 이메일 코드로 로그인 (deviceCookie: 그 브라우저의 기기 쿠키) */
+  async function emailLogin(email: string, deviceCookie?: string) {
+    const start = await raw('POST', '/api/auth/email/start', { body: { email } });
+    assert.equal(start.status, 200, JSON.stringify(start.data));
+    const res = await raw('POST', '/api/auth/email/verify', { body: { email, code: start.data.devCode }, cookie: deviceCookie });
+    assert.equal(res.data.status, 'signed_in', JSON.stringify(res.data));
+    return { token: res.cookies[SID], device: `${DEVICE}=${res.cookies[DEVICE]}` };
+  }
+  const alertsFor = (email: string) => workerLog.split('\n').filter((l) => l.includes(`${email} 새 기기 로그인 알림`)).length;
+  const waitLog = () => sleep(300);
+
+  it('로그인된 기기: 새 기기 로그인은 알리고, 목록에서 하나씩 또는 모두 로그아웃할 수 있다', async () => {
+    const email = `devices.${crypto.randomBytes(3).toString('hex')}@example.com`;
+    const start = await raw('POST', '/api/auth/email/start', { body: { email } });
+    const verify = await raw('POST', '/api/auth/email/verify', { body: { email, code: start.data.devCode } });
+    const signup = await raw('POST', '/api/auth/signup', { cookie: `${SIGNUP}=${verify.cookies[SIGNUP]}`, body: { name: '기기 확인' } });
+    assert.equal(signup.status, 201);
+    const pc = { token: signup.cookies[SID], device: `${DEVICE}=${signup.cookies[DEVICE]}` };
+    const deviceCookie = signup.setCookies.find((c) => c.startsWith(DEVICE))!;
+    assert.match(deviceCookie, /HttpOnly/);
+    assert.match(deviceCookie, /Max-Age=34560000/, '기기 쿠키는 400일');
+    await waitLog();
+    assert.equal(alertsFor(email), 0, '가입한 첫 기기는 알리지 않는다');
+
+    // 같은 브라우저(기기 쿠키가 같음)로 다시 로그인 → 알림 없음
+    const pc2 = await emailLogin(email, pc.device);
+    assert.equal(pc2.device, pc.device, '기기 쿠키는 그대로');
+    await waitLog();
+    assert.equal(alertsFor(email), 0);
+
+    // 처음 보는 브라우저 → 알림
+    const phone = await emailLogin(email);
+    assert.notEqual(phone.device, pc.device);
+    await waitLog();
+    assert.equal(alertsFor(email), 1, '새 기기 로그인은 메일로 알린다');
+
+    const list = await raw('GET', '/api/me/sessions', { cookie: `${SID}=${pc.token}` });
+    assert.equal(list.status, 200);
+    assert.equal(list.data.sessions.length, 3);
+    assert.equal(list.data.sessions.filter((s: any) => s.current).length, 1);
+    for (const s of list.data.sessions) {
+      assert.deepEqual(Object.keys(s).sort(), ['createdAt', 'current', 'id', 'lastSeenAt', 'name']);
+      assert.match(s.id, /^[A-Za-z0-9]+$/);
+    }
+    const current = list.data.sessions.find((s: any) => s.current);
+    const phoneId = (await raw('GET', '/api/me/sessions', { cookie: `${SID}=${phone.token}` })).data.sessions.find((s: any) => s.current).id;
+
+    // 지금 기기는 이 목록에서 로그아웃하지 않는다 · 남의 세션 ID는 지울 수 없다
+    assert.equal((await raw('DELETE', `/api/me/sessions/${current.id}`, { cookie: `${SID}=${pc.token}` })).status, 400);
+    const stranger = await newUser('남');
+    assert.equal((await api('DELETE', `/me/sessions/${phoneId}`, stranger.token)).status, 404);
+    assert.equal((await raw('GET', '/api/me', { cookie: `${SID}=${phone.token}; ${phone.device}` })).status, 200);
+
+    // 휴대폰 하나 로그아웃 → 그 휴대폰은 '아는 기기'에서도 빠져 다시 로그인하면 또 알린다
+    assert.equal((await raw('DELETE', `/api/me/sessions/${phoneId}`, { cookie: `${SID}=${pc.token}` })).status, 200);
+    assert.equal((await raw('GET', '/api/me', { cookie: `${SID}=${phone.token}; ${phone.device}` })).status, 401);
+    const phoneAgain = await emailLogin(email, phone.device);
+    await waitLog();
+    assert.equal(alertsFor(email), 2);
+
+    // 이 기기만 남기고 모두 로그아웃
+    const others = await raw('POST', '/api/me/sessions/logout-others', { cookie: `${SID}=${pc.token}` });
+    assert.equal(others.status, 200);
+    assert.equal(others.data.removed, 2);
+    assert.equal((await raw('GET', '/api/me', { cookie: `${SID}=${pc2.token}` })).status, 401);
+    assert.equal((await raw('GET', '/api/me', { cookie: `${SID}=${phoneAgain.token}` })).status, 401);
+    assert.equal((await raw('GET', '/api/me', { cookie: `${SID}=${pc.token}` })).status, 200);
+    assert.equal((await raw('GET', '/api/me/sessions', { cookie: `${SID}=${pc.token}` })).data.sessions.length, 1);
+    // 로그인하지 않으면 목록을 볼 수 없다
+    assert.equal((await raw('GET', '/api/me/sessions')).status, 401);
+  });
+
+  it('기기 쿠키가 없던 (예전부터 로그인해 있던) 브라우저는 앱을 열 때 아는 기기로 기억한다', async () => {
+    const u = await newUser('예전 기기');
+    const me = await raw('GET', '/api/me', { cookie: `${SID}=${u.token}` });
+    assert.equal(me.status, 200);
+    const device = me.cookies[DEVICE];
+    assert.ok(device, '기기 쿠키를 새로 준다');
+    // 이미 기기 쿠키가 있으면 다시 주지 않는다
+    const again = await raw('GET', '/api/me', { cookie: `${SID}=${u.token}; ${DEVICE}=${device}` });
+    assert.equal(again.cookies[DEVICE], undefined);
+    await emailLogin(u.email, `${DEVICE}=${device}`);
+    await waitLog();
+    assert.equal(alertsFor(u.email), 0, '앱을 열었던 브라우저로 다시 로그인하면 알리지 않는다');
+  });
+
   it('로그인 화면 설정: 설정된 방법만 켜진다', async () => {
     const config = await raw('GET', '/api/auth/config');
     assert.deepEqual(config.data, { email: true, providers: { google: false, github: true }, devMode: true });

@@ -1,5 +1,5 @@
 import type { AuthConfig, InviteOptions, OAuthProvider, PublicUser, Role, ShareUpload, TemplateVisibility } from '../../shared/types';
-import { type AuthOutcome, Directory, type PasskeyAssertion, type PasskeyRegistration, type PasskeySite, SESSION_TTL_MS, TRASH_TTL_MS, hasRole } from './directory';
+import { type AuthOutcome, Directory, type LoginClient, type PasskeyAssertion, type PasskeyRegistration, type PasskeySite, SESSION_TTL_MS, TRASH_TTL_MS, hasRole } from './directory';
 import { TemplateRoom } from './room';
 import type { Env } from './env';
 import { CLIENT_VERSION, CLIENT_VERSION_HEADER, CLIENT_VERSION_PARAM } from '../../shared/protocol';
@@ -76,6 +76,20 @@ function requireCurrentClient(req: Request): void {
 
 const clientIp = (req: Request) => req.headers.get('cf-connecting-ip') ?? 'local';
 const agentOf = (req: Request) => req.headers.get('user-agent') ?? '';
+
+/** 기기 쿠키 유지 기간 (브라우저가 허용하는 최대 400일) */
+const DEVICE_COOKIE_S = 400 * 86_400;
+const isDeviceId = (v: string | null): v is string => v !== null && /^[A-Za-z0-9_-]{20,64}$/.test(v);
+
+/** 로그인하는 브라우저: 기기 쿠키가 없으면 새로 만든다 (로그인 응답에 함께 심는다) */
+function clientOf(c: Ctx): LoginClient {
+  const saved = readCookie(c.req, COOKIE.device);
+  const cf = c.req.cf as { city?: unknown; country?: unknown } | undefined;
+  const place = [cf?.city, cf?.country].filter((v): v is string => typeof v === 'string' && v.length > 0).join(', ');
+  return { agent: agentOf(c.req), device: isDeviceId(saved) ? saved : newId(32), origin: c.url.origin, place };
+}
+
+const deviceCookie = (client: LoginClient) => cookie(COOKIE.device, client.device, DEVICE_COOKIE_S);
 
 /**
  * 내 컴퓨터의 개발 서버(wrangler dev)로 들어온 요청.
@@ -176,9 +190,13 @@ route('GET', '/api/auth/config', async (c) =>
 );
 
 /** 로그인 성공 → 세션 쿠키, 처음이면 → 이름 입력 단계로 (가입 티켓 쿠키) */
-function signedIn(outcome: AuthOutcome): Response {
+function signedIn(outcome: AuthOutcome, client: LoginClient): Response {
   if (outcome.status === 'signed_in') {
-    return withCookies(json({ status: 'signed_in', user: outcome.user }), [cookie(COOKIE.session, outcome.session, SESSION_TTL_S), clearCookie(COOKIE.signup)]);
+    return withCookies(json({ status: 'signed_in', user: outcome.user }), [
+      cookie(COOKIE.session, outcome.session, SESSION_TTL_S),
+      clearCookie(COOKIE.signup),
+      deviceCookie(client),
+    ]);
   }
   return withCookies(json({ status: 'needs_name' }), [cookie(COOKIE.signup, outcome.ticket, 1800)]);
 }
@@ -235,7 +253,8 @@ route('POST', '/api/auth/email/verify', async (c) => {
   const addr = normalizeEmail(email);
   const digits = typeof code === 'string' ? code.replace(/\D/g, '') : '';
   if (!addr || digits.length !== 6) throw new HttpError(400, '6자리 인증 코드를 입력해 주세요.');
-  return signedIn(unwrap(await directory(c.env).verifyEmailCode(addr, digits, agentOf(c.req))));
+  const client = clientOf(c);
+  return signedIn(unwrap(await directory(c.env).verifyEmailCode(addr, digits, client)), client);
 });
 
 /*
@@ -269,7 +288,8 @@ route('POST', '/api/auth/passkey/login/options', async (c) => {
 
 route('POST', '/api/auth/passkey/login', async (c) => {
   const input = await body<PasskeyAssertion>(c.req, 32 * 1024);
-  return signedIn(unwrap(await directory(c.env).passkeyLogin(input, passkeySite(c), agentOf(c.req))));
+  const client = clientOf(c);
+  return signedIn(unwrap(await directory(c.env).passkeyLogin(input, passkeySite(c), client)), client);
 });
 
 route('GET', '/api/me/passkeys', async (c) => {
@@ -282,6 +302,16 @@ route('DELETE', '/api/me/passkeys/:id', async (c) => {
   if (!/^[A-Za-z0-9_-]{1,1400}$/.test(c.params.id)) throw new HttpError(404, '패스키를 찾을 수 없습니다.');
   return json(unwrap(await directory(c.env).deletePasskey(user.id, c.params.id)));
 });
+
+/* 로그인된 기기: 목록 · 하나 로그아웃 · 이 기기만 남기고 모두 로그아웃 */
+route('GET', '/api/me/sessions', async (c) => json({ sessions: unwrap(await directory(c.env).listSessions(tokenOf(c.req))) }));
+
+route('DELETE', '/api/me/sessions/:id', async (c) => {
+  if (!/^[a-z0-9]{1,64}$/i.test(c.params.id)) throw new HttpError(404, '이미 로그아웃된 기기입니다.');
+  return json(unwrap(await directory(c.env).revokeSession(tokenOf(c.req), c.params.id)));
+});
+
+route('POST', '/api/me/sessions/logout-others', async (c) => json(unwrap(await directory(c.env).logoutOthers(tokenOf(c.req)))));
 
 /* 외부 계정: 구글 · 깃허브 */
 const redirectUri = (c: Ctx, p: OAuthProvider) => `${c.url.origin}/api/auth/callback/${p}`;
@@ -310,16 +340,17 @@ route('GET', '/api/auth/callback/:provider', async (c) => {
   const flow = await dir.consumeOAuth(state, p);
   if (!flow.ok) return loginError('expired', cleared);
   let outcome: AuthOutcome;
+  const client = clientOf(c);
   try {
     const profile = await fetchProfile(c.env, p, redirectUri(c, p), code, flow.data);
-    outcome = await dir.oauthSignIn({ provider: p, ...profile }, agentOf(c.req));
+    outcome = await dir.oauthSignIn({ provider: p, ...profile }, client);
   } catch (err) {
     console.error('외부 로그인 실패', p, err);
     return loginError('failed', cleared);
   }
   const next = flow.data.next;
   if (outcome.status === 'signed_in') {
-    return redirect(next, [...cleared, cookie(COOKIE.session, outcome.session, SESSION_TTL_S), clearCookie(COOKIE.signup)]);
+    return redirect(next, [...cleared, cookie(COOKIE.session, outcome.session, SESSION_TTL_S), clearCookie(COOKIE.signup), deviceCookie(client)]);
   }
   return redirect(`/signup${next === '/' ? '' : `?next=${encodeURIComponent(next)}`}`, [...cleared, cookie(COOKIE.signup, outcome.ticket, 1800)]);
 });
@@ -333,8 +364,9 @@ route('GET', '/api/auth/signup', async (c) => {
 
 route('POST', '/api/auth/signup', async (c) => {
   const input = await body<Partial<PublicUser>>(c.req);
-  const r = unwrap(await directory(c.env).completeSignup(readCookie(c.req, COOKIE.signup), input, agentOf(c.req)));
-  return withCookies(json({ user: r.user }, 201), [cookie(COOKIE.session, r.session, SESSION_TTL_S), clearCookie(COOKIE.signup)]);
+  const client = clientOf(c);
+  const r = unwrap(await directory(c.env).completeSignup(readCookie(c.req, COOKIE.signup), input, client));
+  return withCookies(json({ user: r.user }, 201), [cookie(COOKIE.session, r.session, SESSION_TTL_S), clearCookie(COOKIE.signup), deviceCookie(client)]);
 });
 
 route('POST', '/api/auth/logout', async (c) => {
@@ -352,12 +384,16 @@ route('POST', '/api/auth/claim', async (c) => {
 });
 
 route('GET', '/api/me', async (c) => {
-  const me = await directory(c.env).me(tokenOf(c.req));
+  const session = readCookie(c.req, COOKIE.session);
+  // 기기 쿠키가 없는 (이 기능 전부터) 로그인해 있던 브라우저: 기기 쿠키를 주고 아는 기기로 기억
+  const savedDevice = readCookie(c.req, COOKIE.device);
+  const newDevice = session && !isDeviceId(savedDevice) ? newId(32) : undefined;
+  const me = await directory(c.env).me(tokenOf(c.req), newDevice);
   if (!me) throw new HttpError(401, '로그인이 필요합니다.', { reason: 'login_required' });
   const res = json(me);
   // 쓰는 동안은 로그인 쿠키도 계속 연장
-  const session = readCookie(c.req, COOKIE.session);
-  return session ? withCookies(res, [cookie(COOKIE.session, session, SESSION_TTL_S)]) : res;
+  if (!session) return res;
+  return withCookies(res, [cookie(COOKIE.session, session, SESSION_TTL_S), ...(newDevice ? [cookie(COOKIE.device, newDevice, DEVICE_COOKIE_S)] : [])]);
 });
 
 route('PATCH', '/api/me', async (c) => {

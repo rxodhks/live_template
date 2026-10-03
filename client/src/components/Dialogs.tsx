@@ -14,6 +14,7 @@ import { ProfileForm, useProfileDraft } from './ProfileForm';
 
 // 패스키 관리는 프로필 수정을 열 때만 불러온다 (첫 화면 크기를 늘리지 않게)
 const PasskeySection = lazy(() => import('./PasskeySection').then((m) => ({ default: m.PasskeySection })));
+const SessionSection = lazy(() => import('./SessionSection').then((m) => ({ default: m.SessionSection })));
 
 export function ProfileDialog() {
   const open = useUI((s) => s.profileOpen);
@@ -63,6 +64,7 @@ function ProfileDialog_() {
       <ProfileForm draft={draft} onChange={setDraft} onSubmit={save} />
       <Suspense fallback={null}>
         <PasskeySection />
+        <SessionSection />
       </Suspense>
     </Modal>
   );
