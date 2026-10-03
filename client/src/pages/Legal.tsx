@@ -6,12 +6,15 @@ import { useSession } from '../store/session';
 
 /*
  * 개인정보처리방침 · 이용약관 — 로그인하지 않아도 볼 수 있다 (Google 로그인 앱 게시 요건)
- * 내용을 바꾸면 EFFECTIVE_DATE와 부칙을 함께 고친다.
+ * 내용을 바꾸면 그 문서의 시행일과 부칙을 함께 고친다.
  */
 
-const EFFECTIVE_DATE = '2026년 9월 25일';
+const TERMS_EFFECTIVE_DATE = '2026년 9월 25일';
+/** 2026-10-03 개정: 패스키 · 새 기기 로그인 알림 · 기기 쿠키 · 로그인 유지 90일 */
+const PRIVACY_EFFECTIVE_DATE = '2026년 10월 3일';
+const PRIVACY_PREVIOUS = ['2026년 9월 25일'];
 
-function LegalLayout({ title, children }: { title: string; children: ReactNode }) {
+function LegalLayout({ title, effectiveDate, children }: { title: string; effectiveDate: string; children: ReactNode }) {
   const authed = useSession((s) => s.status === 'authed');
   useEffect(() => {
     const prev = document.title;
@@ -32,7 +35,7 @@ function LegalLayout({ title, children }: { title: string; children: ReactNode }
       <main className="legal-body">
         <h1>{title}</h1>
         <p className="legal-meta">
-          시행일 {EFFECTIVE_DATE} · 운영 {OPERATOR} · 문의 <a href={`mailto:${CONTACT_EMAIL}`}>{CONTACT_EMAIL}</a>
+          시행일 {effectiveDate} · 운영 {OPERATOR} · 문의 <a href={`mailto:${CONTACT_EMAIL}`}>{CONTACT_EMAIL}</a>
         </p>
         {children}
       </main>
@@ -58,7 +61,7 @@ export function LegalLinks({ className = 'legal-links' }: { className?: string }
 
 export function PrivacyPage() {
   return (
-    <LegalLayout title="개인정보처리방침">
+    <LegalLayout title="개인정보처리방침" effectiveDate={PRIVACY_EFFECTIVE_DATE}>
       <p>
         {OPERATOR}(이하 “운영팀”)은 {BRAND}(madang.party, 이하 “서비스”)를 이용하는 분의 개인정보를 소중히 다루며, 「개인정보 보호법」 등 관련 법령을 지킵니다. 이 방침은 운영팀이
         어떤 정보를 왜 수집하고, 얼마나 보관하며, 어떻게 보호하는지 알려 드립니다.
@@ -281,14 +284,14 @@ export function PrivacyPage() {
 
       <h2>12. 개인정보처리방침의 변경</h2>
       <p>이 방침을 바꾸는 경우 시행 7일 전(이용자에게 불리한 변경은 30일 전)부터 서비스 화면에 알립니다.</p>
-      <p className="legal-meta">부칙: 이 개인정보처리방침은 {EFFECTIVE_DATE}부터 시행합니다.</p>
+      <p className="legal-meta">부칙: 이 개인정보처리방침은 {PRIVACY_EFFECTIVE_DATE}부터 시행합니다. (이전 방침 시행일: {PRIVACY_PREVIOUS.join(', ')})</p>
     </LegalLayout>
   );
 }
 
 export function TermsPage() {
   return (
-    <LegalLayout title="이용약관">
+    <LegalLayout title="이용약관" effectiveDate={TERMS_EFFECTIVE_DATE}>
       <h2>제1조 (목적)</h2>
       <p>
         이 약관은 {OPERATOR}(이하 “운영팀”)이 제공하는 {BRAND}(madang.party, 이하 “서비스”)의 이용 조건과 절차, 운영팀과 회원의 권리 · 의무 및 책임 사항을 정합니다.
@@ -385,7 +388,7 @@ export function TermsPage() {
       <p>
         서비스 이용에 관한 문의는 <a href={`mailto:${CONTACT_EMAIL}`}>{CONTACT_EMAIL}</a>로 보내 주세요.
       </p>
-      <p className="legal-meta">부칙: 이 약관은 {EFFECTIVE_DATE}부터 시행합니다.</p>
+      <p className="legal-meta">부칙: 이 약관은 {TERMS_EFFECTIVE_DATE}부터 시행합니다.</p>
     </LegalLayout>
   );
 }

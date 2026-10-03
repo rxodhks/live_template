@@ -31,9 +31,71 @@
         if (t === 'light' || t === 'dark') document.documentElement.dataset.theme = t;
       } catch (e) {}
     </script>
+    <script>
+      // 앱 파일(JS · CSS)을 받지 못하면 빈 화면 대신 아래 #app-outage 안내를 보여 준다
+      // (서버 장애 · 연결 끊김 · 오래된 브라우저). 앱이 뜨면 안내는 사라진다.
+      (function () {
+        var shown = false;
+        function show() {
+          var root = document.getElementById('root');
+          var box = document.getElementById('app-outage');
+          if (shown || !root || !box || root.childElementCount > 0) return;
+          shown = true;
+          box.hidden = false;
+          new MutationObserver(function () {
+            if (root.childElementCount > 0) box.hidden = true;
+          }).observe(root, { childList: true });
+        }
+        window.addEventListener(
+          'error',
+          function (e) {
+            var t = e.target;
+            var url = t && (t.src || t.href);
+            // 다른 사이트(글꼴 CDN 등)의 파일은 없어도 앱이 동작하므로 이 사이트의 파일만 본다
+            if (url && (t.tagName === 'SCRIPT' || t.tagName === 'LINK') && url.indexOf(location.origin + '/') === 0) {
+              if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', show);
+              else show();
+            }
+          },
+          true,
+        );
+        // 파일은 받았는데 실행하지 못한 경우(오래된 브라우저 등) · 응답이 끝나지 않는 경우
+        window.addEventListener('load', function () {
+          setTimeout(show, 15000);
+        });
+      })();
+    </script>
   </head>
   <body>
     <div id="root"></div>
+    <div id="app-outage" hidden role="alert">
+      <style>
+        #app-outage { position: fixed; inset: 0; display: flex; align-items: center; justify-content: center; padding: 24px 16px; background: #f5f6f8; color: #16181d; font: 15px/1.6 system-ui, -apple-system, 'Apple SD Gothic Neo', 'Malgun Gothic', sans-serif; text-align: center; }
+        #app-outage[hidden] { display: none; }
+        #app-outage .box { max-width: 440px; padding: 36px 28px 28px; background: #fff; border: 1px solid #e4e6eb; border-radius: 14px; }
+        #app-outage h1 { margin: 16px 0 8px; font-size: 19px; }
+        #app-outage p { margin: 0 0 10px; color: #4a5060; }
+        #app-outage button { margin: 8px 0 14px; padding: 9px 18px; border: 0; border-radius: 8px; background: #5b5bd6; color: #fff; font: inherit; font-weight: 600; cursor: pointer; }
+        #app-outage a { color: #4545c0; font-weight: 600; }
+        @media (prefers-color-scheme: dark) {
+          html:not([data-theme='light']) #app-outage { background: #0e1014; color: #eceef2; }
+          html:not([data-theme='light']) #app-outage .box { background: #16181d; border-color: #2a2e37; }
+          html:not([data-theme='light']) #app-outage p { color: #aab0bc; }
+          html:not([data-theme='light']) #app-outage a { color: #a5a5ff; }
+        }
+        html[data-theme='dark'] #app-outage { background: #0e1014; color: #eceef2; }
+        html[data-theme='dark'] #app-outage .box { background: #16181d; border-color: #2a2e37; }
+        html[data-theme='dark'] #app-outage p { color: #aab0bc; }
+        html[data-theme='dark'] #app-outage a { color: #a5a5ff; }
+      </style>
+      <div class="box">
+        <img src="/favicon.svg" width="40" height="40" alt="" />
+        <h1>Madang 화면을 불러오지 못했습니다</h1>
+        <p>서버에 일시적인 문제가 있거나 인터넷 연결이 불안정합니다. 잠시 후 새로고침해 주세요.</p>
+        <button type="button" onclick="location.reload()">새로고침</button>
+        <p>문제가 계속되면 <a href="mailto:%CONTACT_EMAIL%?subject=%5BMadang%20%EC%98%A4%EB%A5%98%5D%20%ED%99%94%EB%A9%B4%EC%9D%84%20%EB%B6%88%EB%9F%AC%EC%98%A4%EC%A7%80%20%EB%AA%BB%ED%95%A8">%CONTACT_EMAIL%</a>로 알려 주세요.</p>
+      </div>
+    </div>
     <script type="module" src="/src/main.tsx"></script>
   </body>
 </html>

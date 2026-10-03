@@ -25,8 +25,8 @@ export function resolvedTheme(pref: ThemePref): 'light' | 'dark' {
   return window.matchMedia?.('(prefers-color-scheme: dark)').matches ? 'dark' : 'light';
 }
 
-/** loading: 로그인 확인 중 · authed: 로그인됨 · anon: 로그인 필요 */
-export type AuthStatus = 'loading' | 'authed' | 'anon';
+/** loading: 로그인 확인 중 · authed: 로그인됨 · anon: 로그인 필요 · down: 서버에 연결할 수 없고 이 기기에 로그인 정보도 없음 */
+export type AuthStatus = 'loading' | 'authed' | 'anon' | 'down';
 
 interface SessionState {
   /** 로그인한 사용자 (사이트에서 표시되는 이름 · 커서 색상 · 아바타) */
@@ -40,6 +40,10 @@ interface SessionState {
   setAuthed(user: PublicUser, account: AccountInfo | null, offline?: boolean): void;
   setUser(user: PublicUser): void;
   setAnon(): void;
+  /** 서버 장애 안내 화면으로 (code: 응답 코드, 연결 자체가 안 되면 0) */
+  setDown(code: number): void;
+  /** 장애 안내 화면에 보일 응답 코드 */
+  downCode: number;
   setTheme(theme: ThemePref): void;
 }
 
@@ -52,6 +56,8 @@ export const useSession = create<SessionState>((set) => ({
   setAuthed: (user, account, offline = false) => set({ user, account, status: 'authed', offline }),
   setUser: (user) => set({ user }),
   setAnon: () => set({ user: null, account: null, status: 'anon', offline: false }),
+  downCode: 0,
+  setDown: (code) => set({ user: null, account: null, status: 'down', offline: false, downCode: code }),
   setTheme: (theme) => {
     try {
       if (theme === 'system') localStorage.removeItem(THEME_KEY);

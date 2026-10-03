@@ -1,7 +1,7 @@
 import type { AccountInfo, AuthConfig, EmailVerifyResult, OAuthProvider, PublicUser, SignupInfo } from '@shared/types';
 import { useSession } from '../store/session';
 import { toast } from '../store/toasts';
-import { api, clearLegacy, legacyToken, setUnauthorizedHandler } from './api';
+import { api, clearLegacy, isServerDown, legacyToken, setUnauthorizedHandler } from './api';
 import { setIdbUser } from './idb';
 import { runDeviceClear, scheduleDeviceClear } from './device';
 import { backupPending } from './templateOps';
@@ -70,6 +70,8 @@ export async function bootSession(): Promise<void> {
     if (cached && (status === 0 || (status ?? 0) >= 500)) enter(cached.user, cached.account, true);
     // 저장된 정보로 이미 시작했다면 로그인 만료 처리(setUnauthorizedHandler)가 안내하고 로그인 화면으로 보낸다
     else if (cached && status === 401) writeCache(null);
+    // 처음 오는 사람(저장된 정보 없음)에게 서버 장애를 로그인 화면 대신 안내한다 (로그인 정보는 지우지 않는다)
+    else if (!cached && isServerDown(err)) useSession.getState().setDown(status ?? 0);
     else {
       writeCache(null);
       useSession.getState().setAnon();

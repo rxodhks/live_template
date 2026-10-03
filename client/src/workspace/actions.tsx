@@ -9,6 +9,7 @@ import {
   languageFromFilename,
   readPageSetup,
   type Shape,
+  type YItem,
 } from '@shared/schema';
 import { newId } from '../lib/util';
 import { lastPageSetup, pageSetupDialog } from '../modules/docs/page/PageSetupDialog';
@@ -194,9 +195,23 @@ export function renameItem(ws: WorkspaceValue, module: ItemModule, id: string, n
       if (prevLang.id !== nextLang.id && nextLang.id !== 'plaintext') item.set('language', nextLang.id);
     }
   });
+  if (module === 'code') void swapStarterCode(ws, item);
   const type = module === 'code' ? 'code.rename' : module === 'docs' ? 'docs.rename' : 'design.rename';
   ws.report({ type, targetId: id, targetName: next, detail: `${prev} → ${next}` });
   ws.action(`이름 변경 · ${next}`);
+}
+
+/** 아직 시작 코드 그대로인 파일은 언어가 바뀌면 새 언어의 시작 코드로 (고친 내용은 그대로 둔다). 언어별 시작 코드는 코드 화면과 함께 불러온다 */
+async function swapStarterCode(ws: WorkspaceValue, item: YItem): Promise<void> {
+  const { isStarterCode, starterCode } = await import('@shared/starters');
+  const text = item.get('content') as Y.Text;
+  const next = starterCode(item.get('language') as string);
+  const current = text.toString();
+  if (!isStarterCode(current) || current === next) return;
+  ws.doc.transact(() => {
+    text.delete(0, text.length);
+    text.insert(0, next);
+  });
 }
 
 /** 삭제 직후 토스트에서 되돌릴 수 있는 시간 */

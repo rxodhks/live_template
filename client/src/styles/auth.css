@@ -510,3 +510,53 @@
   display: flex;
   flex-direction: column;
 }
+
+/* 장애 안내 (pages/OutageScreen.tsx) — 앱 파일을 받지 못했을 때의 안내는 index.html에 따로 있다 */
+.outage-screen {
+  min-height: 100vh;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 24px 16px;
+  background: var(--bg);
+  color: var(--text);
+}
+.outage-card {
+  width: 100%;
+  max-width: 440px;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 12px;
+  padding: 36px 28px 28px;
+  text-align: center;
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-lg);
+  box-shadow: var(--shadow-md);
+}
+.outage-card h1 {
+  margin: 8px 0 0;
+  font-size: 19px;
+  font-weight: 700;
+}
+.outage-card p {
+  margin: 0;
+  color: var(--text-2);
+  line-height: 1.6;
+}
+.outage-actions {
+  margin: 8px 0 4px;
+}
+.outage-card .outage-contact {
+  font-size: 13.5px;
+}
+.outage-card .outage-contact a {
+  color: var(--accent-text);
+  font-weight: 600;
+}
+.outage-card .outage-code {
+  font-size: 12px;
+  color: var(--text-3);
+  word-break: break-all;
+}
