@@ -88,7 +88,7 @@ export const PRESETS: Preset[] = [
     id: 'blank',
     name: '빈 템플릿',
     emoji: '✨',
-    description: '선택한 기능만으로 깨끗하게 시작합니다.',
+    description: '선택한 기능만으로 템플릿을 시작합니다.',
     features: ['docs'],
   },
   {
@@ -281,13 +281,13 @@ export const FEATURE_INFO: Record<Feature, { name: string; emoji: string; descri
   design: {
     name: '디자인',
     emoji: '🎨',
-    description: '무한 캔버스에서 도형·텍스트·스티키 노트로 함께 그립니다.',
+    description: '캔버스에서 도형·텍스트·스티키 노트로 함께 그립니다.',
     tools: ['도형/선/화살표/펜', '스티키 노트', '레이어 · 정렬', 'SVG/PNG 내보내기'],
   },
   code: {
     name: '코딩',
     emoji: '💻',
-    description: '24개 언어 문법 강조, 파일별 언어 선택, 실시간 동시 편집.',
+    description: '24개 언어 문법, 파일별 언어 선택, 실시간 동시 편집.',
     tools: ['언어 선택 · 변경', '멀티 파일', 'JS 실행 · HTML 미리보기', '파일 다운로드'],
   },
   docs: {
