@@ -165,8 +165,24 @@ export class RoomProvider implements DocProvider {
     Y.applyUpdate(this.doc, serverUpdate, this);
     // 서버에 없는 로컬 변경(오프라인 편집 등)을 올린다
     if (!this.readOnly) {
-      const diff = Y.encodeStateAsUpdate(this.doc, fromB64(res.data.sv));
-      if (diff.length > 2 && hasLocalOnlyChanges(diff, serverUpdate)) this.enqueue(diff);
+      const sv = fromB64(res.data.sv);
+      const diff = Y.encodeStateAsUpdate(this.doc, sv);
+      if (diff.length > 2 && hasLocalOnlyChanges(diff, serverUpdate)) {
+        let parts = [diff];
+        // 오프라인 중 넣은 이미지 여러 장처럼 한 메시지 상한을 넘는 차이는 항목 단위로 나눠 보낸다
+        // (한 덩어리로 보내면 문서가 상한보다 한참 작아도 413으로 거절되어 "저장 한도" 화면으로 잠겼다)
+        if (diff.length > MAX_MESSAGE_BYTES) {
+          const { splitUpdate } = await import('./ysplit');
+          if (this.destroyed) return;
+          // 불러오는 사이의 편집도 담도록 다시 계산한다 (아직 'synced' 전이라 그 편집은 보낼 목록에 없다)
+          parts = splitUpdate(Y.encodeStateAsUpdate(this.doc, sv), MAX_MESSAGE_BYTES);
+        }
+        for (const p of parts) this.enqueue(p);
+      } else if (!this.tooLarge) {
+        // 보낼 것이 없으면 서버가 모든 변경을 가진 것이다. 확인(ack) 전에 끊겨 남은 "저장 확인 지연" 표시를 지운다
+        // (그대로 두면 다음 편집 전까지 "다시 동기화 중"으로 남았다)
+        useConnection.getState().setSaveError(null);
+      }
     }
     if (this.awareness.getLocalState() !== null) this.awDirty.add(this.doc.clientID);
     useConnection.getState().setOfflineChanges(false);
