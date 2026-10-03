@@ -206,10 +206,10 @@ class Client {
     this.ws.send(JSON.stringify(msg));
   }
 
-  async request<T = any>(msg: object): Promise<{ ok: boolean; data: T; error?: string; status?: number }> {
+  async request<T = any>(msg: object, ms?: number): Promise<{ ok: boolean; data: T; error?: string; status?: number }> {
     const id = ++this.seq;
     this.send({ ...msg, id });
-    return this.waitType('ack', (m) => m.id === id);
+    return this.waitType('ack', (m) => m.id === id, ms);
   }
 
   async ready() {
@@ -1190,8 +1190,9 @@ describe('남용 방지', () => {
     // 쏟아낸 뒤에 보낸 문서 변경은 버려지지 않고 전달된다
     const sv = Y.encodeStateVector(doc);
     doc.getText('flood').insert(0, 'after');
-    const saved = b.request({ t: 'update', u: b64(Y.encodeStateAsUpdate(doc, sv)) });
-    await a.waitType('update', () => true, 10_000);
+    // 쏟아낸 1000개를 먼저 받아 처리한 뒤에 도착하므로 느린 CI에서는 몇 초 걸린다
+    const saved = b.request({ t: 'update', u: b64(Y.encodeStateAsUpdate(doc, sv)) }, 20_000);
+    await a.waitType('update', () => true, 20_000);
     assert.equal((await saved).ok, true);
     const elapsed = (Date.now() - t0) / 1000;
     const relayed = a.messages.filter((m) => m.t === 'cursor').length;
