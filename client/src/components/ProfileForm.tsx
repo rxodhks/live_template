@@ -41,6 +41,7 @@ export function ProfileForm({ draft, onChange, onSubmit }: { draft: ProfileDraft
           maxLength={24}
           placeholder="예) 김민수"
           data-autofocus
+          autoFocus
           onChange={(e) => onChange({ ...draft, name: e.target.value })}
           onKeyDown={(e) => e.key === 'Enter' && onSubmit?.()}
         />
