@@ -27,7 +27,7 @@ export interface Env {
   TURNSTILE_SECRET_KEY?: string;
   /** 앱 안 "피드백 보내기"로 온 의견을 받을 메일 주소 (RESEND_API_KEY가 있을 때). 없으면 저장 · 로그에만 남긴다 */
   FEEDBACK_EMAIL?: string;
-  /** 사이트 전체 하루 메일 발송 상한 (인증 코드 + 새 기기 로그인 알림). 기본 90 — Resend 무료 요금제는 하루 100통 */
+  /** 사이트 전체 하루 인증 코드 메일 상한. 기본 80 (보안 알림 15통은 따로) — Resend 무료 요금제는 하루 100통 */
   MAIL_DAILY_LIMIT?: string;
   /** "1"이면 로컬(localhost)에서만 인증 코드를 응답에 담아 준다 — 개발 · 테스트용 */
   AUTH_DEV_MODE?: string;

@@ -46,7 +46,8 @@ export function SessionSection() {
   const revokeAll = async () => {
     const ok = await confirmDialog({
       title: '다른 기기를 모두 로그아웃할까요?',
-      message: '지금 쓰는 이 기기만 로그인된 상태로 남습니다. 내가 로그인한 적 없는 기기가 보였다면 메일 계정의 비밀번호도 바꿔 주세요.',
+      message:
+        '지금 쓰는 이 기기만 로그인된 상태로 남습니다. 내가 로그인한 적 없는 기기가 보였다면 위의 패스키 목록에서 모르는 패스키도 삭제하고, 메일 계정의 비밀번호를 바꿔 주세요.',
       confirmText: '모두 로그아웃',
       danger: true,
     });
@@ -55,7 +56,10 @@ export function SessionSection() {
     try {
       const removed = await logoutOthers();
       setList((prev) => (prev ?? []).filter((x) => x.current));
-      toast.success('다른 기기를 로그아웃했습니다', removed > 0 ? `${removed}개 기기에서 로그아웃했습니다.` : undefined);
+      toast.success(
+        '다른 기기를 로그아웃했습니다',
+        `${removed > 0 ? `${removed}개 기기에서 로그아웃했습니다. ` : ''}등록한 패스키는 그대로이니, 모르는 패스키가 있으면 위의 패스키 목록에서 삭제해 주세요.`,
+      );
     } catch (err) {
       toast.error('로그아웃하지 못했습니다', errorMessage(err));
     } finally {
