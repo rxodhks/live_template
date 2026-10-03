@@ -102,9 +102,17 @@ export function App() {
       <PromptHost />
       <PageSetupHost />
       <NarrowScreenNotice />
+      {IS_STAGING && (
+        <div className="staging-badge" role="note">
+          테스트 사이트 · 실제 사이트와 계정 · 데이터가 분리되어 있습니다
+        </div>
+      )}
     </BrowserRouter>
   );
 }
+
+/** 테스트 사이트(staging.madang.party): main에 합치기 전의 브랜치를 띄워 보는 곳 */
+const IS_STAGING = window.location.hostname.startsWith('staging.');
 
 async function backupAndNotify() {
   const n = await backupPending();

@@ -38,6 +38,29 @@ export interface AuthConfig {
 export interface AccountInfo {
   email: string | null;
   providers: OAuthProvider[];
+  /** 등록한 패스키 수 (예전 서버 응답에는 없다) */
+  passkeys?: number;
+}
+
+/** 계정에 등록한 패스키 (지문 · 얼굴 · PIN으로 로그인) */
+/** 로그인된 기기 (세션) */
+export interface SessionInfo {
+  id: string;
+  /** 로그인한 브라우저 · 운영체제 */
+  name: string;
+  createdAt: number;
+  /** 마지막으로 쓴 날 (하루에 한 번만 갱신) */
+  lastSeenAt: number;
+  /** 지금 이 화면의 세션 */
+  current: boolean;
+}
+
+export interface PasskeyInfo {
+  id: string;
+  /** 등록한 기기의 브라우저 · 운영체제 */
+  name: string;
+  createdAt: number;
+  lastUsedAt: number | null;
 }
 
 /** 인증을 마치고 이름을 정하기 전의 가입 정보 */

@@ -15,11 +15,13 @@ export const OAUTH_PROVIDERS: OAuthProvider[] = ['google', 'github'];
  *  · session : 로그인 세션 (자바스크립트에서 읽을 수 없음)
  *  · signup  : 인증을 마치고 이름을 정하기 전의 가입 티켓
  *  · oauth   : 외부 로그인 요청을 이 브라우저에 묶어 두는 값 (구글 · 깃허브에서 돌아오는 페이지 이동에는 SameSite=Lax 쿠키도 실린다)
+ *  · device  : 이 브라우저를 알아보는 무작위 값 (처음 보는 기기에서 로그인하면 메일로 알린다). 서버에는 해시만 저장
  */
 export const COOKIE = {
   session: '__Host-madang_sid',
   signup: '__Host-madang_signup',
   oauth: '__Host-madang_oauth',
+  device: '__Host-madang_dev',
 } as const;
 
 export function readCookie(req: Request, name: string): string | null {

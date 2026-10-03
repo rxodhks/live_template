@@ -10,7 +10,9 @@ import type {
   JoinStatus,
   MemberInfo,
   MyJoinRequest,
+  PasskeyInfo,
   PublicUser,
+  SessionInfo,
   OAuthProvider,
   Role,
   SignupInfo,
@@ -21,7 +23,9 @@ import type {
 import type { TemplateBroadcast } from '../../shared/protocol';
 import { USER_AVATARS, USER_COLORS, isHexColor } from '../../shared/colors';
 import type { Env } from './env';
+import { sendLoginAlert } from './mail';
 import { type Result, clampText, fail, isId, newId, ok, safeEqual, sha256Hex } from './util';
+import { type PasskeyAlg, PasskeyError, b64urlDecode, b64urlEncode, checkPublicKey, isPasskeyAlg, readAuthData, readClientData, verifySignature } from './passkey';
 
 /*
  * Directory — 계정 · 협업 템플릿 목록 · 멤버 · 초대 링크 · 참여 요청을 관리하는 단일 Durable Object.
@@ -34,17 +38,60 @@ const ROLE_LABEL: Record<Role, string> = { owner: '소유자', editor: '편집�
 export const hasRole = (role: Role, min: Role) => ROLE_RANK[role] >= ROLE_RANK[min];
 
 /** 로그인 유지 기간 (마지막으로 사용한 날부터) */
-export const SESSION_TTL_MS = 30 * 86_400_000;
+export const SESSION_TTL_MS = 90 * 86_400_000;
+/** 한 계정에 등록할 수 있는 패스키 수 */
+const MAX_PASSKEYS = 10;
 /** 이메일 인증 코드: 유효 시간 · 재발송 간격 · 틀릴 수 있는 횟수 */
 const CODE_TTL_MS = 10 * 60_000;
 const CODE_RESEND_MS = 30_000;
 const CODE_MAX_ATTEMPTS = 5;
 /** 주소마다 하루에 틀릴 수 있는 인증 코드 횟수 (코드를 다시 받아 가며 무작위로 맞혀 보는 것 방지) */
 const CODE_MAX_FAILS_PER_DAY = 20;
+/** 주소마다 하루에 받을 수 있는 인증 코드 메일 수 (다른 사람이 내 주소를 넣어 메일을 계속 보내는 것 방지) */
+export const CODE_MAX_MAILS_PER_DAY = 10;
+/**
+ * 사이트 전체에서 하루에 보내는 메일(인증 코드 · 새 기기 로그인 알림) 상한.
+ * Resend 무료 요금제는 하루 100통이라 여유를 두고 90통. 요금제를 올리면 MAIL_DAILY_LIMIT 설정으로 바꾼다
+ */
+export const DEFAULT_MAIL_DAILY_LIMIT = 90;
+/** 한 번이라도 로그인한 기기를 기억하는 기간 (이 기간 안에 다시 쓰면 '새 기기'로 알리지 않는다) */
+const KNOWN_DEVICE_TTL_MS = 400 * 86_400_000;
 /** 휴지통 보관 기간: 지나면 영구 삭제 */
 export const TRASH_TTL_MS = 30 * 86_400_000;
 /** 외부 로그인 왕복 · 이름 입력까지 기다리는 시간 */
-const FLOW_TTL_MS = { oauth: 10 * 60_000, signup: 30 * 60_000 } as const;
+const FLOW_TTL_MS = { oauth: 10 * 60_000, signup: 30 * 60_000, passkey_reg: 10 * 60_000, passkey_auth: 10 * 60_000 } as const;
+
+/** 패스키 등록 · 로그인 요청에 담겨 오는 값 (모두 base64url) */
+export interface PasskeyRegistration {
+  id?: unknown;
+  clientDataJSON?: unknown;
+  authenticatorData?: unknown;
+  publicKey?: unknown;
+  algorithm?: unknown;
+  transports?: unknown;
+}
+export interface PasskeyAssertion {
+  id?: unknown;
+  clientDataJSON?: unknown;
+  authenticatorData?: unknown;
+  signature?: unknown;
+  userHandle?: unknown;
+}
+/** 패스키 사이트 (Worker가 정한다). origin이 null이면 개발 서버: localhost 화면만 */
+export interface PasskeySite {
+  origin: string | null;
+  rpId: string;
+}
+
+/** 로그인하는 브라우저 정보 (Worker가 요청에서 꺼내 준다) */
+export interface LoginClient {
+  agent: string;
+  /** 이 브라우저의 기기 쿠키 값 (새 기기 로그인을 알아보는 데만 쓴다) */
+  device: string;
+  /** 알림 메일에 넣을 사이트 주소와 대략적인 위치 (저장하지 않는다) */
+  origin: string;
+  place: string;
+}
 
 /** 인증을 마친 신원 (이메일 코드 또는 외부 계정) */
 export interface VerifiedIdentity {
@@ -60,6 +107,46 @@ export interface VerifiedIdentity {
 export type AuthOutcome = { status: 'signed_in'; user: PublicUser; session: string } | { status: 'needs_name'; ticket: string };
 
 type OAuthFlow = { provider: OAuthProvider; verifier: string; nonce: string; next: string };
+
+function parseTransports(raw: string): string[] {
+  try {
+    const v = JSON.parse(raw) as unknown;
+    return Array.isArray(v) ? v.filter((t): t is string => typeof t === 'string') : [];
+  } catch {
+    return [];
+  }
+}
+
+/** 패스키 · 로그인 기기 목록에 보일 기기 이름 (브라우저 · 운영체제) */
+export function deviceLabel(agent: string, fallback = '패스키'): string {
+  const os = /iPhone|iPad/.test(agent)
+    ? 'iOS'
+    : /Android/.test(agent)
+      ? 'Android'
+      : /Mac OS X|Macintosh/.test(agent)
+        ? 'macOS'
+        : /Windows/.test(agent)
+          ? 'Windows'
+          : /CrOS/.test(agent)
+            ? 'ChromeOS'
+            : /Linux/.test(agent)
+              ? 'Linux'
+              : '';
+  const browser = /Edg\//.test(agent)
+    ? 'Edge'
+    : /SamsungBrowser/.test(agent)
+      ? '삼성 인터넷'
+      : /Whale/.test(agent)
+        ? '웨일'
+        : /Firefox\//.test(agent)
+          ? 'Firefox'
+          : /Chrome\//.test(agent)
+            ? 'Chrome'
+            : /Safari\//.test(agent)
+              ? 'Safari'
+              : '';
+  return [browser, os].filter(Boolean).join(' · ') || fallback;
+}
 
 /** 6자리 숫자 코드 */
 function sixDigits(): string {
@@ -153,8 +240,14 @@ export class Directory extends DurableObject<Env> {
       CREATE TABLE IF NOT EXISTS sessions (hash TEXT PRIMARY KEY, user_id TEXT NOT NULL, created_at INTEGER NOT NULL,
         expires_at INTEGER NOT NULL, seen_at INTEGER NOT NULL, agent TEXT NOT NULL DEFAULT '');
       CREATE INDEX IF NOT EXISTS sessions_by_user ON sessions(user_id);
+      CREATE TABLE IF NOT EXISTS known_devices (user_id TEXT NOT NULL, hash TEXT NOT NULL, created_at INTEGER NOT NULL, seen_at INTEGER NOT NULL,
+        PRIMARY KEY (user_id, hash));
       CREATE TABLE IF NOT EXISTS email_codes (email TEXT PRIMARY KEY, hash TEXT NOT NULL, expires_at INTEGER NOT NULL,
         attempts INTEGER NOT NULL DEFAULT 0, sent_at INTEGER NOT NULL);
+      CREATE TABLE IF NOT EXISTS passkeys (id TEXT PRIMARY KEY, user_id TEXT NOT NULL, public_key TEXT NOT NULL, alg INTEGER NOT NULL,
+        sign_count INTEGER NOT NULL DEFAULT 0, transports TEXT NOT NULL DEFAULT '[]', name TEXT NOT NULL, created_at INTEGER NOT NULL,
+        last_used_at INTEGER);
+      CREATE INDEX IF NOT EXISTS passkeys_by_user ON passkeys(user_id);
       CREATE TABLE IF NOT EXISTS auth_flows (id TEXT PRIMARY KEY, kind TEXT NOT NULL, data TEXT NOT NULL, expires_at INTEGER NOT NULL);
       CREATE TABLE IF NOT EXISTS feedback (id TEXT PRIMARY KEY, user_id TEXT NOT NULL, at INTEGER NOT NULL, message TEXT NOT NULL, context TEXT NOT NULL);
       CREATE TABLE IF NOT EXISTS rate (key TEXT NOT NULL, bucket INTEGER NOT NULL, count INTEGER NOT NULL, expires_at INTEGER NOT NULL,
@@ -168,6 +261,9 @@ export class Directory extends DurableObject<Env> {
       // 휴지통: 삭제해도 30일 동안 보관
       'ALTER TABLE templates ADD COLUMN deleted_at INTEGER',
       'ALTER TABLE templates ADD COLUMN deleted_by TEXT',
+      // 로그인된 기기 목록: 화면에 보여 줄 세션 ID와 기기 쿠키 해시
+      'ALTER TABLE sessions ADD COLUMN id TEXT',
+      'ALTER TABLE sessions ADD COLUMN device TEXT',
     ]) {
       try {
         this.sql.exec(ddl);
@@ -176,6 +272,8 @@ export class Directory extends DurableObject<Env> {
       }
     }
     this.sql.exec('CREATE UNIQUE INDEX IF NOT EXISTS users_by_email ON users(email)');
+    this.sql.exec("UPDATE sessions SET id = lower(hex(randomblob(12))) WHERE id IS NULL");
+    this.sql.exec('CREATE UNIQUE INDEX IF NOT EXISTS sessions_by_id ON sessions(id)');
   }
 
   /* ───────────── 계정 ───────────── */
@@ -186,6 +284,7 @@ export class Directory extends DurableObject<Env> {
    *  · 이메일: 6자리 코드를 메일로 보내고 확인하면 로그인 (비밀번호 없음)
    *  · 외부 계정(구글 · 깃허브): 같은 외부 계정 → 같은 (확인된) 이메일의 계정 순으로 찾는다
    *  · 처음이면 가입 티켓을 주고, 이름을 정하면 계정을 만든다
+   *  · 패스키: 로그인한 계정에 기기의 키를 등록해 두면, 다음부터 이메일 · 코드 없이 지문 · 얼굴 · PIN으로 로그인
    *  · 세션 토큰은 해시만 저장한다
    */
 
@@ -209,6 +308,47 @@ export class Directory extends DurableObject<Env> {
     if (Math.random() > 0.05) return;
     const now = Date.now();
     for (const table of ['sessions', 'auth_flows', 'email_codes', 'rate']) this.sql.exec(`DELETE FROM ${table} WHERE expires_at < ?`, now);
+    this.sql.exec('DELETE FROM known_devices WHERE seen_at < ?', now - KNOWN_DEVICE_TTL_MS);
+  }
+
+  /** 오늘 보낸 메일 수를 하나 늘린다. 사이트 전체 하루 상한에 닿았으면 false */
+  private takeMailQuota(): boolean {
+    const max = Number(this.env.MAIL_DAILY_LIMIT) || DEFAULT_MAIL_DAILY_LIMIT;
+    if (this.limit('mail:day', max, 86_400_000) === null) return true;
+    console.warn(`[메일 한도] 오늘 보낼 수 있는 메일 ${max}통을 모두 썼습니다 (UTC 자정에 초기화)`);
+    return false;
+  }
+
+  /**
+   * 이 브라우저(기기 쿠키)를 계정이 아는 기기로 기억한다.
+   * 처음 보는 기기이고 계정에 이미 다른 기기가 있으면 true (= 새 기기 로그인)
+   */
+  private async rememberDevice(userId: string, device: string): Promise<{ hash: string; isNew: boolean }> {
+    const hash = await sha256Hex(`device:${device}`);
+    const now = Date.now();
+    const known = this.sql.exec('SELECT 1 FROM known_devices WHERE user_id = ? AND hash = ?', userId, hash).toArray().length > 0;
+    const others = !known && this.sql.exec('SELECT 1 FROM known_devices WHERE user_id = ? LIMIT 1', userId).toArray().length > 0;
+    this.sql.exec(
+      'INSERT INTO known_devices (user_id, hash, created_at, seen_at) VALUES (?, ?, ?, ?) ON CONFLICT(user_id, hash) DO UPDATE SET seen_at = excluded.seen_at',
+      userId,
+      hash,
+      now,
+      now,
+    );
+    return { hash, isNew: others };
+  }
+
+  /** 새 기기 로그인 알림 메일 (메일 주소가 있는 계정만, 사이트 하루 상한 안에서) */
+  private alertNewDevice(userId: string, client: LoginClient, at: number): void {
+    const email = this.sql.exec<{ email: string | null }>('SELECT email FROM users WHERE id = ?', userId).toArray()[0]?.email;
+    if (!email) return;
+    const alert = { device: deviceLabel(client.agent, '알 수 없는 기기'), place: client.place, at, origin: client.origin };
+    if (!this.env.RESEND_API_KEY) {
+      console.log(`[개발 모드] ${email} 새 기기 로그인 알림: ${alert.device} ${alert.place}`);
+      return;
+    }
+    if (!this.takeMailQuota()) return;
+    this.ctx.waitUntil(sendLoginAlert(this.env, email, alert).catch((err) => console.error('새 기기 로그인 알림 메일 발송 실패', err)));
   }
 
   private putFlow(id: string, kind: keyof typeof FLOW_TTL_MS, data: unknown): void {
@@ -228,18 +368,22 @@ export class Directory extends DurableObject<Env> {
     return row ? (JSON.parse(row.data) as T) : null;
   }
 
-  private async createSession(userId: string, agent: string): Promise<string> {
+  private async createSession(userId: string, client: LoginClient): Promise<string> {
     const token = newId(40);
     const now = Date.now();
+    const device = await this.rememberDevice(userId, client.device);
     this.sql.exec(
-      'INSERT INTO sessions (hash, user_id, created_at, expires_at, seen_at, agent) VALUES (?, ?, ?, ?, ?, ?)',
+      'INSERT INTO sessions (hash, id, user_id, created_at, expires_at, seen_at, agent, device) VALUES (?, ?, ?, ?, ?, ?, ?, ?)',
       await sha256Hex(token),
+      newId(24),
       userId,
       now,
       now + SESSION_TTL_MS,
       now,
-      agent.slice(0, 200),
+      client.agent.slice(0, 200),
+      device.hash,
     );
+    if (device.isNew) this.alertNewDevice(userId, client, now);
     this.sql.exec('UPDATE users SET last_seen_at = ? WHERE id = ?', now, userId);
     this.sweep();
     return token;
@@ -273,9 +417,9 @@ export class Directory extends DurableObject<Env> {
     return toUser(row);
   }
 
-  private async signIn(id: VerifiedIdentity, agent: string): Promise<AuthOutcome> {
+  private async signIn(id: VerifiedIdentity, client: LoginClient): Promise<AuthOutcome> {
     const user = this.findAccount(id);
-    if (user) return { status: 'signed_in', user, session: await this.createSession(user.id, agent) };
+    if (user) return { status: 'signed_in', user, session: await this.createSession(user.id, client) };
     const ticket = newId(40);
     this.putFlow(await sha256Hex(ticket), 'signup', id);
     return { status: 'needs_name', ticket };
@@ -291,6 +435,17 @@ export class Directory extends DurableObject<Env> {
     }
     const wait = (ip ? this.limit(`ip:${ip}`, 20, 3_600_000) : null) ?? this.limit(`mail:${email}`, 8, 3_600_000);
     if (wait) return fail(429, '인증 코드를 너무 많이 요청했습니다. 잠시 후 다시 시도해 주세요.', { retryAfter: wait });
+    // 하루 상한: 주소마다(메일 폭탄 방지) · 사이트 전체(발송 한도를 다 써서 모두가 로그인하지 못하게 되는 것 방지)
+    const daily = this.limit(`maild:${email}`, CODE_MAX_MAILS_PER_DAY, 86_400_000);
+    if (daily) {
+      return fail(429, '이 주소로는 오늘 인증 코드를 더 보낼 수 없습니다. 받은 메일함의 코드를 쓰거나, 패스키 · 구글 · 깃허브로 로그인하거나, 내일 다시 시도해 주세요.', {
+        retryAfter: daily,
+        reason: 'daily_limit',
+      });
+    }
+    if (this.env.RESEND_API_KEY && !this.takeMailQuota()) {
+      return fail(429, '오늘은 인증 메일을 더 보낼 수 없습니다. 패스키 · 구글 · 깃허브로 로그인하거나 내일 다시 시도해 주세요.', { reason: 'site_limit' });
+    }
     const code = sixDigits();
     this.sql.exec(
       'INSERT OR REPLACE INTO email_codes (email, hash, expires_at, attempts, sent_at) VALUES (?, ?, ?, 0, ?)',
@@ -308,7 +463,7 @@ export class Directory extends DurableObject<Env> {
     this.sql.exec('DELETE FROM email_codes WHERE email = ?', email);
   }
 
-  async verifyEmailCode(email: string, code: string, agent: string): Promise<Result<AuthOutcome>> {
+  async verifyEmailCode(email: string, code: string, client: LoginClient): Promise<Result<AuthOutcome>> {
     const row = this.sql
       .exec<{ hash: string; expires_at: number; attempts: number }>('SELECT hash, expires_at, attempts FROM email_codes WHERE email = ?', email)
       .toArray()[0];
@@ -329,7 +484,7 @@ export class Directory extends DurableObject<Env> {
       return fail(400, `인증 코드가 올바르지 않습니다. (남은 시도 ${remaining}회)`, { reason: 'mismatch', remaining });
     }
     this.sql.exec('DELETE FROM email_codes WHERE email = ?', email);
-    return ok(await this.signIn({ provider: 'email', subject: email, email, emailVerified: true, name: '' }, agent));
+    return ok(await this.signIn({ provider: 'email', subject: email, email, emailVerified: true, name: '' }, client));
   }
 
   /** 외부 로그인 시작: 요청 위조를 막는 state · PKCE 검증값 · nonce를 만들어 둔다 */
@@ -349,8 +504,8 @@ export class Directory extends DurableObject<Env> {
     return ok(flow);
   }
 
-  async oauthSignIn(id: VerifiedIdentity, agent: string): Promise<AuthOutcome> {
-    return this.signIn(id, agent);
+  async oauthSignIn(id: VerifiedIdentity, client: LoginClient): Promise<AuthOutcome> {
+    return this.signIn(id, client);
   }
 
   /** 이름 입력 화면에 보여 줄 가입 정보 */
@@ -361,7 +516,7 @@ export class Directory extends DurableObject<Env> {
   }
 
   /** 이름(과 커서 색상 · 아바타)을 정하면 계정을 만들고 로그인한다 */
-  async completeSignup(ticket: string | null, input: Partial<PublicUser>, agent: string): Promise<Result<{ user: PublicUser; session: string }>> {
+  async completeSignup(ticket: string | null, input: Partial<PublicUser>, client: LoginClient): Promise<Result<{ user: PublicUser; session: string }>> {
     const hash = ticket && ticket.length <= 100 ? await sha256Hex(ticket) : null;
     const id = hash ? this.readFlow<VerifiedIdentity>(hash, 'signup') : null;
     if (!hash || !id) return fail(401, '가입 절차가 만료되었습니다. 처음부터 다시 로그인해 주세요.', { reason: 'expired' });
@@ -370,7 +525,7 @@ export class Directory extends DurableObject<Env> {
     this.sql.exec('DELETE FROM auth_flows WHERE id = ?', hash);
     // 그사이 같은 계정으로 가입을 마쳤다면(다른 탭 등) 그 계정으로 로그인
     const existing = this.findAccount(id);
-    if (existing) return ok({ user: existing, session: await this.createSession(existing.id, agent) });
+    if (existing) return ok({ user: existing, session: await this.createSession(existing.id, client) });
     const user: PublicUser = { id: newId(), ...profile };
     const now = Date.now();
     this.sql.exec(
@@ -386,7 +541,7 @@ export class Directory extends DurableObject<Env> {
       now,
     );
     this.linkIdentity(user.id, id);
-    return ok({ user, session: await this.createSession(user.id, agent) });
+    return ok({ user, session: await this.createSession(user.id, client) });
   }
 
   async authenticate(token: string | null): Promise<PublicUser | null> {
@@ -416,10 +571,69 @@ export class Directory extends DurableObject<Env> {
     if (token && token.length <= 100) this.sql.exec('DELETE FROM sessions WHERE hash = ?', await sha256Hex(token));
   }
 
-  /** 로그인 확인과 계정 정보를 한 번에 (앱 시작 때 Durable Object를 한 번만 부르도록) */
-  async me(token: string | null): Promise<{ user: PublicUser; account: AccountInfo } | null> {
+  /**
+   * 로그인 확인과 계정 정보를 한 번에 (앱 시작 때 Durable Object를 한 번만 부르도록).
+   * device: 기기 쿠키가 없던 브라우저에 새로 준 값 — 이미 로그인해 있는 브라우저이니 아는 기기로 기억해 둔다
+   * (이 기능 전부터 로그인해 있던 기기가 다음 로그인 때 '새 기기'로 알려지지 않도록)
+   */
+  async me(token: string | null, device?: string): Promise<{ user: PublicUser; account: AccountInfo } | null> {
     const user = await this.authenticate(token);
-    return user ? { user, account: await this.account(user.id) } : null;
+    if (!user) return null;
+    if (device && token) {
+      const { hash } = await this.rememberDevice(user.id, device);
+      this.sql.exec('UPDATE sessions SET device = ? WHERE hash = ?', hash, await sha256Hex(token));
+    }
+    return { user, account: await this.account(user.id) };
+  }
+
+  /* 로그인된 기기 (세션) */
+
+  private async currentSession(token: string | null): Promise<{ id: string; user_id: string; device: string | null } | null> {
+    if (!(await this.authenticate(token))) return null;
+    return (
+      this.sql
+        .exec<{ id: string; user_id: string; device: string | null }>('SELECT id, user_id, device FROM sessions WHERE hash = ?', await sha256Hex(token!))
+        .toArray()[0] ?? null
+    );
+  }
+
+  async listSessions(token: string | null): Promise<Result<SessionInfo[]>> {
+    const me = await this.currentSession(token);
+    if (!me) return fail(401, '로그인이 필요합니다.', { reason: 'login_required' });
+    const rows = this.sql
+      .exec<{ id: string; agent: string; created_at: number; seen_at: number }>(
+        'SELECT id, agent, created_at, seen_at FROM sessions WHERE user_id = ? AND expires_at > ? ORDER BY seen_at DESC',
+        me.user_id,
+        Date.now(),
+      )
+      .toArray();
+    return ok(
+      rows.map((r) => ({ id: r.id, name: deviceLabel(r.agent, '알 수 없는 기기'), createdAt: r.created_at, lastSeenAt: r.seen_at, current: r.id === me.id })),
+    );
+  }
+
+  /** 다른 기기 하나 로그아웃. 그 기기는 '아는 기기'에서도 지워, 다시 로그인하면 알림이 간다 */
+  async revokeSession(token: string | null, id: string): Promise<Result<{ ok: true }>> {
+    const me = await this.currentSession(token);
+    if (!me) return fail(401, '로그인이 필요합니다.', { reason: 'login_required' });
+    if (id === me.id) return fail(400, '지금 쓰는 기기는 로그아웃 메뉴로 로그아웃해 주세요.');
+    const row = this.sql
+      .exec<{ device: string | null }>('SELECT device FROM sessions WHERE id = ? AND user_id = ?', id, me.user_id)
+      .toArray()[0];
+    if (!row) return fail(404, '이미 로그아웃된 기기입니다.');
+    this.sql.exec('DELETE FROM sessions WHERE id = ? AND user_id = ?', id, me.user_id);
+    if (row.device && row.device !== me.device) this.sql.exec('DELETE FROM known_devices WHERE user_id = ? AND hash = ?', me.user_id, row.device);
+    return ok({ ok: true });
+  }
+
+  /** 지금 쓰는 기기만 남기고 모두 로그아웃 (아는 기기도 이 기기만 남긴다) */
+  async logoutOthers(token: string | null): Promise<Result<{ removed: number }>> {
+    const me = await this.currentSession(token);
+    if (!me) return fail(401, '로그인이 필요합니다.', { reason: 'login_required' });
+    const removed = this.sql.exec<{ n: number }>('SELECT COUNT(*) AS n FROM sessions WHERE user_id = ? AND id != ?', me.user_id, me.id).toArray()[0]?.n ?? 0;
+    this.sql.exec('DELETE FROM sessions WHERE user_id = ? AND id != ?', me.user_id, me.id);
+    this.sql.exec('DELETE FROM known_devices WHERE user_id = ? AND hash IS NOT ?', me.user_id, me.device);
+    return ok({ removed });
   }
 
   async account(userId: string): Promise<AccountInfo> {
@@ -428,7 +642,135 @@ export class Directory extends DurableObject<Env> {
       .exec<{ provider: OAuthProvider }>('SELECT provider FROM identities WHERE user_id = ? ORDER BY created_at', userId)
       .toArray()
       .map((r) => r.provider);
-    return { email, providers };
+    const passkeys = this.sql.exec<{ n: number }>('SELECT COUNT(*) AS n FROM passkeys WHERE user_id = ?', userId).toArray()[0]?.n ?? 0;
+    return { email, providers, passkeys };
+  }
+
+  /* ───────────── 패스키 ───────────── */
+
+  /** 등록 준비: 챌린지 · 사용자 핸들 · 이미 등록된 키(같은 기기에 중복 등록 방지) */
+  async passkeyRegisterOptions(userId: string): Promise<
+    Result<{ challenge: string; user: { id: string; name: string; displayName: string }; exclude: { id: string; transports: string[] }[] }>
+  > {
+    const user = this.user(userId);
+    if (!user) return fail(404, '사용자를 찾을 수 없습니다.');
+    const keys = this.sql.exec<{ id: string; transports: string }>('SELECT id, transports FROM passkeys WHERE user_id = ?', userId).toArray();
+    if (keys.length >= MAX_PASSKEYS) return fail(400, `패스키는 계정마다 ${MAX_PASSKEYS}개까지 등록할 수 있습니다. 쓰지 않는 패스키를 지운 뒤 다시 시도해 주세요.`);
+    const challenge = b64urlEncode(crypto.getRandomValues(new Uint8Array(32)));
+    this.putFlow(await sha256Hex(`reg:${challenge}`), 'passkey_reg', { userId });
+    this.sweep();
+    const email = this.sql.exec<{ email: string | null }>('SELECT email FROM users WHERE id = ?', userId).toArray()[0]?.email;
+    return ok({
+      challenge,
+      user: { id: b64urlEncode(new TextEncoder().encode(userId)), name: email ?? user.name, displayName: user.name },
+      exclude: keys.map((k) => ({ id: k.id, transports: parseTransports(k.transports) })),
+    });
+  }
+
+  /** 등록: 이 계정이 받은 챌린지에 대한 응답인지 · 이 사이트의 키인지 확인하고 공개 키를 저장 */
+  async passkeyRegister(userId: string, input: PasskeyRegistration, site: PasskeySite, agent: string): Promise<Result<PasskeyInfo>> {
+    try {
+      const id = b64urlEncode(b64urlDecode(input.id, 1400));
+      const clientData = b64urlDecode(input.clientDataJSON);
+      const authData = b64urlDecode(input.authenticatorData, 8192);
+      const publicKey = b64urlDecode(input.publicKey, 2048);
+      if (!isPasskeyAlg(input.algorithm)) return fail(400, '이 기기의 패스키 형식은 아직 지원하지 않습니다.');
+      const alg: PasskeyAlg = input.algorithm;
+      const { challenge } = readClientData(clientData, 'webauthn.create', site.origin);
+      const flowId = await sha256Hex(`reg:${challenge}`);
+      const flow = this.readFlow<{ userId: string }>(flowId, 'passkey_reg');
+      this.sql.exec('DELETE FROM auth_flows WHERE id = ?', flowId);
+      if (!flow || flow.userId !== userId) return fail(400, '패스키 등록 요청이 만료되었습니다. 다시 시도해 주세요.', { reason: 'expired' });
+      const parsed = await readAuthData(authData, site.rpId);
+      if (!parsed.credentialId || b64urlEncode(parsed.credentialId) !== id) return fail(400, '잘못된 패스키 응답입니다.');
+      await checkPublicKey(publicKey, alg);
+      const owner = this.sql.exec<{ user_id: string }>('SELECT user_id FROM passkeys WHERE id = ?', id).toArray()[0];
+      if (owner) return fail(409, '이미 등록된 패스키입니다.');
+      const count = this.sql.exec<{ n: number }>('SELECT COUNT(*) AS n FROM passkeys WHERE user_id = ?', userId).toArray()[0]?.n ?? 0;
+      if (count >= MAX_PASSKEYS) return fail(400, `패스키는 계정마다 ${MAX_PASSKEYS}개까지 등록할 수 있습니다.`);
+      const transports = Array.isArray(input.transports)
+        ? input.transports.filter((t): t is string => typeof t === 'string' && /^[a-z-]{1,16}$/.test(t)).slice(0, 8)
+        : [];
+      const now = Date.now();
+      const name = deviceLabel(agent);
+      this.sql.exec(
+        'INSERT INTO passkeys (id, user_id, public_key, alg, sign_count, transports, name, created_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?)',
+        id,
+        userId,
+        b64urlEncode(publicKey),
+        alg,
+        parsed.signCount,
+        JSON.stringify(transports),
+        name,
+        now,
+      );
+      return ok({ id, name, createdAt: now, lastUsedAt: null });
+    } catch (err) {
+      if (err instanceof PasskeyError) return fail(400, err.message);
+      throw err;
+    }
+  }
+
+  /** 로그인 준비: 누구인지 모르는 상태에서 챌린지만 준다 (기기가 이 사이트의 패스키를 골라 보여 준다) */
+  async passkeyLoginOptions(ip: string | null): Promise<Result<{ challenge: string }>> {
+    const wait = ip ? this.limit(`pk:${ip}`, 120, 3_600_000) : null;
+    if (wait) return fail(429, '로그인 요청이 너무 많습니다. 잠시 후 다시 시도해 주세요.', { retryAfter: wait });
+    const challenge = b64urlEncode(crypto.getRandomValues(new Uint8Array(32)));
+    this.putFlow(await sha256Hex(`auth:${challenge}`), 'passkey_auth', {});
+    this.sweep();
+    return ok({ challenge });
+  }
+
+  /** 패스키 로그인: 챌린지(한 번만) · 출처 · 사이트 · 본인 확인 · 서명 · 서명 횟수를 확인한 뒤 세션 */
+  async passkeyLogin(input: PasskeyAssertion, site: PasskeySite, client: LoginClient): Promise<Result<AuthOutcome>> {
+    try {
+      const id = b64urlEncode(b64urlDecode(input.id, 1400));
+      const clientData = b64urlDecode(input.clientDataJSON);
+      const authData = b64urlDecode(input.authenticatorData, 8192);
+      const signature = b64urlDecode(input.signature, 2048);
+      const { challenge } = readClientData(clientData, 'webauthn.get', site.origin);
+      const flowId = await sha256Hex(`auth:${challenge}`);
+      const flow = this.readFlow(flowId, 'passkey_auth');
+      this.sql.exec('DELETE FROM auth_flows WHERE id = ?', flowId);
+      if (!flow) return fail(400, '로그인 요청이 만료되었습니다. 다시 시도해 주세요.', { reason: 'expired' });
+      const key = this.sql
+        .exec<{ user_id: string; public_key: string; alg: number; sign_count: number }>('SELECT user_id, public_key, alg, sign_count FROM passkeys WHERE id = ?', id)
+        .toArray()[0];
+      if (!key || !isPasskeyAlg(key.alg))
+        return fail(401, '등록되지 않은 패스키입니다. 이메일로 로그인한 뒤 패스키를 다시 등록해 주세요.', { reason: 'unknown_passkey' });
+      if (input.userHandle !== undefined && input.userHandle !== null && input.userHandle !== '') {
+        if (new TextDecoder().decode(b64urlDecode(input.userHandle, 128)) !== key.user_id) return fail(401, '잘못된 패스키 응답입니다.');
+      }
+      const parsed = await readAuthData(authData, site.rpId);
+      if (!(await verifySignature(b64urlDecode(key.public_key), key.alg, authData, clientData, signature))) return fail(401, '패스키 서명을 확인하지 못했습니다.');
+      // 서명 횟수가 줄었다면 키가 복제되었을 수 있다 (0만 보내는 기기도 많다)
+      if ((parsed.signCount > 0 || key.sign_count > 0) && parsed.signCount <= key.sign_count)
+        return fail(401, '이 패스키를 확인할 수 없습니다. 이메일로 로그인해 주세요.');
+      const user = this.user(key.user_id);
+      if (!user) return fail(401, '등록되지 않은 패스키입니다.', { reason: 'unknown_passkey' });
+      this.sql.exec('UPDATE passkeys SET sign_count = ?, last_used_at = ? WHERE id = ?', parsed.signCount, Date.now(), id);
+      return ok({ status: 'signed_in', user, session: await this.createSession(user.id, client) });
+    } catch (err) {
+      if (err instanceof PasskeyError) return fail(400, err.message);
+      throw err;
+    }
+  }
+
+  async listPasskeys(userId: string): Promise<PasskeyInfo[]> {
+    return this.sql
+      .exec<{ id: string; name: string; created_at: number; last_used_at: number | null }>(
+        'SELECT id, name, created_at, last_used_at FROM passkeys WHERE user_id = ? ORDER BY created_at',
+        userId,
+      )
+      .toArray()
+      .map((r) => ({ id: r.id, name: r.name, createdAt: r.created_at, lastUsedAt: r.last_used_at }));
+  }
+
+  async deletePasskey(userId: string, id: string): Promise<Result<{ ok: true }>> {
+    const row = this.sql.exec<{ id: string }>('SELECT id FROM passkeys WHERE id = ? AND user_id = ?', id, userId).toArray()[0];
+    if (!row) return fail(404, '패스키를 찾을 수 없습니다.');
+    this.sql.exec('DELETE FROM passkeys WHERE id = ?', id);
+    return ok({ ok: true });
   }
 
   /**

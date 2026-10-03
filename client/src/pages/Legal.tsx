@@ -6,12 +6,15 @@ import { useSession } from '../store/session';
 
 /*
  * 개인정보처리방침 · 이용약관 — 로그인하지 않아도 볼 수 있다 (Google 로그인 앱 게시 요건)
- * 내용을 바꾸면 EFFECTIVE_DATE와 부칙을 함께 고친다.
+ * 내용을 바꾸면 그 문서의 시행일과 부칙을 함께 고친다.
  */
 
-const EFFECTIVE_DATE = '2026년 9월 25일';
+const TERMS_EFFECTIVE_DATE = '2026년 9월 25일';
+/** 2026-10-03 개정: 패스키 · 새 기기 로그인 알림 · 기기 쿠키 · 로그인 유지 90일 */
+const PRIVACY_EFFECTIVE_DATE = '2026년 10월 3일';
+const PRIVACY_PREVIOUS = ['2026년 9월 25일'];
 
-function LegalLayout({ title, children }: { title: string; children: ReactNode }) {
+function LegalLayout({ title, effectiveDate, children }: { title: string; effectiveDate: string; children: ReactNode }) {
   const authed = useSession((s) => s.status === 'authed');
   useEffect(() => {
     const prev = document.title;
@@ -32,7 +35,7 @@ function LegalLayout({ title, children }: { title: string; children: ReactNode }
       <main className="legal-body">
         <h1>{title}</h1>
         <p className="legal-meta">
-          시행일 {EFFECTIVE_DATE} · 운영 {OPERATOR} · 문의 <a href={`mailto:${CONTACT_EMAIL}`}>{CONTACT_EMAIL}</a>
+          시행일 {effectiveDate} · 운영 {OPERATOR} · 문의 <a href={`mailto:${CONTACT_EMAIL}`}>{CONTACT_EMAIL}</a>
         </p>
         {children}
       </main>
@@ -58,7 +61,7 @@ export function LegalLinks({ className = 'legal-links' }: { className?: string }
 
 export function PrivacyPage() {
   return (
-    <LegalLayout title="개인정보처리방침">
+    <LegalLayout title="개인정보처리방침" effectiveDate={PRIVACY_EFFECTIVE_DATE}>
       <p>
         {OPERATOR}(이하 “운영팀”)은 {BRAND}(madang.party, 이하 “서비스”)를 이용하는 분의 개인정보를 소중히 다루며, 「개인정보 보호법」 등 관련 법령을 지킵니다. 이 방침은 운영팀이
         어떤 정보를 왜 수집하고, 얼마나 보관하며, 어떻게 보호하는지 알려 드립니다.
@@ -90,12 +93,16 @@ export function PrivacyPage() {
             <td>표시 이름, 커서 색상, 아바타</td>
           </tr>
           <tr>
+            <td>패스키를 등록할 때(선택)</td>
+            <td>패스키 공개 키와 ID, 등록한 기기의 브라우저 · 운영체제 종류, 등록 · 마지막 사용 시각 (지문 · 얼굴 정보는 기기 밖으로 나오지 않으며 운영팀에 전달되지 않습니다)</td>
+          </tr>
+          <tr>
             <td>템플릿을 이용할 때</td>
             <td>템플릿의 내용(디자인 · 코드 · 문서)과 버전 기록, 암호화된 비밀 노트, 채팅, 활동 기록(타임라인), 초대 링크와 참여 기록, 멤버 권한</td>
           </tr>
           <tr>
             <td>자동으로 생성 · 수집</td>
-            <td>로그인 세션 정보(브라우저 종류, 생성 · 마지막 사용 시각), 접속 IP 주소(요청 수 제한에만 사용)</td>
+            <td>로그인 세션 정보(브라우저 종류, 생성 · 마지막 사용 시각), 로그인한 기기를 알아보는 무작위 값의 해시, 접속 IP 주소(요청 수 제한에만 사용), 새 기기 로그인 알림에 넣는 대략적인 위치(도시 · 국가, 저장하지 않음)</td>
           </tr>
         </tbody>
       </table>
@@ -134,7 +141,15 @@ export function PrivacyPage() {
           </tr>
           <tr>
             <td>로그인 세션</td>
-            <td>마지막 사용 후 30일 (로그아웃하면 즉시 삭제)</td>
+            <td>마지막 사용 후 90일 (로그아웃하면 즉시 삭제)</td>
+          </tr>
+          <tr>
+            <td>패스키</td>
+            <td>이용자가 삭제하거나 회원 탈퇴 시까지</td>
+          </tr>
+          <tr>
+            <td>로그인한 기기 기록</td>
+            <td>마지막 로그인 후 400일 (기기 목록에서 로그아웃하면 즉시 삭제)</td>
           </tr>
           <tr>
             <td>이메일 인증 코드</td>
@@ -186,8 +201,8 @@ export function PrivacyPage() {
           </tr>
           <tr>
             <td>Resend (미국)</td>
-            <td>로그인 인증 코드 이메일 발송</td>
-            <td>이메일 주소, 인증 코드</td>
+            <td>로그인 인증 코드 · 새 기기 로그인 알림 이메일 발송</td>
+            <td>이메일 주소, 인증 코드, 새 기기 알림의 기기 종류 · 시각 · 대략적인 위치</td>
             <td>발송 기록은 Resend의 정책에 따름</td>
           </tr>
         </tbody>
@@ -216,14 +231,17 @@ export function PrivacyPage() {
       <h2>8. 쿠키와 브라우저 저장소</h2>
       <ul>
         <li>
-          <b>로그인 쿠키</b>: 로그인 상태를 유지합니다(최대 30일). 자바스크립트로 읽을 수 없고 HTTPS에서만 전송됩니다.
+          <b>로그인 쿠키</b>: 로그인 상태를 유지합니다(마지막 사용 후 최대 90일). 자바스크립트로 읽을 수 없고 HTTPS에서만 전송됩니다.
         </li>
         <li>
           <b>로그인 진행 쿠키</b>: 외부 계정 로그인(10분)과 가입 진행(30분) 중에만 쓰이고 끝나면 삭제됩니다.
         </li>
         <li>
+          <b>기기 쿠키</b>: 처음 보는 기기에서 로그인했을 때 알려 드리기 위해 이 브라우저를 알아보는 무작위 값을 최대 400일 저장합니다. 자바스크립트로 읽을 수 없으며 다른 목적으로 쓰지 않습니다.
+        </li>
+        <li>
           <b>브라우저 저장소</b>: 템플릿을 빠르게 열고 인터넷이 끊겨도 편집할 수 있도록 템플릿 사본과 화면 설정, 마지막 로그인 정보를 이용자의 브라우저에 저장합니다.
-          로그아웃하면 서버에 저장된 사본은 브라우저에서 지웁니다.
+          로그아웃하면 서버에 저장된 사본은 브라우저에서 지웁니다. 다음 로그인을 빠르게 하도록 이 기기에서 마지막으로 쓴 이메일과 로그인 방법을 남겨 두며, 로그인 화면의 '기억 지우기'로 지울 수 있습니다.
         </li>
         <li>광고나 추적을 위한 쿠키는 사용하지 않습니다. 브라우저 설정에서 쿠키를 막으면 로그인할 수 없습니다.</li>
       </ul>
@@ -266,14 +284,14 @@ export function PrivacyPage() {
 
       <h2>12. 개인정보처리방침의 변경</h2>
       <p>이 방침을 바꾸는 경우 시행 7일 전(이용자에게 불리한 변경은 30일 전)부터 서비스 화면에 알립니다.</p>
-      <p className="legal-meta">부칙: 이 개인정보처리방침은 {EFFECTIVE_DATE}부터 시행합니다.</p>
+      <p className="legal-meta">부칙: 이 개인정보처리방침은 {PRIVACY_EFFECTIVE_DATE}부터 시행합니다. (이전 방침 시행일: {PRIVACY_PREVIOUS.join(', ')})</p>
     </LegalLayout>
   );
 }
 
 export function TermsPage() {
   return (
-    <LegalLayout title="이용약관">
+    <LegalLayout title="이용약관" effectiveDate={TERMS_EFFECTIVE_DATE}>
       <h2>제1조 (목적)</h2>
       <p>
         이 약관은 {OPERATOR}(이하 “운영팀”)이 제공하는 {BRAND}(madang.party, 이하 “서비스”)의 이용 조건과 절차, 운영팀과 회원의 권리 · 의무 및 책임 사항을 정합니다.
@@ -370,7 +388,7 @@ export function TermsPage() {
       <p>
         서비스 이용에 관한 문의는 <a href={`mailto:${CONTACT_EMAIL}`}>{CONTACT_EMAIL}</a>로 보내 주세요.
       </p>
-      <p className="legal-meta">부칙: 이 약관은 {EFFECTIVE_DATE}부터 시행합니다.</p>
+      <p className="legal-meta">부칙: 이 약관은 {TERMS_EFFECTIVE_DATE}부터 시행합니다.</p>
     </LegalLayout>
   );
 }

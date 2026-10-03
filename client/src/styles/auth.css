@@ -427,6 +427,90 @@
   display: none;
 }
 
+/* 다시 올 때 빠르게: 패스키 · 최근 사용 */
+.auth-provider.is-first {
+  order: -1;
+}
+.auth-recent {
+  display: inline-flex;
+  align-items: center;
+  height: 20px;
+  padding: 0 7px;
+  border-radius: 999px;
+  background: var(--accent-soft);
+  color: var(--accent-text);
+  font-size: 11px;
+  font-weight: 600;
+  vertical-align: middle;
+}
+.auth-provider .auth-recent {
+  margin-left: 2px;
+}
+.auth-remembered {
+  display: inline-flex;
+  flex-wrap: wrap;
+  gap: 4px;
+  align-items: center;
+}
+
+/* 프로필 수정: 패스키 관리 */
+.passkey-section {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  margin-top: 18px;
+  padding-top: 16px;
+  border-top: 1px solid var(--border);
+}
+.passkey-head {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 12px;
+}
+.passkey-head b {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+}
+.passkey-head p {
+  margin-top: 2px;
+}
+.passkey-list,
+.session-list {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  list-style: none;
+  margin: 0;
+  padding: 0;
+}
+.passkey-list li,
+.session-list li {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 8px 10px;
+  border-radius: 8px;
+  background: var(--surface-2, var(--surface-hover));
+}
+.session-current {
+  margin-left: 6px;
+  padding: 1px 6px;
+  border-radius: 999px;
+  background: var(--accent-soft, var(--surface-hover));
+  color: var(--accent, inherit);
+  font-size: 11px;
+  font-weight: 600;
+}
+.passkey-list li > div,
+.session-list li > div {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+}
+
 /* 장애 안내 (pages/OutageScreen.tsx) — 앱 파일을 받지 못했을 때의 안내는 index.html에 따로 있다 */
 .outage-screen {
   min-height: 100vh;
