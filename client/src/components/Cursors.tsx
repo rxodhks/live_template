@@ -116,6 +116,9 @@ export function CursorLayer({ anchorRef, scrollRef, hostRef, xMode = 'fraction' 
   const host = hostRef.current;
   const anchor = anchorRef.current;
   if (!host || !anchor) return null;
+  // 보여 줄 커서가 없으면 위치를 재지 않는다 — 렌더링 중 getBoundingClientRect는 강제 레이아웃이라
+  // 긴 문서를 처음 열 때(혼자 있을 때도) 문서 전체 레이아웃을 한 번 더 계산하게 된다
+  if (!viewers.some((p) => p.cursor)) return <div className="cursor-layer" aria-hidden />;
   const hr = host.getBoundingClientRect();
   const ar = anchor.getBoundingClientRect();
   const s = scaleOf(anchor, ar);
