@@ -18,7 +18,7 @@ import {
   withCookies,
 } from './auth';
 import { sendFeedback, sendLoginCode } from './mail';
-import { HttpError, isId, json, newId, safeEqual, sha256Hex, unwrap } from './util';
+import { HttpError, isId, json, newId, safeEqual, sha256Hex, unwrap, wsSessionKey } from './util';
 
 export { Directory, TemplateRoom };
 
@@ -74,8 +74,14 @@ function requireCurrentClient(req: Request): void {
   throw new HttpError(raw === null ? 403 : 426, '마당이 새 버전으로 업데이트되었습니다. 페이지를 새로고침한 뒤 이어서 작업해 주세요.', { reason: 'outdated' });
 }
 
-/** 실시간 연결을 로그인 세션별로 묶는 값 (세션 토큰의 해시 앞부분 — 연결 태그로 쓴다) */
-const sessionKey = async (token: string) => (await sha256Hex(`ws:${token}`)).slice(0, 32);
+/** 실시간 연결을 로그인 세션별로 묶는 값 (연결 태그) */
+const sessionKey = async (token: string) => wsSessionKey(await sha256Hex(token));
+
+/** 로그아웃된 세션들로 열려 있던 실시간 연결을 닫는다 */
+function endSessions(c: Ctx, ended: { templateIds: string[]; sessions: string[] }): void {
+  if (!ended.templateIds.length || !ended.sessions.length) return;
+  c.exec.waitUntil(Promise.allSettled(ended.templateIds.flatMap((id) => ended.sessions.map((s) => room(c.env, id).endSession(s)))));
+}
 
 const clientIp = (req: Request) => req.headers.get('cf-connecting-ip') ?? 'local';
 const agentOf = (req: Request) => req.headers.get('user-agent') ?? '';
@@ -311,10 +317,16 @@ route('GET', '/api/me/sessions', async (c) => json({ sessions: unwrap(await dire
 
 route('DELETE', '/api/me/sessions/:id', async (c) => {
   if (!/^[a-z0-9]{1,64}$/i.test(c.params.id)) throw new HttpError(404, '이미 로그아웃된 기기입니다.');
-  return json(unwrap(await directory(c.env).revokeSession(tokenOf(c.req), c.params.id)));
+  const { ended, ...r } = unwrap(await directory(c.env).revokeSession(tokenOf(c.req), c.params.id));
+  endSessions(c, ended);
+  return json(r);
 });
 
-route('POST', '/api/me/sessions/logout-others', async (c) => json(unwrap(await directory(c.env).logoutOthers(tokenOf(c.req)))));
+route('POST', '/api/me/sessions/logout-others', async (c) => {
+  const { ended, ...r } = unwrap(await directory(c.env).logoutOthers(tokenOf(c.req)));
+  endSessions(c, ended);
+  return json(r);
+});
 
 /* 외부 계정: 구글 · 깃허브 */
 const redirectUri = (c: Ctx, p: OAuthProvider) => `${c.url.origin}/api/auth/callback/${p}`;
@@ -374,12 +386,8 @@ route('POST', '/api/auth/signup', async (c) => {
 
 route('POST', '/api/auth/logout', async (c) => {
   const token = tokenOf(c.req);
-  const { templateIds } = await directory(c.env).logout(token);
   // 이 세션으로 열려 있던 실시간 연결도 닫는다 (세션을 지워도 이미 열린 연결은 그대로 남아 편집할 수 있었다)
-  if (token && templateIds.length) {
-    const session = await sessionKey(token);
-    c.exec.waitUntil(Promise.allSettled(templateIds.map((id) => room(c.env, id).endSession(session))));
-  }
+  endSessions(c, await directory(c.env).logout(token));
   return withCookies(json({ ok: true }), [clearCookie(COOKIE.session), clearCookie(COOKIE.signup)]);
 });
 

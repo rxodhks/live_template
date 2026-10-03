@@ -23,6 +23,14 @@ export async function sha256Hex(input: string): Promise<string> {
   return Array.from(new Uint8Array(buf), (b) => b.toString(16).padStart(2, '0')).join('');
 }
 
+/**
+ * 실시간 연결을 로그인 세션별로 묶는 값 (연결 태그로 쓴다). 세션 행의 해시(sha256(토큰))에서 만들어서
+ * Directory가 토큰 없이도 다른 기기의 연결을 찾아 닫을 수 있다 (기기 하나 로그아웃 · 다른 기기 모두 로그아웃)
+ */
+export async function wsSessionKey(sessionHash: string): Promise<string> {
+  return (await sha256Hex(`ws:${sessionHash}`)).slice(0, 32);
+}
+
 /** 길이가 같은 문자열을 시간 차이 없이 비교 */
 export function safeEqual(a: string, b: string): boolean {
   if (a.length !== b.length) return false;

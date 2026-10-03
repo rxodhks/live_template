@@ -1288,6 +1288,37 @@ describe('남용 방지', () => {
     elsewhere.close();
     await sleep(300);
   });
+
+  it('다른 기기를 로그아웃시키면 (하나 · 모두) 그 기기의 실시간 연결도 닫힌다', async () => {
+    const login = async () => {
+      const start = await raw('POST', '/api/auth/email/start', { body: { email: e.email } });
+      const r = await raw('POST', '/api/auth/email/verify', { body: { email: e.email, code: start.data.devCode } });
+      assert.ok(r.cookies[SID], JSON.stringify(r.data));
+      return r.cookies[SID];
+    };
+    const phone = await login();
+    const tablet = await login();
+    const phoneWs = new Client(id, phone);
+    const tabletWs = new Client(id, tablet);
+    const mineWs = new Client(id, e.token);
+    await Promise.all([phoneWs.ready(), tabletWs.ready(), mineWs.ready()]);
+    const closed = async (c: Client) => {
+      for (let i = 0; i < 20 && c.ws.readyState === WebSocket.OPEN; i++) await sleep(100);
+      return c.ws.readyState >= WebSocket.CLOSING;
+    };
+    const sessions = (await raw('GET', '/api/me/sessions', { cookie: `${SID}=${phone}` })).data.sessions;
+    const phoneId = sessions.find((s: any) => s.current).id;
+    assert.equal((await raw('DELETE', `/api/me/sessions/${phoneId}`, { cookie: `${SID}=${e.token}` })).status, 200);
+    assert.ok(await closed(phoneWs), '로그아웃시킨 기기의 연결은 닫힌다');
+    assert.equal(tabletWs.ws.readyState, WebSocket.OPEN, '다른 기기는 그대로');
+    const others = await raw('POST', '/api/me/sessions/logout-others', { cookie: `${SID}=${e.token}` });
+    assert.equal(others.status, 200);
+    assert.deepEqual(Object.keys(others.data), ['removed'], '연결 정리용 내부 값은 응답에 싣지 않는다');
+    assert.ok(await closed(tabletWs), '모두 로그아웃하면 다른 기기 연결도 닫힌다');
+    assert.equal(mineWs.ws.readyState, WebSocket.OPEN, '지금 기기는 그대로');
+    mineWs.close();
+    await sleep(300);
+  });
 });
 
 describe('피드백 · 화면 오류', () => {
