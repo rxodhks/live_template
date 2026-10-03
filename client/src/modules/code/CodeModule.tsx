@@ -23,6 +23,7 @@ import {
 } from 'lucide-react';
 import { CODE_LANGUAGES, getFiles, getLanguage, renameForLanguage, type CodeLanguage, type YItem } from '@shared/schema';
 import { addCodeFile } from '@shared/create';
+import { isStarterCode, starterCode } from '@shared/starters';
 import { useWorkspace, viewPath } from '../../workspace/context';
 import { createCodeFile, deleteItem, renameItem } from '../../workspace/actions';
 import { useYField, useYItems } from '../../hooks/useY';
@@ -263,7 +264,7 @@ function CodeWorkspace({ file }: { file: YItem }) {
     }
     if (info.mode === 'none') {
       setPanel('output');
-      setOutput(unsupportedMessage(lang.name));
+      setOutput(unsupportedMessage(lang.name, lang.id));
       return;
     }
     running?.();
@@ -327,13 +328,21 @@ function CodeWorkspace({ file }: { file: YItem }) {
     let newName = renameForLanguage(name, lang, next);
     const taken = Array.from(getFiles(ws.doc).values()).some((f) => f !== file && String(f.get('name')).toLowerCase() === newName.toLowerCase());
     if (taken) newName = name;
+    // 아직 시작 코드 그대로면 새 언어의 시작 코드로 바꾼다 (사용자가 고친 내용은 그대로 둔다)
+    const text = file.get('content') as Y.Text;
+    const swapStarter = isStarterCode(text.toString());
     ws.doc.transact(() => {
       file.set('language', next.id);
       if (newName !== name) file.set('name', newName);
+      if (swapStarter) {
+        text.delete(0, text.length);
+        text.insert(0, starterCode(next.id));
+      }
     });
     ws.report({ type: 'code.language', targetId: fileId, targetName: newName, detail: next.name });
     ws.action(`언어 변경 → ${next.name}`);
-    toast.success(`언어 변경: ${next.name}`, newName !== name ? `파일 이름도 ${name} → ${newName}(으)로 바꿨습니다.` : undefined);
+    const notes = [newName !== name ? `파일 이름도 ${name} → ${newName}(으)로 바꿨습니다.` : '', swapStarter ? `시작 코드도 ${next.name}에 맞게 바꿨습니다.` : ''].filter(Boolean);
+    toast.success(`언어 변경: ${next.name}`, notes.length ? notes.join(' ') : undefined);
   };
 
   const content = () => (file.get('content') as Y.Text).toString();

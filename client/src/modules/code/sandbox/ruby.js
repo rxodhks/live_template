@@ -16,9 +16,20 @@ async function main({ entry, files, stdin }) {
   try {
     vm.eval('$stdout.sync = true; $stderr.sync = true; Dir.chdir("/app"); load "/app/' + entry.replace(/"/g, '\\"') + '"');
   } catch (err) {
-    out('error', String((err && err.message) || err).replace(/\/app\//g, ''));
+    out('error', cleanRubyError(String((err && err.message) || err)));
     const e = new Error('ruby');
     e.__reported = true;
     throw e;
   }
+}
+
+/** 오류에서 내부 실행 줄(eval · Kernel#load)과 /app/ 경로를 감춘다 */
+function cleanRubyError(msg) {
+  return msg
+    .replace(/^eval:\d+:in 'Kernel#load': /, '')
+    .split('\n')
+    .filter((l) => !/^\s*(eval:\d+:in |-e:(\d+:)?in )/.test(l))
+    .join('\n')
+    .replace(/\/app\//g, '')
+    .trim();
 }

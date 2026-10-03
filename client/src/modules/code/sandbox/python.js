@@ -49,13 +49,8 @@ async function main({ entry, files, stdin, cdn }) {
   try {
     await py.runPythonAsync(code, { globals, filename: home + '/' + entry });
   } catch (err) {
-    const msg = String((err && err.message) || err)
-      .split('\n')
-      // Pyodide 내부 호출 줄은 감춘다
-      .filter((l) => !/\/lib\/python\d+\.\d+\.zip\/_pyodide\/|^\s*File "<exec>"|await CodeRunner|coroutine = eval|eval\(self\.code|^\s*\^+\s*$/.test(l))
-      .join('\n')
-      .replaceAll(home + '/', '');
-    out('error', msg.trim());
+    const msg = cleanTraceback(String((err && err.message) || err), home);
+    out('error', msg);
     if (/EOFError/.test(msg)) out('info', '입력(input)이 필요한 코드입니다. 출력 창의 ‘입력’ 칸에 한 줄에 하나씩 값을 넣고 다시 실행하세요.');
     const e = new Error('python');
     e.__reported = true;
@@ -63,4 +58,27 @@ async function main({ entry, files, stdin, cdn }) {
   } finally {
     globals.destroy && globals.destroy();
   }
+}
+
+/** Pyodide 내부 호출(/lib/python314.zip/_pyodide/… · <exec>)은 그 아래 코드 줄까지 통째로 감추고, 템플릿 파일의 줄만 남긴다 */
+function cleanTraceback(msg, home) {
+  const kept = [];
+  let skipIndent = -1;
+  for (const l of msg.split('\n')) {
+    const indent = l.length - l.trimStart().length;
+    if (skipIndent >= 0) {
+      if (!l.trim() || indent > skipIndent) continue;
+      skipIndent = -1;
+    }
+    const frame = /^(\s*)File "([^"]*)"/.exec(l);
+    if (frame && (frame[2].startsWith('/lib/') || frame[2].startsWith('<'))) {
+      skipIndent = frame[1].length;
+      continue;
+    }
+    kept.push(l);
+  }
+  // 남은 호출 줄이 없으면 'Traceback' 머리말도 뺀다
+  const i = kept.findIndex((l) => /^Traceback \(most recent call last\):/.test(l));
+  if (i >= 0 && !/^\s*File "/.test(kept[i + 1] || '')) kept.splice(i, 1);
+  return kept.join('\n').replaceAll(home + '/', '').trim();
 }
