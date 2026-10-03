@@ -13,6 +13,7 @@ import { ToastViewport } from './components/Toasts';
 import { TooltipHost } from './components/Tooltip';
 import { ConfirmHost, PromptHost } from './components/ui';
 import { BootScreen } from './pages/BootScreen';
+import { ServerDownScreen } from './pages/OutageScreen';
 import { Dashboard } from './pages/Dashboard';
 import { GlobalTimeline } from './pages/GlobalTimeline';
 
@@ -79,6 +80,7 @@ export function App() {
   }, [status]);
 
   if (status === 'loading') return <BootScreen />;
+  if (status === 'down') return <ServerDownScreen />;
 
   return (
     <BrowserRouter>

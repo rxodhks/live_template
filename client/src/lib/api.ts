@@ -53,6 +53,15 @@ export async function api<T>(method: 'GET' | 'POST' | 'PATCH' | 'DELETE', path: 
   return data as T;
 }
 
+/**
+ * 서버가 응답하지 못하는 상태인지 — 연결 실패, 5xx, 또는 우리 서버가 아닌 곳(클라우드플레어 오류 페이지 등)이 대신 응답했을 때.
+ * (우리 Worker는 오류도 항상 JSON `{ error }`로 답한다)
+ */
+export function isServerDown(err: unknown): boolean {
+  if (!(err instanceof ApiError)) return false;
+  return err.status === 0 || err.status >= 500 || !('error' in err.data);
+}
+
 export const errorMessage = (err: unknown) => (err instanceof Error ? err.message : '알 수 없는 오류가 발생했습니다.');
 
 /* 로그인 기능 이전(가입 없이 쓰던 때)에 이 브라우저에 남은 값 — 처음 로그인할 때 계정으로 옮기고 지운다 */
