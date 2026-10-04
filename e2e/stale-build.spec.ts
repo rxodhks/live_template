@@ -33,24 +33,30 @@ async function openCreateDialog(page: Page, name: string) {
   return dialog;
 }
 
-/** 템플릿을 만들 때 받는 파일이 사라진 것처럼 (새 배포로 이름이 바뀐 예전 파일) */
-const blockSeedChunk = (page: Page) => page.route(/\/assets\/seed-[\w-]+\.js$/, (route) => route.fulfill({ status: 404, contentType: 'text/plain', body: 'Not found' }));
+/** 템플릿을 만들 때 받는 파일이 사라진 것처럼 (새 배포로 이름이 바뀐 예전 파일). state.stale이 false가 되면 정상으로 */
+const blockSeedChunk = (page: Page, state = { stale: true }) =>
+  page.route(/\/assets\/seed-[\w-]+\.js$/, (route) =>
+    state.stale ? route.fulfill({ status: 404, contentType: 'text/plain', body: 'Not found' }) : route.fallback(),
+  );
 
 test('새 버전이 배포된 뒤 예전 탭에서 템플릿을 만들면 새로고침한 뒤 만들 수 있다', async ({ page }) => {
   test.setTimeout(90_000);
   const dialog = await openCreateDialog(page, '예전탭');
-  await blockSeedChunk(page);
+  // 새로고침한 화면은 새 버전이므로 정상으로 돌린다 (라우트를 지우는 대신 상태만 바꿔 진행 중인 요청을 끊지 않는다)
+  const state = { stale: true };
+  await blockSeedChunk(page, state);
   // 서버에는 새 버전이 올라가 있다: 화면이 확인용으로 받는 index.html의 진입 파일 이름이 다르다
   await page.route('**/', async (route) => {
-    if (route.request().resourceType() !== 'fetch') return route.fallback();
+    if (!state.stale || route.request().resourceType() !== 'fetch') return route.fallback();
+    state.stale = false;
     const res = await route.fetch();
     await route.fulfill({ response: res, body: (await res.text()).replace(/\/assets\/index-[\w-]+\.js/, '/assets/index-NEWBUILD0.js') });
   });
 
-  const reloaded = page.waitForEvent('framenavigated', { predicate: (f) => f === page.mainFrame() });
+  const reloaded = page.waitForEvent('load');
   await dialog.getByRole('button', { name: '만들기', exact: true }).click();
   await reloaded;
-  await page.unrouteAll({ behavior: 'ignoreErrors' });
+  expect(state.stale, '새 버전 확인 요청').toBe(false);
   await expectDashboard(page, '예전탭');
 
   // 새로고침한 화면에서는 그대로 만들어진다
@@ -59,7 +65,7 @@ test('새 버전이 배포된 뒤 예전 탭에서 템플릿을 만들면 새로
   await page.getByRole('button', { name: '새 템플릿' }).first().click();
   await again.getByPlaceholder('예) 신규 서비스 런칭').fill('새로고침 뒤');
   await again.getByRole('button', { name: '만들기', exact: true }).click();
-  await page.waitForURL(/\/t\/[A-Za-z0-9_-]+/);
+  await expect(page).toHaveURL(/\/t\/[A-Za-z0-9_-]+/);
 });
 
 test('새 버전이 없으면 새로고침하지 않고 안내만 보여 준다', async ({ page }) => {
