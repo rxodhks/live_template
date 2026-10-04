@@ -15,6 +15,7 @@ import { onTimelineEvent } from '../store/templates';
 import { useUI } from '../store/ui';
 import { isPresenceEvent, queryTimeline } from '../lib/timeline';
 import { relativeTime } from '../lib/time';
+import { isDemoId } from '../lib/demo';
 import { CursorPage } from '../components/Cursors';
 import { Avatar, AvatarStack, Button, Spinner } from '../components/ui';
 
@@ -47,7 +48,7 @@ export function Overview() {
         </div>
       </header>
 
-      {ws.isPrivate ? <PersonalBanner /> : <Collaborators />}
+      {isDemoId(t.id) ? null : ws.isPrivate ? <PersonalBanner /> : <Collaborators />}
 
       <div className="overview-grid">
         {t.features.map((f) => (

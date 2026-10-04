@@ -10,6 +10,7 @@ import { api, errorMessage } from '../lib/api';
 import { leaveTemplate } from '../lib/templateOps';
 import { inviteSummary, useInvites } from '../lib/invites';
 import { formatDate } from '../lib/time';
+import { isDemoId } from '../lib/demo';
 import { CursorPage } from '../components/Cursors';
 import { Requests } from '../components/InviteDialog';
 import { Avatar, Button, EmptyState, IconButton, confirmDialog } from '../components/ui';
@@ -22,7 +23,37 @@ const ROLE_INFO: Record<Role, { label: string; desc: string }> = {
 
 export function Members() {
   const ws = useWorkspace();
+  if (isDemoId(ws.template.id)) return <DemoMembers />;
   return ws.isPrivate ? <PersonalMembers /> : <SharedMembers />;
+}
+
+/** 둘러보기 예시: 만든 사람만 보여 주고, 초대는 가입한 뒤 내 템플릿에서 */
+function DemoMembers() {
+  const ws = useWorkspace();
+  return (
+    <CursorPage>
+      <header className="page-header">
+        <h1>
+          <Users size={22} /> 멤버
+        </h1>
+      </header>
+      <ul className="member-list">
+        {ws.template.members.map((m) => (
+          <li key={m.user.id} className="member-row">
+            <Avatar user={m.user} size={38} />
+            <div className="member-info">
+              <b>{m.user.name}</b>
+              <span className="muted small">예시를 만든 사람</span>
+            </div>
+            <span className={`role-chip role-${m.role}`}>{ROLE_INFO[m.role].label}</span>
+          </li>
+        ))}
+      </ul>
+      <EmptyState icon={<Users size={30} />} title="예시 템플릿에는 멤버를 초대할 수 없습니다">
+        가입하고 내 템플릿을 만들면 초대 링크로 팀원과 함께 편집할 수 있습니다. 권한(편집자/뷰어)은 링크마다 정할 수 있습니다.
+      </EmptyState>
+    </CursorPage>
+  );
 }
 
 function PersonalMembers() {

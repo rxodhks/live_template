@@ -4,6 +4,7 @@ import { FEATURE_INFO, FEATURE_ORDER } from '@shared/presets';
 import { useSession } from '../store/session';
 import { useTemplates } from '../store/templates';
 import { ApiError, api } from './api';
+import { isDemoId, patchDemoEntry } from './demo';
 import { buildShareUpload, clearSharedLocalData, recordLocal } from './local';
 
 /*
@@ -43,6 +44,7 @@ export async function updateTemplate(t: TemplateEntry, patch: TemplatePatch): Pr
   }
   if (!changes.length) return t;
   next.updatedAt = Date.now();
+  if (isDemoId(t.id)) return patchDemoEntry(next); // 둘러보기 예시는 저장하지 않는다
   store.upsert(next);
   await recordLocal(next, useSession.getState().user!, { type: 'template.update', detail: changes.join(', ') });
   return next;
@@ -91,7 +93,7 @@ export function backupPending(): Promise<number> {
     let done = 0;
     try {
       for (const t of Object.values(useTemplates.getState().templates)) {
-        if (t.mode !== 'personal' || t.id === openTemplateId) continue;
+        if (t.mode !== 'personal' || t.id === openTemplateId || isDemoId(t.id)) continue;
         try {
           await backupTemplate(t);
           done++;
@@ -110,7 +112,7 @@ export function backupPending(): Promise<number> {
 }
 
 /** 아직 백업되지 않은 개인 템플릿 수 */
-export const unbackedCount = () => Object.values(useTemplates.getState().templates).filter((t) => t.mode === 'personal').length;
+export const unbackedCount = () => Object.values(useTemplates.getState().templates).filter((t) => t.mode === 'personal' && !isDemoId(t.id)).length;
 
 /* ───────────── 휴지통 ───────────── */
 

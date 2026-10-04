@@ -3,6 +3,7 @@ import { useSession } from '../store/session';
 import { useTemplates } from '../store/templates';
 import { api } from './api';
 import { type TimelineQuery, queryLocalTimeline } from './local';
+import { isDemoId } from './demo';
 
 type Page = { events: TimelineEvent[]; hasMore: boolean };
 
@@ -23,12 +24,13 @@ function params(q: TimelineQuery): string {
 export async function queryTimeline(templateId: string | undefined, q: TimelineQuery): Promise<Page> {
   const templates = useTemplates.getState().templates;
   if (templateId) {
+    if (isDemoId(templateId)) return { events: [], hasMore: false }; // 둘러보기 예시는 기록하지 않는다
     if (templates[templateId]?.mode === 'shared') return api<Page>('GET', `/templates/${templateId}/timeline?${params(q)}`);
     return queryLocalTimeline([templateId], q);
   }
   const limit = q.limit ?? 50;
   const personal = Object.values(templates)
-    .filter((t) => t.mode === 'personal')
+    .filter((t) => t.mode === 'personal' && !isDemoId(t.id))
     .map((t) => t.id);
   const [local, remote] = await Promise.all([
     queryLocalTimeline(personal, q),
