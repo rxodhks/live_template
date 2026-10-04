@@ -19,6 +19,7 @@ import {
   Sun,
   UserPlus,
   UserRound,
+  Eye,
 } from 'lucide-react';
 import { FEATURE_INFO } from '@shared/presets';
 import { useOptionalWorkspace } from '../workspace/context';
@@ -35,6 +36,7 @@ import { logout } from '../lib/auth';
 import { MODULE_NAMES } from '../workspace/viewLabel';
 import { itemsMap } from '../workspace/items';
 import { useYField } from '../hooks/useY';
+import { DEMO_PRESETS, demoPath, isDemoId } from '../lib/demo';
 
 const THEME_ICON: Record<ThemePref, typeof Sun> = { light: Sun, dark: Moon, system: Monitor };
 const THEME_NEXT: Record<ThemePref, ThemePref> = { system: 'light', light: 'dark', dark: 'system' };
@@ -44,6 +46,7 @@ const PROVIDER_LABEL = { google: 'Google', github: 'GitHub' } as const;
 export function TopBar() {
   const ws = useOptionalWorkspace();
   const user = useSession((s) => s.user);
+  const guest = useSession((s) => s.status !== 'authed');
   const theme = useSession((s) => s.theme);
   const setTheme = useSession((s) => s.setTheme);
   const templates = useTemplates((s) => s.templates);
@@ -53,13 +56,26 @@ export function TopBar() {
   const ui = useUI();
   const navigate = useNavigate();
 
+  const demo = !!ws && isDemoId(ws.template.id);
   const ThemeIcon = THEME_ICON[theme];
   const sortedTemplates = Object.values(templates).sort((a, b) => b.updatedAt - a.updatedAt);
+  // 둘러보기 중에는 템플릿 대신 다른 예시로 바꿔 본다
+  const demoItems = () => [
+    ...DEMO_PRESETS.map((p) => ({
+      label: p.name,
+      icon: <span>{p.emoji}</span>,
+      checked: demoPath(p.id) === `/t/${ws?.template.id}`,
+      hint: p.features.map((f) => FEATURE_INFO[f].emoji).join(''),
+      onSelect: () => navigate(demoPath(p.id)),
+    })),
+    { divider: true, label: '' },
+    { label: '모든 예시 보기', icon: <LayoutGrid size={15} />, onSelect: () => navigate('/explore') },
+  ];
 
   return (
     <header className="topbar">
       <div className={ws ? 'topbar-left has-crumbs' : 'topbar-left'}>
-        <Link to="/" className="brand" aria-label={`${BRAND} 홈`}>
+        <Link to={guest ? '/explore' : '/'} className="brand" aria-label={`${BRAND} 홈`}>
           <span className="brand-mark">
             <BrandMark size={22} />
           </span>
@@ -74,8 +90,8 @@ export function TopBar() {
             <span className="crumb-sep">/</span>
             <Menu
               width={280}
-              header="템플릿 전환"
-              items={() => [
+              header={demo ? '예시 전환' : '템플릿 전환'}
+              items={() => (demo ? demoItems() : [
                 ...sortedTemplates.map((t) => ({
                   label: t.name,
                   icon: <span>{t.emoji}</span>,
@@ -85,7 +101,7 @@ export function TopBar() {
                 })),
                 { divider: true, label: '' },
                 { label: '모든 템플릿 보기', icon: <LayoutGrid size={15} />, onSelect: () => navigate('/') },
-              ]}
+              ])}
               trigger={({ toggle, ref, open }) => (
                 <button ref={ref} className="crumb-template" onClick={toggle} aria-expanded={open}>
                   <span className="crumb-emoji">{ws.template.emoji}</span>
@@ -107,7 +123,7 @@ export function TopBar() {
       </button>
 
       <div className="topbar-right">
-        {ws && <SaveIndicator synced={ws.synced} mode={ws.mode} />}
+        {ws && !demo && <SaveIndicator synced={ws.synced} mode={ws.mode} />}
         {!ws && (remoteError || offline) && (
           <span className="conn-dot is-offline" data-tip={`협업 서버에 연결할 수 없습니다 · 개인 공간은 계속 사용할 수 있습니다`}>
             <CloudOff size={15} />
@@ -134,7 +150,12 @@ export function TopBar() {
         <IconButton className="theme-toggle" label={`${THEME_LABEL[theme]} (클릭하여 전환)`} onClick={() => setTheme(THEME_NEXT[theme])}>
           <ThemeIcon size={17} />
         </IconButton>
-        {user && (
+        {guest && (
+          <Link className="btn btn-primary btn-sm" to="/login">
+            로그인 · 가입
+          </Link>
+        )}
+        {user && !guest && (
           <Menu
             align="end"
             width={240}
@@ -178,6 +199,13 @@ function SpaceBadge() {
   const ws = useOptionalWorkspace()!;
   const ui = useUI();
   const status = useConnection((s) => s.status);
+  if (isDemoId(ws.template.id)) {
+    return (
+      <span className="space-chip is-personal" data-tip="가입하지 않아도 볼 수 있는 예시입니다 · 읽기 전용이고, 코드 실행과 미리보기는 해 볼 수 있습니다">
+        <Eye size={12} /> 예시 · 읽기 전용
+      </span>
+    );
+  }
   if (ws.isPrivate) {
     return (
       <button

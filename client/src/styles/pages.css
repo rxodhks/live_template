@@ -981,3 +981,68 @@
   font-size: 13px;
   line-height: 1.5;
 }
+.onboarding-explore {
+  width: fit-content;
+}
+
+/* 가입 전 둘러보기: 예시 템플릿 목록 */
+.explore-page {
+  min-height: 100vh;
+  max-width: 960px;
+  margin: 0 auto;
+  padding: 32px 24px 48px;
+}
+.explore-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  margin-bottom: 24px;
+}
+.explore-head .onboarding-brand {
+  margin: 0;
+}
+.explore-actions {
+  display: flex;
+  gap: 8px;
+}
+.explore-page h1 {
+  font-size: 26px;
+  margin: 0 0 6px;
+}
+.explore-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(260px, 1fr));
+  gap: 12px;
+  margin-top: 20px;
+}
+.explore-card {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  padding: 16px;
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  background: var(--surface);
+  color: var(--text);
+  text-decoration: none;
+}
+.explore-card:hover,
+.explore-card:focus-visible {
+  border-color: var(--accent);
+}
+.explore-card-title {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 16px;
+}
+.explore-card-emoji {
+  font-size: 22px;
+}
+.explore-card-features {
+  display: flex;
+  gap: 6px;
+  flex-wrap: wrap;
+  margin-top: auto;
+}

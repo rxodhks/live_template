@@ -26,6 +26,9 @@ const Workspace = lazyWithPreload(() => import('./workspace/Workspace').then((m)
 const PageSetupHost = lazyWithPreload(() => import('./modules/docs/page/PageSetupDialog').then((m) => m.PageSetupHost));
 const LoginPage = lazyWithPreload(() => import('./pages/Auth').then((m) => m.LoginPage), BootScreen);
 const SignupPage = lazyWithPreload(() => import('./pages/Auth').then((m) => m.SignupPage), BootScreen);
+// 가입 전 둘러보기 (예시 템플릿 읽기 전용)
+const ExplorePage = lazyWithPreload(() => import('./pages/Explore').then((m) => m.ExplorePage), BootScreen);
+const DemoWorkspace = lazyWithPreload(() => import('./workspace/Workspace').then((m) => m.DemoWorkspace), BootScreen);
 
 // 이 기기에 로그인 정보가 없으면 로그인 화면으로 갈 가능성이 높다 — 로그인 확인(/api/me)을 기다리는 동안 함께 받는다
 if (!hasCachedAccount()) LoginPage.preload();
@@ -96,7 +99,7 @@ export function App() {
           <Route path="/terms" element={<TermsPage />} />
           {/* 초대장은 로그인하지 않아도 볼 수 있다 (참여하려면 로그인) */}
           <Route path="/join/:code" element={<JoinPage />} />
-          <Route path="*" element={status === 'authed' ? <AuthedApp /> : <ToLogin />} />
+          <Route path="*" element={status === 'authed' ? <AuthedApp /> : <GuestApp />} />
         </Routes>
       </Suspense>
       <ToastViewport />
@@ -129,6 +132,22 @@ function ToLogin() {
   return <Navigate to={next === '/' ? '/login' : `/login?next=${encodeURIComponent(next)}`} replace />;
 }
 
+/** 로그인하지 않은 사람: 둘러보기(예시 템플릿)만 열고 나머지는 로그인 화면으로 */
+function GuestApp() {
+  return (
+    <Routes>
+      <Route path="/explore" element={<ExplorePage />} />
+      <Route path="/t/:tid/*" element={<GuestTemplate />} />
+      <Route path="*" element={<ToLogin />} />
+    </Routes>
+  );
+}
+
+function GuestTemplate() {
+  const { pathname } = useLocation();
+  return pathname.startsWith('/t/demo-') ? <DemoWorkspace /> : <ToLogin />;
+}
+
 function AuthedApp() {
   useGlobalShortcuts();
   // 템플릿을 열기 전에 템플릿 화면을 미리 받아 둔다 → 열 때 기다리지 않는다
@@ -137,6 +156,7 @@ function AuthedApp() {
     <Routes>
       <Route path="/" element={<Dashboard />} />
       <Route path="/timeline" element={<GlobalTimeline />} />
+      <Route path="/explore" element={<ExplorePage />} />
       <Route path="/t/:tid/*" element={<Workspace />} />
       <Route path="*" element={<Navigate to="/" replace />} />
     </Routes>

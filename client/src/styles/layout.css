@@ -516,3 +516,31 @@ body.is-resizing {
 .too-large-banner .btn {
   flex-shrink: 0;
 }
+
+/* 가입 전 둘러보기 안내 — 편집 화면 아래쪽에 고정 */
+.demo-banner {
+  position: absolute;
+  left: 50%;
+  bottom: 20px;
+  transform: translateX(-50%);
+  z-index: 41;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  width: min(760px, calc(100% - 32px));
+  padding: 10px 12px 10px 14px;
+  background: var(--accent-soft);
+  color: var(--text);
+  border: 1px solid var(--accent);
+  border-radius: 12px;
+  box-shadow: var(--shadow-lg, 0 8px 24px rgba(0, 0, 0, 0.12));
+  font-size: 13px;
+  line-height: 1.5;
+}
+.demo-banner > span {
+  flex: 1;
+}
+.demo-banner > svg,
+.demo-banner .btn {
+  flex-shrink: 0;
+}

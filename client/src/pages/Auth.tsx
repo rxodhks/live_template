@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState, type ReactNode } from 'react';
 import { Link, Navigate, useNavigate, useSearchParams } from 'react-router-dom';
-import { ArrowLeft, CheckCircle2, Code2, FileText, Fingerprint, Lock, Mail, MousePointer2, Palette, RotateCw, ShieldCheck, UserPlus, UserRound } from 'lucide-react';
+import { ArrowLeft, CheckCircle2, Code2, Eye, FileText, Fingerprint, Lock, Mail, MousePointer2, Palette, RotateCw, ShieldCheck, UserPlus, UserRound } from 'lucide-react';
 import type { AuthConfig, EmailVerifyResult, OAuthProvider, PublicUser, SignupInfo } from '@shared/types';
 import { USER_AVATARS, USER_COLORS } from '@shared/colors';
 import { ApiError, errorMessage, legacyProfile } from '../lib/api';
@@ -112,6 +112,9 @@ function AuthLayout({ children }: { children: ReactNode }) {
           <br />한 화면에서 <em>함께</em>.
         </h1>
         <p>템플릿 하나에 필요한 기능만 골라 담고, 혼자 시작해서 필요할 때 팀원을 초대해 실시간으로 함께 작업하세요.</p>
+        <Link className="btn btn-secondary onboarding-explore" to="/explore">
+          <Eye size={15} /> 가입 전에 예시 둘러보기
+        </Link>
         <ul className="onboarding-features">
           {FEATURES.map((f) => (
             <li key={f.title}>

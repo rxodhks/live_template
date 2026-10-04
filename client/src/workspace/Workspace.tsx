@@ -1,8 +1,8 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { useLocation, useNavigate, useParams } from 'react-router-dom';
+import { Link, Navigate, useLocation, useNavigate, useParams } from 'react-router-dom';
 import * as Y from 'yjs';
 import { IndexeddbPersistence } from 'y-indexeddb';
-import { RefreshCw, ShieldAlert, SearchX } from 'lucide-react';
+import { Eye, RefreshCw, ShieldAlert, SearchX } from 'lucide-react';
 import type { ActivityInput, ChatMessage, CursorPoint, JoinRequest, SecretNoteMeta, TemplateEntry, TemplateSummary, ViewModule } from '@shared/types';
 import type { LivePen, PresencePatch } from '@shared/protocol';
 import { RoomConnection, type RoomStatus } from '../lib/room';
@@ -34,6 +34,8 @@ import { EmptyState, Spinner, Button, confirmDialog } from '../components/ui';
 import { resetDocCopy } from '../lib/device';
 import { MAX_DOC_BYTES } from '@shared/protocol';
 import { lazyWithPreload, whenIdle } from '../lib/lazy';
+import { GUEST, demoPresetId, dropDemoEntry, isDemoId, putDemoEntry } from '../lib/demo';
+import { newId } from '../lib/util';
 
 // 에디터 모듈은 필요할 때 불러온다 (초기 로딩 경량화)
 function ModuleLoading() {
@@ -60,20 +62,45 @@ const ACTION_REPEAT_MS = 3000;
 const ROLE_LABEL = { owner: '소유자', editor: '편집자', viewer: '뷰어' } as const;
 
 /**
+ * 가입 전 둘러보기: 로그인하지 않은 사람이 예시 템플릿(/t/demo-…)을 연다.
+ * 화면 곳곳이 '나'를 쓰므로 둘러보는 동안만 손님 사용자를 둔다 (로그인 상태는 그대로)
+ */
+export function DemoWorkspace() {
+  const { tid = '' } = useParams();
+  const [ready, setReady] = useState(false);
+  useEffect(() => {
+    if (useSession.getState().status !== 'authed') useSession.setState({ user: GUEST });
+    setReady(true);
+    return () => {
+      if (useSession.getState().status !== 'authed') useSession.setState({ user: null });
+    };
+  }, []);
+  if (!isDemoId(tid)) return <Navigate to="/explore" replace />;
+  return ready ? <Workspace /> : null;
+}
+
+/**
  * 템플릿 화면.
  * 개인 공간과 협업 공간은 같은 화면·같은 문서를 쓰고, 연결 방식만 다르다.
  * 초대해서 협업 공간으로 바뀌면 그 자리에서 실시간 협업 모드로 다시 연결된다.
  */
 export function Workspace() {
   const { tid = '' } = useParams();
+  const demo = isDemoId(tid);
   const entry = useTemplates((s) => s.templates[tid]);
   const loaded = useTemplates((s) => s.loaded);
   const [lookup, setLookup] = useState<'idle' | 'loading' | 'missing' | 'error'>('idle');
   const navigate = useNavigate();
 
   // 목록에 없는 협업 템플릿 링크로 바로 들어온 경우 (다른 기기에서 참여한 템플릿 등)
+  // 둘러보기 예시: 메모리에만 만든다 (로그인 전에는 목록을 불러오지 않으므로 loaded를 기다리지 않는다)
   useEffect(() => {
-    if (!loaded || entry || lookup !== 'idle') return;
+    if (demo && !entry) putDemoEntry(tid);
+  }, [demo, entry, tid]);
+  useEffect(() => (demo ? () => dropDemoEntry(tid) : undefined), [demo, tid]);
+
+  useEffect(() => {
+    if (demo || !loaded || entry || lookup !== 'idle') return;
     setLookup('loading');
     api<{ template: TemplateSummary }>('GET', `/templates/${tid}`)
       .then((r) => useTemplates.getState().upsertShared(r.template))
@@ -88,12 +115,13 @@ export function Workspace() {
 
   // 열려 있는 동안은 자동 백업에서 빼고, 닫히면 이 기기에만 있던 내용을 바로 백업한다
   useEffect(() => {
+    if (demo) return;
     setOpenTemplate(tid);
     return () => {
       setOpenTemplate(null);
       void backupPending();
     };
-  }, [tid]);
+  }, [tid, demo]);
 
   if (!entry) {
     return (
@@ -175,6 +203,22 @@ function WorkspaceInner({ entry }: { entry: TemplateEntry }) {
   const [conn, setConn] = useState<{ doc: Y.Doc; provider: DocProvider; room: RoomConnection | null } | null>(null);
   useEffect(() => {
     const doc = new Y.Doc();
+    // 둘러보기 예시: 프리셋 내용을 메모리에만 만든다 (저장 · 서버 연결 없음)
+    if (isDemoId(tid)) {
+      let cancelled = false;
+      const provider = new LocalProvider(doc);
+      void import('@shared/seed').then(({ seedTemplateDoc }) => {
+        if (cancelled) return;
+        seedTemplateDoc(doc, demoPresetId(tid), entry.features, 'madang', () => newId());
+        setConn({ doc, provider, room: null });
+      });
+      return () => {
+        cancelled = true;
+        setConn(null);
+        provider.destroy();
+        doc.destroy();
+      };
+    }
     // 두 모드 모두 브라우저에 사본을 둔다 → 새로고침·오프라인에도 바로 열린다
     const idb = new IndexeddbPersistence(docDbName(tid), doc);
     // 다른 탭이 이 사본을 지우면(로그아웃 · 사본 초기화) 연결이 닫힌다. 닫힌 DB에 쓰려다 예외가 나면
@@ -335,14 +379,14 @@ function WorkspaceInner({ entry }: { entry: TemplateEntry }) {
   );
 
   useEffect(() => {
-    if (shared) return;
+    if (shared || isDemoId(tid)) return; // 둘러보기 예시에는 노트가 없다 (브라우저 저장소를 쓰지 않는다)
     let alive = true;
     reloadLocalNotes.current = () => void notesApi.list().then((list) => alive && setNotes(list));
     reloadLocalNotes.current();
     return () => {
       alive = false;
     };
-  }, [notesApi, shared]);
+  }, [notesApi, shared, tid]);
 
   /* ── 내가 보고 있는 화면을 알림 ── */
   useEffect(() => {
@@ -537,6 +581,7 @@ function WorkspaceInner({ entry }: { entry: TemplateEntry }) {
       <AppShell panel={<Explorer />} panelOpen={panelOpen} drawer={value.chatOpen ? <ChatPanel /> : null}>
         {follow && followed && <FollowBanner presence={followed} onStop={() => setFollow(null)} />}
         {tooLarge && <TooLargeBanner templateId={tid} />}
+        {isDemoId(tid) && <DemoBanner />}
         {featureOff ? (
           <AddAreaPrompt module={view.module as ItemModule} />
         ) : (
@@ -545,6 +590,28 @@ function WorkspaceInner({ entry }: { entry: TemplateEntry }) {
       </AppShell>
       <span className="sr-only">{me.name} 님으로 작업 중</span>
     </WorkspaceContext.Provider>
+  );
+}
+
+/** 둘러보기 중 안내: 읽기 전용이고, 직접 만들려면 가입 */
+function DemoBanner() {
+  const guest = useSession((s) => s.status !== 'authed');
+  return (
+    <div className="demo-banner" role="note">
+      <Eye size={16} aria-hidden />
+      <span>
+        <b>예시 템플릿을 둘러보는 중입니다.</b> 읽기 전용이며, 코드 실행과 미리보기는 그대로 해 볼 수 있습니다.
+        {guest ? ' 직접 만들고 편집하려면 가입해 주세요.' : ''}
+      </span>
+      <Link className="btn btn-ghost btn-sm" to="/explore">
+        다른 예시
+      </Link>
+      {guest && (
+        <Link className="btn btn-primary btn-sm" to="/login">
+          가입하고 만들기
+        </Link>
+      )}
+    </div>
   );
 }
 
@@ -587,7 +654,7 @@ function useCallbackReport(entry: TemplateEntry, room: RoomConnection | null, sh
         lastReport.current.set(key, now);
       }
       if (shared) room?.send({ t: 'activity', input });
-      else void recordLocal(entryRef.current, useSession.getState().user!, input);
+      else if (!isDemoId(entryRef.current.id)) void recordLocal(entryRef.current, useSession.getState().user!, input);
     },
     [room, shared],
   );
