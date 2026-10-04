@@ -3,6 +3,7 @@ import { getFiles, getLanguage, type YItem } from '@shared/schema';
 import { buildPreview, line, type OutputLine } from './runner';
 import { runInSandbox, type TableOutput } from './sandbox';
 import { RUNTIMES, isRuntimeCached, loadRuntimeText, runtimeSizeMB, type RuntimeId } from './runtimes';
+import { reloadIfNewVersion } from '../../lib/staleBuild';
 import jsWorker from './sandbox/js.js?raw';
 import pythonWorker from './sandbox/python.js?raw';
 import sqlWorker from './sandbox/sql.js?raw';
@@ -307,15 +308,27 @@ export function compileScss(text: string, name: string): Promise<{ ok: boolean; 
       worker.terminate();
       sassWorker = null;
       worker.removeEventListener('message', onMsg);
+      worker.removeEventListener('error', onError);
       resolve({ ok: false, text: 'SCSS 변환이 10초 안에 끝나지 않아 중단했습니다 (무한 반복을 확인해 보세요).' });
     }, 10_000);
     const onMsg = (e: MessageEvent) => {
       if (e.data?.id !== id) return;
       clearTimeout(timer);
       worker.removeEventListener('message', onMsg);
+      worker.removeEventListener('error', onError);
       resolve({ ok: e.data.ok, text: e.data.text });
     };
+    // 워커 파일을 못 받은 경우 (배포 전에 열어 둔 탭이면 새 버전으로 새로고침된다)
+    const onError = () => {
+      clearTimeout(timer);
+      worker.removeEventListener('message', onMsg);
+      worker.removeEventListener('error', onError);
+      if (sassWorker === worker) sassWorker = null;
+      void reloadIfNewVersion();
+      resolve({ ok: false, text: 'SCSS 변환기를 불러오지 못했습니다. 새로고침한 뒤 다시 시도해 주세요.' });
+    };
     worker.addEventListener('message', onMsg);
+    worker.addEventListener('error', onError);
     worker.postMessage({ id, text, name });
   });
 }

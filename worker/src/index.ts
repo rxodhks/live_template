@@ -26,7 +26,7 @@ export { Directory, TemplateRoom };
  * 클라우드플레어 Worker 진입점.
  *  · /api/*    : 협업 서버 API (로그인, 협업 템플릿, 초대 링크, 비밀 노트, 실시간 연결)
  *  · /join/*   : 초대 링크 — 앱 화면을 그대로 주되, 메신저 미리보기 카드에 템플릿 이름이 보이도록 메타 태그를 채운다
- *  · 그 밖의 경로는 정적 파일(client/dist)이 Worker를 거치지 않고 바로 응답한다 (무료 사용량 절약)
+ *  · 그 밖의 경로는 정적 파일(client/dist)이 Worker를 거치지 않고 바로 응답한다 (무료 사용량 절약). 파일이 없을 때만 appPage로 온다
  */
 
 const MAX_BODY = 2 * 1024 * 1024;
@@ -805,6 +805,26 @@ async function invitePage(req: Request, env: Env, token: string): Promise<Respon
   return new Response(res.body, { status: 200, headers });
 }
 
+/* ───────────── 정적 파일에 없는 주소 ───────────── */
+
+/**
+ * 정적 파일(client/dist)에 없는 주소만 여기로 온다 (wrangler.jsonc not_found_handling: "none").
+ *  · /t/… 같은 화면 주소는 앱 화면(index.html)을 준다
+ *  · /assets/…js처럼 파일을 찾는 주소는 404. 배포 전에 열어 둔 탭이 사라진 예전 파일을 찾을 때
+ *    index.html(text/html)을 주면 브라우저가 "'text/html' is not a valid JavaScript MIME type"으로
+ *    거절하고, /assets/*의 1년 캐시 규칙까지 붙어 그 주소에 HTML이 저장된다
+ */
+async function appPage(req: Request, env: Env, url: URL): Promise<Response> {
+  const res = await env.ASSETS.fetch(req);
+  if (res.status !== 404) return res;
+  const last = url.pathname.slice(url.pathname.lastIndexOf('/') + 1);
+  const isFile = /^\/(assets|runtimes)\//.test(url.pathname) || (last.includes('.') && !last.endsWith('.html'));
+  if (isFile || (req.method !== 'GET' && req.method !== 'HEAD')) {
+    return new Response('Not found', { status: 404, headers: { 'content-type': 'text/plain; charset=utf-8', 'cache-control': 'no-store' } });
+  }
+  return env.ASSETS.fetch(new Request(new URL('/', req.url), { method: req.method, headers: req.headers }));
+}
+
 /* ───────────── 진입점 ───────────── */
 
 export default {
@@ -816,7 +836,7 @@ export default {
       const token = decodeParam(join[1]);
       return token === null ? json({ error: '찾을 수 없는 초대 링크입니다.' }, 404) : invitePage(req, env, token);
     }
-    if (!url.pathname.startsWith('/api/')) return env.ASSETS.fetch(req);
+    if (!url.pathname.startsWith('/api/')) return appPage(req, env, url);
 
     // 쓰기 요청과 실시간 연결은 이 사이트에서 보낸 것만 받는다
     const writes = req.method !== 'GET' && req.method !== 'HEAD';

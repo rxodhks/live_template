@@ -4,6 +4,7 @@ import { BrandMark, CONTACT_EMAIL } from '../components/Brand';
 import { Button } from '../components/ui';
 import { bootSession } from '../lib/auth';
 import { reportError } from '../lib/errorReport';
+import { isChunkError, reloadIfNewVersion } from '../lib/staleBuild';
 import { useSession } from '../store/session';
 
 /*
@@ -95,10 +96,6 @@ function RetryButton({ checking, onClick }: { checking: boolean; onClick: () => 
   );
 }
 
-/** 새 버전 배포로 예전 화면 파일이 사라졌거나, 화면 파일을 받는 중 연결이 끊긴 경우 */
-const isChunkError = (err: unknown) =>
-  err instanceof Error && /dynamically imported module|Importing a module script failed|error loading dynamically|Failed to fetch/i.test(err.message);
-
 export class AppErrorBoundary extends Component<{ children: ReactNode }, { error: unknown }> {
   state: { error: unknown } = { error: null };
 
@@ -107,6 +104,7 @@ export class AppErrorBoundary extends Component<{ children: ReactNode }, { error
   }
 
   componentDidCatch(error: unknown, info: ErrorInfo) {
+    if (isChunkError(error)) void reloadIfNewVersion();
     reportError(error);
     console.error(error, info.componentStack);
   }
