@@ -389,6 +389,7 @@
 }
 .legal-body a {
   color: var(--accent-text);
+  text-decoration: underline;
 }
 .legal-body table {
   width: 100%;

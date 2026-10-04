@@ -17,7 +17,8 @@ interface TemplatesState {
   loaded: boolean;
   remoteError: string | null;
   load(): Promise<void>;
-  refreshRemote(): Promise<void>;
+  /** pending: 이미 보낸 목록 요청이 있으면 그 응답을 쓴다 */
+  refreshRemote(pending?: Promise<RemoteList>): Promise<void>;
   upsert(t: TemplateEntry): void;
   upsertShared(t: TemplateSummary): TemplateEntry;
   remove(id: string, opts?: { dropLocalCopy?: boolean }): void;
@@ -36,6 +37,9 @@ function normalize(t: TemplateEntry): TemplateEntry {
   return { ...t, ownerId: me.id, myRole: 'owner', members: [{ user: me, role: 'owner', joinedAt: t.createdAt }] };
 }
 
+type RemoteList = { templates: TemplateSummary[]; online: Record<string, string[]>; requests: Record<string, number> };
+const fetchRemote = () => api<RemoteList>('GET', '/templates');
+
 const persist = (t: TemplateEntry) => void idbPut('templates', t).catch(() => {});
 
 export const useTemplates = create<TemplatesState>((set, get) => ({
@@ -46,15 +50,33 @@ export const useTemplates = create<TemplatesState>((set, get) => ({
   remoteError: null,
 
   load: async () => {
-    const entries = await idbAll<TemplateEntry>('templates').catch(() => [] as TemplateEntry[]);
-    set({ templates: Object.fromEntries(entries.map((t) => [t.id, normalize(t)])), loaded: true });
-    await get().refreshRemote();
+    // 서버 목록은 브라우저 사본을 여는 동안 함께 받는다 (처음 여는 저장소는 만드는 데 수백 ms가 걸린다)
+    const remote = useSession.getState().status === 'authed' ? fetchRemote() : undefined;
+    remote?.catch(() => {});
+    // 서버 목록이 사본보다 먼저 오면 먼저 보여 준다 (새 기기 · 처음 여는 저장소)
+    let remoteApplied = false;
+    let remoteFirst = false;
+    const local = idbAll<TemplateEntry>('templates')
+      .catch(() => [] as TemplateEntry[])
+      .then((entries) => {
+        const copy = Object.fromEntries(entries.map((t) => [t.id, normalize(t)]));
+        set((s) => ({ templates: remoteApplied ? { ...copy, ...s.templates } : copy, loaded: true }));
+      });
+    const synced = get()
+      .refreshRemote(remote)
+      .then(() => {
+        remoteFirst = !useTemplates.getState().loaded;
+        remoteApplied = true;
+      });
+    await Promise.all([local, synced]);
+    // 서버 목록을 먼저 반영했다면, 뒤늦게 읽은 사본에만 남은(서버에서 사라진) 협업 템플릿을 한 번 더 정리한다
+    if (remoteFirst && remote) await get().refreshRemote(remote);
   },
 
-  refreshRemote: async () => {
+  refreshRemote: async (pending) => {
     if (useSession.getState().status !== 'authed') return;
     try {
-      const res = await api<{ templates: TemplateSummary[]; online: Record<string, string[]>; requests: Record<string, number> }>('GET', '/templates');
+      const res = await (pending ?? fetchRemote());
       const serverIds = new Set(res.templates.map((t) => t.id));
       const next = { ...get().templates };
       for (const t of res.templates) {

@@ -17,6 +17,7 @@ import { confirmDialog } from '../components/ui';
  *  · 개인 공간 저장소는 계정마다 따로 쓴다 (같은 브라우저에서 다른 계정으로 로그인해도 섞이지 않게)
  */
 
+// index.html의 API 미리 요청도 이 이름으로 로그인 정보가 있는지 본다
 const CACHE_KEY = 'lt.account';
 
 type Cached = { user: PublicUser; account: AccountInfo | null };
@@ -29,6 +30,9 @@ function readCache(): Cached | null {
     return null;
   }
 }
+
+/** 이 기기에 마지막 로그인 정보가 있는지 (있으면 앱은 서버 확인을 기다리지 않고 바로 시작한다) */
+export const hasCachedAccount = (): boolean => readCache() !== null;
 
 function writeCache(c: Cached | null): void {
   try {

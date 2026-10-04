@@ -24,7 +24,7 @@ import type { TemplateBroadcast } from '../../shared/protocol';
 import { USER_AVATARS, USER_COLORS, isHexColor } from '../../shared/colors';
 import type { Env } from './env';
 import { type SecurityAlertKind, sendSecurityAlert } from './mail';
-import { type Result, clampText, fail, isId, newId, ok, safeEqual, sha256Hex } from './util';
+import { type Result, clampText, fail, isId, newId, ok, safeEqual, sha256Hex, wsSessionKey } from './util';
 import { type PasskeyAlg, PasskeyError, b64urlDecode, b64urlEncode, checkPublicKey, isPasskeyAlg, readAuthData, readClientData, verifySignature } from './passkey';
 
 /*
@@ -64,6 +64,12 @@ const PASSKEY_REAUTH_MS = 10 * 60_000;
 const KNOWN_DEVICE_TTL_MS = 400 * 86_400_000;
 /** 휴지통 보관 기간: 지나면 영구 삭제 */
 export const TRASH_TTL_MS = 30 * 86_400_000;
+/**
+ * 템플릿 올리기(개인 공간 백업 · 협업 공간 전환) 상한: 사람마다 하루 20개.
+ * 올릴 때마다 최대 16MB를 저장해서, 상한이 없으면 가입한 누구나 몇 분 만에 계정 전체 저장 공간을 채울 수 있었다
+ * (새 계정 하나로 15MB 템플릿 4개를 8초에 올려 저장소가 6MB → 232MB). 같은 템플릿을 다시 올리는 재시도는 세지 않는다
+ */
+export const TEMPLATE_UPLOADS_PER_DAY = 20;
 /** 외부 로그인 왕복 · 이름 입력까지 기다리는 시간 */
 const FLOW_TTL_MS = { oauth: 10 * 60_000, signup: 30 * 60_000, passkey_reg: 10 * 60_000, passkey_auth: 10 * 60_000 } as const;
 
@@ -216,6 +222,12 @@ function sanitizeProfile(input: Partial<PublicUser>, current?: PublicUser): Omit
   const color = isHexColor(input.color) ? input.color : current?.color ?? USER_COLORS[0];
   const avatar = typeof input.avatar === 'string' && input.avatar.length > 0 && input.avatar.length <= 8 ? input.avatar : current?.avatar ?? USER_AVATARS[0];
   return { name, color, avatar };
+}
+
+/** 로그아웃으로 지운 세션: 연결을 닫을 템플릿과 연결 태그 (Worker가 각 방에 전달) */
+export interface EndedSessions {
+  templateIds: string[];
+  sessions: string[];
 }
 
 export class Directory extends DurableObject<Env> {
@@ -583,8 +595,30 @@ export class Directory extends DurableObject<Env> {
     return toUser(row);
   }
 
-  async logout(token: string | null): Promise<void> {
-    if (token && token.length <= 100) this.sql.exec('DELETE FROM sessions WHERE hash = ?', await sha256Hex(token));
+  /**
+   * 세션을 지우고, 그 사람이 멤버인 템플릿 목록을 돌려준다 (그 세션으로 열린 실시간 연결을 닫도록).
+   * 접속자 목록(online)은 참고용이라 늦게 반영될 수 있어 쓰지 않는다.
+   */
+  async logout(token: string | null): Promise<EndedSessions> {
+    if (!token || token.length > 100) return { templateIds: [], sessions: [] };
+    const hash = await sha256Hex(token);
+    const userId = this.sql.exec<{ user_id: string }>('SELECT user_id FROM sessions WHERE hash = ?', hash).toArray()[0]?.user_id;
+    this.sql.exec('DELETE FROM sessions WHERE hash = ?', hash);
+    if (!userId) return { templateIds: [], sessions: [] };
+    return this.endedSessions(userId, [hash]);
+  }
+
+  /** 지운 세션들로 열렸을 수 있는 실시간 연결을 닫도록: 그 사람이 멤버인 템플릿 · 연결 태그 */
+  private async endedSessions(userId: string, hashes: string[]): Promise<EndedSessions> {
+    if (!hashes.length) return { templateIds: [], sessions: [] };
+    const templateIds = this.sql
+      .exec<{ id: string }>(
+        'SELECT t.id FROM templates t JOIN members m ON m.template_id = t.id WHERE m.user_id = ? AND t.deleted_at IS NULL ORDER BY t.updated_at DESC LIMIT 200',
+        userId,
+      )
+      .toArray()
+      .map((r) => r.id);
+    return { templateIds, sessions: await Promise.all(hashes.map(wsSessionKey)) };
   }
 
   /**
@@ -639,27 +673,30 @@ export class Directory extends DurableObject<Env> {
   }
 
   /** 다른 기기 하나 로그아웃. 그 기기는 '아는 기기'에서도 지워, 다시 로그인하면 알림이 간다 */
-  async revokeSession(token: string | null, id: string): Promise<Result<{ ok: true }>> {
+  async revokeSession(token: string | null, id: string): Promise<Result<{ ok: true; ended: EndedSessions }>> {
     const me = await this.currentSession(token);
     if (!me) return fail(401, '로그인이 필요합니다.', { reason: 'login_required' });
     if (id === me.id) return fail(400, '지금 쓰는 기기는 로그아웃 메뉴로 로그아웃해 주세요.');
     const row = this.sql
-      .exec<{ device: string | null }>('SELECT device FROM sessions WHERE id = ? AND user_id = ?', id, me.user_id)
+      .exec<{ device: string | null; hash: string }>('SELECT device, hash FROM sessions WHERE id = ? AND user_id = ?', id, me.user_id)
       .toArray()[0];
     if (!row) return fail(404, '이미 로그아웃된 기기입니다.');
     this.sql.exec('DELETE FROM sessions WHERE id = ? AND user_id = ?', id, me.user_id);
     if (row.device && row.device !== me.device) this.sql.exec('DELETE FROM known_devices WHERE user_id = ? AND hash = ?', me.user_id, row.device);
-    return ok({ ok: true });
+    return ok({ ok: true, ended: await this.endedSessions(me.user_id, [row.hash]) });
   }
 
   /** 지금 쓰는 기기만 남기고 모두 로그아웃 (아는 기기도 이 기기만 남긴다) */
-  async logoutOthers(token: string | null): Promise<Result<{ removed: number }>> {
+  async logoutOthers(token: string | null): Promise<Result<{ removed: number; ended: EndedSessions }>> {
     const me = await this.currentSession(token);
     if (!me) return fail(401, '로그인이 필요합니다.', { reason: 'login_required' });
-    const removed = this.sql.exec<{ n: number }>('SELECT COUNT(*) AS n FROM sessions WHERE user_id = ? AND id != ?', me.user_id, me.id).toArray()[0]?.n ?? 0;
+    const hashes = this.sql
+      .exec<{ hash: string }>('SELECT hash FROM sessions WHERE user_id = ? AND id != ?', me.user_id, me.id)
+      .toArray()
+      .map((r) => r.hash);
     this.sql.exec('DELETE FROM sessions WHERE user_id = ? AND id != ?', me.user_id, me.id);
     this.sql.exec('DELETE FROM known_devices WHERE user_id = ? AND hash IS NOT ?', me.user_id, me.device);
-    return ok({ removed });
+    return ok({ removed: hashes.length, ended: await this.endedSessions(me.user_id, hashes) });
   }
 
   async account(userId: string): Promise<AccountInfo> {
@@ -994,6 +1031,10 @@ export class Directory extends DurableObject<Env> {
     if (!name) return fail(400, '템플릿 이름을 입력해 주세요.');
     const features = sanitizeFeatures(input.features);
     if (!features) return fail(400, '기능을 하나 이상 선택해 주세요.');
+    const retryAfter = this.limit(`upload:${userId}`, TEMPLATE_UPLOADS_PER_DAY, 86_400_000);
+    if (retryAfter !== null) {
+      return fail(429, `템플릿은 하루에 ${TEMPLATE_UPLOADS_PER_DAY}개까지 클라우드에 올릴 수 있습니다. 내일 다시 시도해 주세요.`, { retryAfter, reason: 'upload_limit' });
+    }
     const now = Date.now();
     const createdAt = typeof input.createdAt === 'number' && input.createdAt > 0 && input.createdAt <= now ? input.createdAt : now;
     const emoji = typeof input.emoji === 'string' && input.emoji && input.emoji.length <= 8 ? input.emoji : '🗂️';

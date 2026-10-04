@@ -177,6 +177,16 @@ function WorkspaceInner({ entry }: { entry: TemplateEntry }) {
     const doc = new Y.Doc();
     // 두 모드 모두 브라우저에 사본을 둔다 → 새로고침·오프라인에도 바로 열린다
     const idb = new IndexeddbPersistence(docDbName(tid), doc);
+    // 다른 탭이 이 사본을 지우면(로그아웃 · 사본 초기화) 연결이 닫힌다. 닫힌 DB에 쓰려다 예외가 나면
+    // 같은 'update' 이벤트를 듣는 실시간 전송까지 멈추므로, 사본 저장만 그만두고 편집 · 전송은 계속한다.
+    // 다른 탭에서 로그아웃한 경우라면 로그인 확인이 401을 받아 로그인 화면으로 보낸다
+    void idb._db.then((db) => {
+      db.onversionchange = () => {
+        db.close();
+        idb.db = null;
+        void api('GET', '/me').catch(() => {});
+      };
+    });
     const whenReady = Promise.race([idb.whenSynced, new Promise((r) => setTimeout(r, 1500))]);
     const room = shared ? new RoomConnection(tid) : null;
     const provider: DocProvider = room ? new RoomProvider(room, doc, { whenReady }) : new LocalProvider(doc);

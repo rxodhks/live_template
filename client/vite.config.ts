@@ -3,6 +3,7 @@ import react from '@vitejs/plugin-react';
 import path from 'node:path';
 import { runtimesPlugin } from './build/runtimes';
 import { CONTACT_EMAIL } from '../shared/contact';
+import { CLIENT_VERSION, CLIENT_VERSION_HEADER } from '../shared/protocol';
 
 // 개발 중에는 클라우드플레어 로컬 런타임(wrangler dev, 8787)으로 API와 실시간 연결을 넘긴다
 const apiTarget = process.env.API_URL ?? 'http://localhost:8787';
@@ -27,9 +28,23 @@ function contactPlugin(): Plugin {
   };
 }
 
+/** index.html의 API 미리 요청(lib/api.ts takePrefetch)에 화면 버전을 넣는다. 서버 주소를 따로 쓰면(VITE_API_BASE) 끈다 */
+function apiPrefetchPlugin(): Plugin {
+  let on = true;
+  return {
+    name: 'api-prefetch',
+    configResolved: (config) => void (on = !config.env.VITE_API_BASE),
+    transformIndexHtml: (html) =>
+      html
+        .replaceAll('%API_PREFETCH%', on ? 'on' : 'off')
+        .replaceAll('%CLIENT_VERSION_HEADER%', CLIENT_VERSION_HEADER)
+        .replaceAll('%CLIENT_VERSION%', String(CLIENT_VERSION)),
+  };
+}
+
 export default defineConfig(async () => ({
   // 코드 실행 환경(파이썬 · SQL · Ruby · PHP · Lua · React)을 /runtimes/ 로 함께 배포
-  plugins: [react(), lazyKatexPlugin(), contactPlugin(), await runtimesPlugin()],
+  plugins: [react(), lazyKatexPlugin(), contactPlugin(), apiPrefetchPlugin(), await runtimesPlugin()],
   resolve: {
     alias: { '@shared': path.resolve(__dirname, '../shared') },
     // Yjs/ProseMirror/CodeMirror는 인스턴스가 하나여야 한다
