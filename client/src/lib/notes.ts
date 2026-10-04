@@ -8,6 +8,7 @@ import { idbGet } from './idb';
 import { type LocalNote, deleteLocalNote, listLocalNotes, putLocalNote } from './local';
 import type { RoomConnection } from './room';
 import { newId } from './util';
+import { isDemoId } from './demo';
 
 /*
  * 비밀 노트 — 개인 공간(브라우저)과 협업 공간(서버) 모두 같은 방식으로 암호화된다.
@@ -84,11 +85,20 @@ export function createNotesApi(ctx: Ctx): NotesApi {
 
 /* ───────────── 개인 공간 ───────────── */
 
+/** 둘러보기 예시의 노트는 메모리에만 둔다 (저장하지 않는다) */
+const demoNotes = new Map<string, LocalNote>();
+const notesDb = {
+  get: async (id: string) => (demoNotes.has(id) ? demoNotes.get(id) : idbGet<LocalNote>('notes', id)),
+  list: async (templateId: string) => (isDemoId(templateId) ? [...demoNotes.values()].filter((n) => n.templateId === templateId) : listLocalNotes(templateId)),
+  put: async (row: LocalNote) => void (isDemoId(row.templateId) ? demoNotes.set(row.id, row) : await putLocalNote(row)),
+  delete: async (id: string) => void (demoNotes.delete(id) || (await deleteLocalNote(id))),
+};
+
 function localApi(ctx: Ctx): NotesApi {
   const attempts = new Map<string, { fails: number; lockedUntil: number }>();
 
   const verify = async (note: SecretNoteMeta, password: string): Promise<{ row: LocalNote; keys: NoteKeys }> => {
-    const row = await idbGet<LocalNote>('notes', note.id);
+    const row = await notesDb.get(note.id);
     if (!row) throw new ApiError(404, '비밀 노트를 찾을 수 없습니다.');
     const a = attempts.get(note.id) ?? { fails: 0, lockedUntil: 0 };
     const now = Date.now();
@@ -112,7 +122,7 @@ function localApi(ctx: Ctx): NotesApi {
   };
 
   return {
-    list: async () => (await listLocalNotes(ctx.templateId)).map(meta).sort((a, b) => a.createdAt - b.createdAt),
+    list: async () => (await notesDb.list(ctx.templateId)).map(meta).sort((a, b) => a.createdAt - b.createdAt),
 
     create: async ({ title, hint, password }) => {
       const id = newId(16);
@@ -130,7 +140,7 @@ function localApi(ctx: Ctx): NotesApi {
         verifierHash: sealed.verifierHash,
         snapshot: sealed.snapshot,
       };
-      await putLocalNote(row);
+      await notesDb.put(row);
       ctx.record({ type: 'notes.create', targetId: id, targetName: row.title });
       ctx.changed();
       return { meta: meta(row), unlocked: { key: sealed.keys.key, ticket: null, expiresAt: now + UNLOCK_TTL_MS } };
@@ -145,7 +155,7 @@ function localApi(ctx: Ctx): NotesApi {
     changePassword: async (note, current, next, hint, doc) => {
       const { row } = await verify(note, current);
       const sealed = await sealNew(note.id, next, Y.encodeStateAsUpdate(doc));
-      await putLocalNote({ ...row, hint: hint.trim().slice(0, 80), kdf: sealed.kdf, verifierHash: sealed.verifierHash, snapshot: sealed.snapshot, updatedAt: Date.now() });
+      await notesDb.put({ ...row, hint: hint.trim().slice(0, 80), kdf: sealed.kdf, verifierHash: sealed.verifierHash, snapshot: sealed.snapshot, updatedAt: Date.now() });
       ctx.record({ type: 'notes.password', targetId: note.id, targetName: note.title });
       ctx.changed();
       return { key: sealed.keys.key, ticket: null, expiresAt: Date.now() + UNLOCK_TTL_MS };
@@ -153,7 +163,7 @@ function localApi(ctx: Ctx): NotesApi {
 
     remove: async (note, password, force) => {
       if (!force) await verify(note, password ?? '');
-      await deleteLocalNote(note.id);
+      await notesDb.delete(note.id);
       ctx.record({ type: 'notes.delete', targetId: note.id, targetName: note.title });
       ctx.changed();
     },
@@ -181,7 +191,7 @@ class LocalNoteSession implements NoteSession {
 
   private async load() {
     try {
-      const row = await idbGet<LocalNote>('notes', this.noteId);
+      const row = await notesDb.get(this.noteId);
       if (!row) throw new Error('missing');
       Y.applyUpdate(this.doc, await decryptBytes(this.key, row.snapshot, this.noteId), this);
       if (this.destroyed) return;
@@ -204,10 +214,10 @@ class LocalNoteSession implements NoteSession {
     this.timer = null;
     if (!this.dirty) return;
     this.dirty = false;
-    const row = await idbGet<LocalNote>('notes', this.noteId);
+    const row = await notesDb.get(this.noteId);
     if (!row) return;
     const snapshot = await encryptBytes(this.key, Y.encodeStateAsUpdate(this.doc), this.noteId);
-    await putLocalNote({ ...row, snapshot, updatedAt: Date.now() });
+    await notesDb.put({ ...row, snapshot, updatedAt: Date.now() });
   }
 
   subscribe(fn: () => void) {

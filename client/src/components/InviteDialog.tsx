@@ -1,4 +1,5 @@
 import { useEffect, useState } from 'react';
+import { useNavigate } from 'react-router-dom';
 import { Check, CheckCircle2, Clock, Cloud, Copy, Link2, MessageSquareText, ShieldCheck, Trash2, UserCheck, UserPlus, X } from 'lucide-react';
 import type { InviteInfo, InviteOptions, InviteRole, JoinRequest } from '@shared/types';
 import { useUI } from '../store/ui';
@@ -8,6 +9,7 @@ import { errorMessage } from '../lib/api';
 import { copyText, cx } from '../lib/util';
 import { relativeTime } from '../lib/time';
 import { shareTemplate } from '../lib/templateOps';
+import { isDemoId } from '../lib/demo';
 import {
   DEFAULT_INVITE,
   EXPIRY_CHOICES,
@@ -34,7 +36,39 @@ export function InviteDialog() {
   const open = useUI((s) => s.shareOpen);
   const ws = useOptionalWorkspace();
   if (!open || !ws || !ws.canEdit) return null;
+  if (isDemoId(ws.template.id)) return <DemoInviteDialog />;
   return <InviteDialog_ ws={ws} />;
+}
+
+/** 둘러보기 예시는 초대할 수 없다: 가입하고 내 템플릿에서 초대하도록 안내 */
+function DemoInviteDialog() {
+  const setOpen = useUI((s) => s.setShareOpen);
+  const guest = useSession((s) => s.status !== 'authed');
+  const navigate = useNavigate();
+  const close = () => setOpen(false);
+  return (
+    <Modal
+      title="예시 템플릿에는 초대할 수 없습니다"
+      icon={<UserPlus size={18} />}
+      onClose={close}
+      footer={
+        <>
+          <Button onClick={close}>닫기</Button>
+          <Button
+            variant="primary"
+            onClick={() => {
+              close();
+              navigate(guest ? '/login' : '/');
+            }}
+          >
+            {guest ? '로그인 · 가입' : '내 대시보드로'}
+          </Button>
+        </>
+      }
+    >
+      <p className="muted">{guest ? '가입하고 내 템플릿을 만들면' : '내 템플릿에서'} 초대 링크로 팀원과 실시간으로 함께 편집할 수 있습니다. 권한(편집자/뷰어)은 링크마다 정할 수 있습니다.</p>
+    </Modal>
+  );
 }
 
 function InviteDialog_({ ws }: { ws: WorkspaceValue }) {

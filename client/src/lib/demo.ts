@@ -3,10 +3,10 @@ import { PRESETS, getPreset } from '@shared/presets';
 import { useTemplates } from '../store/templates';
 
 /*
- * 가입 전 둘러보기 — 예시 템플릿을 로그인 없이 읽기 전용으로 연다.
+ * 가입 전 체험하기 — 예시 템플릿을 로그인 없이 열어 직접 고쳐 본다.
  *  · 주소는 일반 템플릿과 같은 /t/demo-<프리셋>/… (안의 링크가 그대로 동작한다)
  *  · 내용은 프리셋으로 브라우저 메모리에만 만든다: 서버 · 브라우저 저장소(IndexedDB)에 쓰지 않는다
- *  · 코드 실행 · 미리보기는 방문자 브라우저에서 그대로 된다. 편집 · 만들기는 가입 안내
+ *  · 편집 · 코드 실행 · 미리보기는 그대로 되고, 새로고침하거나 닫으면 처음 내용으로 돌아간다. 초대 · 저장은 가입 안내
  */
 
 const PREFIX = 'demo-';
@@ -46,7 +46,7 @@ export function putDemoEntry(id: string): TemplateEntry {
     members: [{ user: MADANG, role: 'owner', joinedAt: at }],
     createdAt: at,
     updatedAt: at,
-    myRole: 'viewer',
+    myRole: 'editor',
     visibility: 'private',
     mode: 'personal',
   };
@@ -63,4 +63,10 @@ export function dropDemoEntry(id: string): void {
     const { [id]: _, ...rest } = s.templates;
     return { templates: rest };
   });
+}
+
+/** 예시의 이름 · 아이콘 · 기능 바꾸기 (메모리에만) */
+export function patchDemoEntry(entry: TemplateEntry): TemplateEntry {
+  useTemplates.setState((s) => ({ templates: { ...s.templates, [entry.id]: entry } }));
+  return entry;
 }

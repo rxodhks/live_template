@@ -372,21 +372,21 @@ function WorkspaceInner({ entry }: { entry: TemplateEntry }) {
         templateId: tid,
         me: () => useSession.getState().user!,
         room: conn?.room ?? null,
-        record: (input) => void recordLocal(entryRef.current, useSession.getState().user!, input),
+        record: (input) => void (isDemoId(tid) || recordLocal(entryRef.current, useSession.getState().user!, input)),
         changed: () => reloadLocalNotes.current(),
       }),
     [entry.mode, tid, conn?.room],
   );
 
   useEffect(() => {
-    if (shared || isDemoId(tid)) return; // 둘러보기 예시에는 노트가 없다 (브라우저 저장소를 쓰지 않는다)
+    if (shared) return;
     let alive = true;
     reloadLocalNotes.current = () => void notesApi.list().then((list) => alive && setNotes(list));
     reloadLocalNotes.current();
     return () => {
       alive = false;
     };
-  }, [notesApi, shared, tid]);
+  }, [notesApi, shared]);
 
   /* ── 내가 보고 있는 화면을 알림 ── */
   useEffect(() => {
@@ -600,8 +600,8 @@ function DemoBanner() {
     <div className="demo-banner" role="note">
       <Eye size={16} aria-hidden />
       <span>
-        <b>예시 템플릿을 둘러보는 중입니다.</b> 읽기 전용이며, 코드 실행과 미리보기는 그대로 해 볼 수 있습니다.
-        {guest ? ' 직접 만들고 편집하려면 가입해 주세요.' : ''}
+        <b>예시 템플릿을 체험하는 중입니다.</b> 마음껏 고치고 실행해 보세요. 바뀐 내용은 저장되지 않습니다.
+        {guest ? ' 가입하면 내 템플릿을 만들어 저장할 수 있습니다.' : ''}
       </span>
       <Link className="btn btn-ghost btn-sm" to="/explore">
         다른 예시

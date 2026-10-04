@@ -30,8 +30,8 @@ export function ExplorePage() {
           )}
         </div>
       </header>
-      <h1>예시 템플릿 둘러보기</h1>
-      <p className="muted">가입하지 않아도 예시를 열어 볼 수 있습니다. 문서 · 코드 · 디자인 보드를 그대로 보고, 코드는 실행해 볼 수 있습니다. 직접 만들고 편집하려면 가입해 주세요.</p>
+      <h1>예시 템플릿 체험하기</h1>
+      <p className="muted">가입하지 않아도 예시를 열어 직접 고쳐 볼 수 있습니다. 문서를 쓰고, 보드에 그리고, 코드를 실행해 보세요. 바뀐 내용은 저장되지 않으니, 내 작업을 남기려면 가입해 주세요.</p>
       <div className="explore-grid">
         {DEMO_PRESETS.map((p) => (
           <Link key={p.id} className="explore-card" to={demoPath(p.id)}>

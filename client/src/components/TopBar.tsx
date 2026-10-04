@@ -201,8 +201,8 @@ function SpaceBadge() {
   const status = useConnection((s) => s.status);
   if (isDemoId(ws.template.id)) {
     return (
-      <span className="space-chip is-personal" data-tip="가입하지 않아도 볼 수 있는 예시입니다 · 읽기 전용이고, 코드 실행과 미리보기는 해 볼 수 있습니다">
-        <Eye size={12} /> 예시 · 읽기 전용
+      <span className="space-chip is-personal" data-tip="가입하지 않아도 고쳐 볼 수 있는 예시입니다 · 바뀐 내용은 저장되지 않고, 새로고침하면 처음으로 돌아갑니다">
+        <Eye size={12} /> 체험 중 · 저장 안 됨
       </span>
     );
   }

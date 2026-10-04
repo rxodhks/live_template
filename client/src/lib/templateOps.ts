@@ -4,7 +4,7 @@ import { FEATURE_INFO, FEATURE_ORDER } from '@shared/presets';
 import { useSession } from '../store/session';
 import { useTemplates } from '../store/templates';
 import { ApiError, api } from './api';
-import { isDemoId } from './demo';
+import { isDemoId, patchDemoEntry } from './demo';
 import { buildShareUpload, clearSharedLocalData, recordLocal } from './local';
 
 /*
@@ -44,6 +44,7 @@ export async function updateTemplate(t: TemplateEntry, patch: TemplatePatch): Pr
   }
   if (!changes.length) return t;
   next.updatedAt = Date.now();
+  if (isDemoId(t.id)) return patchDemoEntry(next); // 둘러보기 예시는 저장하지 않는다
   store.upsert(next);
   await recordLocal(next, useSession.getState().user!, { type: 'template.update', detail: changes.join(', ') });
   return next;

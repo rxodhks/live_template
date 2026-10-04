@@ -113,7 +113,7 @@ function AuthLayout({ children }: { children: ReactNode }) {
         </h1>
         <p>템플릿 하나에 필요한 기능만 골라 담고, 혼자 시작해서 필요할 때 팀원을 초대해 실시간으로 함께 작업하세요.</p>
         <Link className="btn btn-secondary onboarding-explore" to="/explore">
-          <Eye size={15} /> 가입 전에 예시 둘러보기
+          <Eye size={15} /> 가입 없이 체험해 보기
         </Link>
         <ul className="onboarding-features">
           {FEATURES.map((f) => (
