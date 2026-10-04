@@ -15,8 +15,10 @@
   "assets": {
     "directory": "../client/dist",
     "binding": "ASSETS",
-    "not_found_handling": "single-page-application",
-    // /api 요청과 초대 링크(미리보기 카드)만 Worker 코드가 처리하고, 나머지는 정적 파일로 바로 응답
+    // 없는 주소는 Worker(appPage)가 받아서 화면 주소면 index.html, /assets/… 같은 파일이면 404로 답한다.
+    // ("single-page-application"은 없는 JS 파일에도 index.html을 줘서, 배포 전에 열어 둔 탭이 예전 파일을 찾을 때 오류가 난다)
+    "not_found_handling": "none",
+    // /api 요청과 초대 링크(미리보기 카드)만 Worker 코드가 먼저 처리하고, 나머지는 정적 파일이 있으면 바로 응답
     "run_worker_first": ["/api/*", "/join/*"]
   },
   "durable_objects": {

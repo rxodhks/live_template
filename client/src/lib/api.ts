@@ -4,6 +4,7 @@
  */
 
 import { CLIENT_VERSION, CLIENT_VERSION_HEADER, CLIENT_VERSION_PARAM } from '@shared/protocol';
+import { isChunkError, reloadIfNewVersion } from './staleBuild';
 
 export const API_BASE = (import.meta.env.VITE_API_BASE ?? '').replace(/\/$/, '');
 
@@ -80,7 +81,14 @@ export function isServerDown(err: unknown): boolean {
   return err.status === 0 || err.status >= 500 || !('error' in err.data);
 }
 
-export const errorMessage = (err: unknown) => (err instanceof Error ? err.message : '알 수 없는 오류가 발생했습니다.');
+export function errorMessage(err: unknown): string {
+  if (isChunkError(err)) {
+    // 배포 전에 열어 둔 탭이 사라진 예전 화면 파일을 찾은 경우 — 새 버전이면 곧 새로고침된다
+    void reloadIfNewVersion();
+    return '필요한 화면 파일을 불러오지 못했습니다. 새 버전이 나왔다면 곧 자동으로 새로고침되고, 아니면 인터넷 연결을 확인한 뒤 다시 시도해 주세요.';
+  }
+  return err instanceof Error ? err.message : '알 수 없는 오류가 발생했습니다.';
+}
 
 /* 로그인 기능 이전(가입 없이 쓰던 때)에 이 브라우저에 남은 값 — 처음 로그인할 때 계정으로 옮기고 지운다 */
 const LEGACY_TOKEN = 'lt.token';

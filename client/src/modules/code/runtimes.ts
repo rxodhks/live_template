@@ -5,6 +5,8 @@
  *  - 새 버전이 배포되면 예전 버전 파일은 저장소에서 지운다
  */
 
+import { reloadIfNewVersion } from '../../lib/staleBuild';
+
 export type RuntimeId = 'python' | 'sql' | 'lua' | 'ruby' | 'php' | 'react';
 
 interface RuntimeFileInfo {
@@ -61,6 +63,11 @@ export async function isRuntimeCached(id: RuntimeId): Promise<boolean> {
 
 async function download(url: string, size: number, onBytes: (n: number) => void): Promise<ArrayBuffer> {
   const res = await fetch(url, { cache: 'no-cache' });
+  if (res.status === 404) {
+    // 배포 전에 열어 둔 탭이 예전 실행 환경 폴더를 찾은 경우 — 새 버전이면 새로고침된다
+    void reloadIfNewVersion();
+    throw new Error('실행 환경 파일을 찾지 못했습니다. 새 버전이 나왔다면 곧 자동으로 새로고침됩니다.');
+  }
   if (!res.ok || !res.body) throw new Error(`실행 환경 파일을 받지 못했습니다 (${res.status})`);
   const reader = res.body.getReader();
   const out = new Uint8Array(size);
@@ -73,7 +80,7 @@ async function download(url: string, size: number, onBytes: (n: number) => void)
     at += value.length;
     onBytes(value.length);
   }
-  // 없는 파일은 화면(index.html)이 대신 오므로 크기로 확인한다
+  // 받은 크기가 빌드 때 기록한 크기와 같은지 확인한다
   if (at !== size) throw new Error('실행 환경 파일이 예상과 다릅니다. 새로고침 후 다시 시도해 주세요.');
   return out.buffer;
 }
