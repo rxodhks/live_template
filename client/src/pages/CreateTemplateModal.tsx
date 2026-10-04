@@ -3,6 +3,7 @@ import { Check, LayoutTemplate } from 'lucide-react';
 import type { Feature, TemplateEntry } from '@shared/types';
 import { BLANK_CONTENT, FEATURE_INFO, FEATURE_ORDER, PRESETS, getPreset } from '@shared/presets';
 import { errorMessage } from '../lib/api';
+import { reportError } from '../lib/errorReport';
 import { createPersonalTemplate } from '../lib/local';
 import { backupTemplate } from '../lib/templateOps';
 import { toast } from '../store/toasts';
@@ -73,6 +74,8 @@ export function CreateTemplateModal({
       toast.success('템플릿을 만들었습니다', `${t.emoji} ${t.name} · 개인 공간${t.mode === 'personal' ? ' (인터넷에 연결되면 백업)' : ''}`);
       onCreated(t);
     } catch (err) {
+      // 알림만 띄우면 서버에 남지 않는다 — 테스터가 다른 경로로 알려 와도 원인을 찾을 수 있게 화면 오류로 보낸다
+      reportError(err);
       toast.error('템플릿을 만들지 못했습니다', errorMessage(err));
     } finally {
       setSaving(false);
