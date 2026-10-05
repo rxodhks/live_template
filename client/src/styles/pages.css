@@ -1,20 +1,24 @@
 /* ───────────────────────── 온보딩 ───────────────────────── */
 
+/* 좌우 배치는 그대로 두되, 넓은 모니터에서 양 끝으로 벌어지지 않게 묶음 전체를 가운데에 모은다 */
 .onboarding {
   min-height: 100vh;
   display: grid;
-  grid-template-columns: minmax(0, 1.1fr) minmax(360px, 480px);
-  background: var(--bg);
+  grid-template-columns: minmax(0, 1.1fr) minmax(360px, 460px);
+  align-items: center;
+  column-gap: 48px;
+  padding: 40px max(24px, calc((100vw - 1180px) / 2));
+  background:
+    radial-gradient(circle at 15% 20%, color-mix(in srgb, var(--accent) 16%, transparent), transparent 45%),
+    radial-gradient(circle at 80% 85%, color-mix(in srgb, var(--feature-design) 12%, transparent), transparent 40%),
+    var(--bg);
 }
 .onboarding-hero {
-  padding: 56px 56px 40px;
+  padding: 16px 0;
   display: flex;
   flex-direction: column;
   justify-content: center;
   gap: 22px;
-  background:
-    radial-gradient(circle at 15% 20%, color-mix(in srgb, var(--accent) 16%, transparent), transparent 45%),
-    radial-gradient(circle at 80% 85%, color-mix(in srgb, var(--feature-design) 12%, transparent), transparent 40%);
 }
 .onboarding-brand {
   display: flex;
@@ -74,9 +78,11 @@
   display: flex;
   align-items: center;
   justify-content: center;
-  padding: 32px 24px;
+  padding: 32px 30px;
   background: var(--surface);
-  border-left: 1px solid var(--border);
+  border: 1px solid var(--border);
+  border-radius: 16px;
+  box-shadow: var(--shadow-md);
 }
 .onboarding-card-inner {
   width: 100%;
@@ -94,16 +100,19 @@
 @media (max-width: 860px) {
   .onboarding {
     grid-template-columns: minmax(0, 1fr);
+    align-items: start;
+    row-gap: 20px;
+    padding: 28px 16px 24px;
   }
   .onboarding-hero {
-    padding: 32px 20px 8px;
+    padding: 0;
   }
   .onboarding-features {
     display: none;
   }
   .onboarding-card {
-    border-left: 0;
     align-items: flex-start;
+    padding: 24px 18px;
   }
 }
 
