@@ -112,6 +112,20 @@ function AuthLayout({ children }: { children: ReactNode }) {
           <br />한 화면에서 <em>함께</em>.
         </h1>
         <p>템플릿 하나에 필요한 기능만 골라 담고, 혼자 시작해서 필요할 때 팀원을 초대해 실시간으로 함께 작업하세요.</p>
+        <Link className="btn btn-secondary onboarding-explore" to="/explore">
+          <Eye size={15} /> 가입 없이 체험해 보기
+        </Link>
+        <ul className="onboarding-features">
+          {FEATURES.map((f) => (
+            <li key={f.title}>
+              <span className="onboarding-feature-icon">{f.icon}</span>
+              <div>
+                <b>{f.title}</b>
+                <span>{f.text}</span>
+              </div>
+            </li>
+          ))}
+        </ul>
       </section>
       <section className="onboarding-card">
         <div className="onboarding-card-inner">
@@ -119,20 +133,6 @@ function AuthLayout({ children }: { children: ReactNode }) {
           <LegalLinks className="legal-links auth-legal" />
         </div>
       </section>
-      <Link className="btn btn-secondary onboarding-explore" to="/explore">
-        <Eye size={15} /> 가입 없이 체험해 보기
-      </Link>
-      <ul className="onboarding-features">
-        {FEATURES.map((f) => (
-          <li key={f.title}>
-            <span className="onboarding-feature-icon">{f.icon}</span>
-            <div>
-              <b>{f.title}</b>
-              <span>{f.text}</span>
-            </div>
-          </li>
-        ))}
-      </ul>
     </div>
   );
 }

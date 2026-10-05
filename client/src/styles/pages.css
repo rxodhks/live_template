@@ -1,25 +1,24 @@
 /* ───────────────────────── 온보딩 ───────────────────────── */
 
-/* 로그인 화면: 넓은 모니터에서도 시선이 한가운데에 모이도록 한 줄로 가운데 정렬 */
+/* 좌우 배치는 그대로 두되, 넓은 모니터에서 양 끝으로 벌어지지 않게 묶음 전체를 가운데에 모은다 */
 .onboarding {
   min-height: 100vh;
-  display: flex;
-  flex-direction: column;
+  display: grid;
+  grid-template-columns: minmax(0, 1.1fr) minmax(360px, 460px);
   align-items: center;
-  gap: 24px;
-  padding: 48px 24px 40px;
+  column-gap: 48px;
+  padding: 40px max(24px, calc((100vw - 1180px) / 2));
   background:
-    radial-gradient(circle at 20% 15%, color-mix(in srgb, var(--accent) 14%, transparent), transparent 40%),
-    radial-gradient(circle at 80% 85%, color-mix(in srgb, var(--feature-design) 10%, transparent), transparent 40%),
+    radial-gradient(circle at 15% 20%, color-mix(in srgb, var(--accent) 16%, transparent), transparent 45%),
+    radial-gradient(circle at 80% 85%, color-mix(in srgb, var(--feature-design) 12%, transparent), transparent 40%),
     var(--bg);
 }
 .onboarding-hero {
+  padding: 16px 0;
   display: flex;
   flex-direction: column;
-  align-items: center;
-  gap: 14px;
-  max-width: 640px;
-  text-align: center;
+  justify-content: center;
+  gap: 22px;
 }
 .onboarding-brand {
   display: flex;
@@ -29,7 +28,7 @@
   font-size: 18px;
 }
 .onboarding-hero h1 {
-  font-size: clamp(28px, 3.4vw, 40px);
+  font-size: clamp(30px, 4vw, 46px);
   line-height: 1.2;
   letter-spacing: -0.035em;
 }
@@ -38,23 +37,19 @@
   color: var(--accent);
 }
 .onboarding-hero > p {
-  font-size: 15px;
+  font-size: 16px;
   color: var(--text-2);
   max-width: 520px;
 }
 .onboarding-features {
   list-style: none;
-  margin: 16px 0 0;
+  margin: 8px 0 0;
   padding: 0;
-  display: flex;
-  flex-wrap: wrap;
-  justify-content: center;
-  gap: 18px 24px;
-  width: 100%;
-  max-width: 1160px;
+  display: grid;
+  gap: 12px;
+  max-width: 520px;
 }
 .onboarding-features li {
-  flex: 0 1 208px;
   display: flex;
   gap: 12px;
   align-items: flex-start;
@@ -80,8 +75,9 @@
   flex: none;
 }
 .onboarding-card {
-  width: 100%;
-  max-width: 460px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
   padding: 32px 30px;
   background: var(--surface);
   border: 1px solid var(--border);
@@ -90,6 +86,7 @@
 }
 .onboarding-card-inner {
   width: 100%;
+  max-width: 400px;
   display: flex;
   flex-direction: column;
   gap: 16px;
@@ -102,15 +99,19 @@
 }
 @media (max-width: 860px) {
   .onboarding {
+    grid-template-columns: minmax(0, 1fr);
+    align-items: start;
+    row-gap: 20px;
     padding: 28px 16px 24px;
-    gap: 18px;
+  }
+  .onboarding-hero {
+    padding: 0;
   }
   .onboarding-features {
     display: none;
   }
-}
-@media (max-width: 480px) {
   .onboarding-card {
+    align-items: flex-start;
     padding: 24px 18px;
   }
 }
