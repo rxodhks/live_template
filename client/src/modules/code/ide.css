@@ -49,21 +49,96 @@
   gap: 6px;
   background: var(--code-chrome);
 }
-.code-tab {
+/* 열린 파일 탭 (브라우저 탭처럼) */
+.file-tabs {
+  flex: 1;
+  min-width: 0;
   align-self: stretch;
   display: flex;
-  align-items: center;
-  gap: 8px;
-  padding: 0 16px 0 14px;
+  align-items: stretch;
   margin-bottom: -1px;
-  background: var(--surface);
-  border-right: 1px solid var(--border);
-  box-shadow: inset 0 2px 0 var(--accent);
-  min-width: 0;
+  overflow-x: auto;
+  overflow-y: hidden;
+  scrollbar-width: none;
 }
-.code-tab .toolbar-title {
-  font-size: 13px;
+.file-tabs::-webkit-scrollbar {
+  display: none;
+}
+.file-tab {
+  position: relative;
+  flex: none;
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  max-width: 220px;
+  padding: 0 6px 0 14px;
+  border-right: 1px solid var(--border);
+  border-bottom: 1px solid var(--border);
+  color: var(--text-3);
+  font-size: 12.5px;
+  font-weight: 550;
+  cursor: pointer;
+  user-select: none;
+}
+.file-tab:hover {
+  background: var(--surface-hover);
+  color: var(--text-2);
+}
+.file-tab.is-active {
+  background: var(--surface);
+  color: var(--text);
   font-weight: 600;
+  border-bottom-color: var(--surface);
+  box-shadow: inset 0 2px 0 var(--accent);
+}
+.file-tab.is-dragging {
+  opacity: 0.5;
+}
+.file-tab:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: -2px;
+}
+.file-tab-name {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.file-tab .inline-edit-input,
+.file-tab input {
+  width: 140px;
+  font-size: 12.5px;
+}
+/* 닫기 버튼: 지금 탭과 마우스를 올린 탭에서만 보인다 (자리는 늘 차지해 탭 너비가 흔들리지 않게) */
+.file-tab-close {
+  display: grid;
+  place-items: center;
+  width: 18px;
+  height: 18px;
+  border-radius: 4px;
+  color: var(--text-3);
+  visibility: hidden;
+}
+.file-tab.is-active .file-tab-close,
+.file-tab:hover .file-tab-close,
+.file-tab-close:focus-visible {
+  visibility: visible;
+}
+.file-tab-close:hover {
+  background: var(--surface-3);
+  color: var(--text);
+}
+.file-tab-new {
+  flex: none;
+  display: grid;
+  place-items: center;
+  width: 34px;
+  border-bottom: 1px solid var(--border);
+  color: var(--text-3);
+}
+.file-tab-new:hover {
+  background: var(--surface-hover);
+  color: var(--text);
 }
 .code-toolbar .lang-select {
   height: 24px;

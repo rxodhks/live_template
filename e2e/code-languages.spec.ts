@@ -117,14 +117,14 @@ test('언어를 바꾸면 시작 코드가 그 언어에 맞게 바뀌고 그대
 
   // 파일 이름 확장자도 따라 바뀐다
   await chooseLanguage(page, 'Python');
-  await expect(page.locator('.code-module .toolbar-title')).toContainText('main.py');
+  await expect(page.locator('.code-module .file-tab.is-active .file-tab-name')).toContainText('main.py');
 });
 
 test('고친 코드는 언어를 바꿔도 그대로 두고, 오류는 사용자 파일 기준으로 보여 준다', async ({ page }) => {
   await openCodeWorkspace(page, '디버거');
 
   // 파일 이름의 확장자를 바꿔도 (main.js → main.rb) 시작 코드가 그 언어로 바뀐다
-  await page.locator('.code-module .toolbar-title').dblclick();
+  await page.locator('.code-module .file-tab.is-active .file-tab-name').dblclick();
   await page.keyboard.press('ControlOrMeta+a');
   await page.keyboard.insertText('main.rb');
   await page.keyboard.press('Enter');

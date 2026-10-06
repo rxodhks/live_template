@@ -28,16 +28,17 @@ import { CODE_LANGUAGES, getFiles, getLanguage, renameForLanguage, type CodeLang
 import { addCodeFile } from '@shared/create';
 import { isStarterCode, starterCode } from '@shared/starters';
 import { useWorkspace, viewPath } from '../../workspace/context';
-import { createCodeFile, deleteItem, renameItem } from '../../workspace/actions';
+import { createCodeFile, deleteItem } from '../../workspace/actions';
 import { useYField, useYItems } from '../../hooks/useY';
 import { useSession } from '../../store/session';
 import { toast } from '../../store/toasts';
 import { copyText, cx, downloadText, newId } from '../../lib/util';
-import { Avatar, Button, EmptyState, IconButton, InlineEdit, Menu, Spinner } from '../../components/ui';
+import { Avatar, Button, EmptyState, IconButton, Menu, Spinner } from '../../components/ui';
 import { useViewers } from '../../components/Cursors';
 import { CodeEditor, type EditorApi, type LintState } from './CodeEditor';
 import { canCheck, canFormat, formatCode, formatError } from './assist/assist';
 import { hasHtml, htmlEntryName, line, withPreviewWatchdog, type OutputLine } from './runner';
+import { FileTabs } from './FileTabs';
 import './ide.css';
 import { buildHtmlPreview, buildMarkdownPreview, buildReactPreview, checkFile, execInfo, executeFile, unsupportedMessage } from './exec';
 
@@ -449,11 +450,7 @@ function CodeWorkspace({ file }: { file: YItem }) {
   return (
     <div className="code-module">
       <div className="module-toolbar code-toolbar">
-        {/* IDE 의 열린 파일 탭처럼 */}
-        <div className="code-tab">
-          <span className="lang-dot" style={{ background: lang.color }} />
-          <InlineEdit className="toolbar-title" value={name} disabled={!ws.canEdit} onCommit={(v) => renameItem(ws, 'code', fileId, v)} />
-        </div>
+        <FileTabs activeId={fileId} />
         <Menu
           width={230}
           header="언어 선택"
@@ -480,7 +477,6 @@ function CodeWorkspace({ file }: { file: YItem }) {
             ))}
           </span>
         )}
-        <span className="toolbar-spacer" />
         {running ? (
           <Button size="sm" variant="danger" icon={<Square size={13} />} onClick={() => running()}>
             중지
