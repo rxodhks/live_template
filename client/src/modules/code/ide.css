@@ -1,0 +1,343 @@
+/*
+ * 코드 화면 — 요즘 IDE(VS Code · Cursor · Zed) 느낌
+ * 코드 화면을 열 때만 불러온다 (첫 화면 용량에 들어가지 않음).
+ */
+@import '@fontsource-variable/jetbrains-mono/wght.css';
+
+.code-module {
+  /* 코드 글꼴: JetBrains Mono (한글은 Pretendard 로) */
+  --mono: 'JetBrains Mono Variable', 'JetBrains Mono', 'SFMono-Regular', ui-monospace, Menlo, Consolas, 'Pretendard Variable', Pretendard, 'Apple SD Gothic Neo', 'Malgun Gothic', monospace;
+  --code-chrome: #f7f8fa;
+  --code-gutter: #9aa0ab;
+  --code-guide: #e6e8ec;
+  --code-guide-active: #c3c7cf;
+  --code-selection: rgb(91 91 214 / 0.16);
+  --code-match: rgb(91 91 214 / 0.1);
+  --code-match-border: rgb(91 91 214 / 0.35);
+  --code-bracket: rgb(91 91 214 / 0.55);
+  --code-active-line: rgb(91 91 214 / 0.045);
+}
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme='light']) .code-module {
+    --code-chrome: #121418;
+    --code-gutter: #5d636f;
+    --code-guide: #262a32;
+    --code-guide-active: #3f4450;
+    --code-selection: rgb(130 130 255 / 0.24);
+    --code-match: rgb(130 130 255 / 0.13);
+    --code-match-border: rgb(130 130 255 / 0.4);
+    --code-bracket: rgb(150 150 255 / 0.6);
+    --code-active-line: rgb(255 255 255 / 0.035);
+  }
+}
+:root[data-theme='dark'] .code-module {
+  --code-chrome: #121418;
+  --code-gutter: #5d636f;
+  --code-guide: #262a32;
+  --code-guide-active: #3f4450;
+  --code-selection: rgb(130 130 255 / 0.24);
+  --code-match: rgb(130 130 255 / 0.13);
+  --code-match-border: rgb(130 130 255 / 0.4);
+  --code-bracket: rgb(150 150 255 / 0.6);
+  --code-active-line: rgb(255 255 255 / 0.035);
+}
+
+/* ── 위: 열린 파일 탭 + 도구 ── */
+.code-toolbar {
+  height: 40px;
+  padding: 0 8px 0 0;
+  gap: 6px;
+  background: var(--code-chrome);
+}
+.code-tab {
+  align-self: stretch;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 0 16px 0 14px;
+  margin-bottom: -1px;
+  background: var(--surface);
+  border-right: 1px solid var(--border);
+  box-shadow: inset 0 2px 0 var(--accent);
+  min-width: 0;
+}
+.code-tab .toolbar-title {
+  font-size: 13px;
+  font-weight: 600;
+}
+.code-toolbar .lang-select {
+  height: 24px;
+  margin-left: 4px;
+  padding: 0 6px 0 8px;
+  border-color: transparent;
+  background: transparent;
+  color: var(--text-2);
+  font-size: 12px;
+  font-weight: 550;
+}
+.code-toolbar .lang-select:hover,
+.code-toolbar .lang-select[aria-expanded='true'] {
+  background: var(--surface-hover);
+  border-color: var(--border);
+  color: var(--text);
+}
+.code-toolbar .btn-sm {
+  height: 26px;
+  border-radius: 6px;
+  padding: 0 10px;
+}
+.code-toolbar .icon-btn {
+  border-radius: 6px;
+}
+
+/* ── 편집기 ── */
+.code-mount .cm-editor {
+  font-size: 13.5px;
+}
+.code-mount .cm-scroller {
+  font-family: var(--mono);
+  /* 합자(=> 를 ⇒ 로 그리기 등)는 끈다 — 처음 배우는 사람이 실제로 친 글자와 헷갈리지 않게 */
+  font-variant-ligatures: none;
+  line-height: 1.65;
+  scrollbar-width: thin;
+  scrollbar-color: var(--border-strong) transparent;
+}
+/* 접기 화살표는 줄 번호 위에 마우스를 올렸을 때만 (VS Code 처럼) */
+.code-mount .cm-foldGutter .cm-gutterElement {
+  opacity: 0;
+  transition: opacity 0.15s;
+  color: var(--text-3);
+}
+.code-mount .cm-gutters:hover .cm-foldGutter .cm-gutterElement {
+  opacity: 1;
+}
+.code-mount .cm-lint-marker {
+  width: 0.9em;
+  height: 0.9em;
+}
+
+/* 오류 설명 말풍선: 문장, 그 아래 빠른 수정 버튼 */
+.code-module .cm-tooltip-lint {
+  padding: 2px;
+}
+.code-module .cm-tooltip-lint .cm-diagnostic {
+  max-width: min(560px, 80vw);
+  padding: 8px 12px 8px 12px;
+  border-left-width: 3px;
+  border-radius: 6px;
+  font-family: var(--font);
+  font-size: 12.5px;
+  line-height: 1.55;
+}
+.code-module .cm-tooltip-lint .cm-diagnosticText {
+  display: block;
+  margin-bottom: 6px;
+}
+.code-module .cm-tooltip-lint .cm-diagnosticText:only-child {
+  margin-bottom: 0;
+}
+.code-module .cm-diagnosticSource {
+  margin-top: 2px;
+  font-family: var(--mono);
+  font-size: 11px;
+  color: var(--text-3);
+  opacity: 1;
+}
+.code-module .cm-diagnosticAction {
+  margin: 0 6px 2px 0;
+  padding: 2px 9px;
+  border-radius: 5px;
+  background: var(--accent-soft);
+  color: var(--accent-text);
+  font: 600 12px var(--font);
+}
+.code-module .cm-diagnosticAction:hover {
+  background: var(--accent);
+  color: var(--on-accent);
+}
+.code-module .cm-diagnostic-error {
+  border-left-color: var(--danger);
+}
+.code-module .cm-diagnostic-warning {
+  border-left-color: var(--warning);
+}
+/* 문제 목록 패널 */
+.code-module .cm-panel.cm-panel-lint ul {
+  font-family: var(--font);
+  font-size: 12.5px;
+}
+.code-module .cm-panel.cm-panel-lint ul [aria-selected] {
+  background: var(--accent-soft);
+  color: var(--text);
+}
+.code-module .cm-panel.cm-panel-lint ul:focus [aria-selected] {
+  background: var(--accent);
+  color: var(--on-accent);
+}
+.code-module .cm-panel.cm-panel-lint button[name='close'] {
+  color: var(--text-3);
+}
+
+/* ── 아래 패널 (출력 · 입력) ── */
+.code-panel {
+  background: var(--code-chrome);
+}
+.code-panel-tabs {
+  display: flex;
+  align-items: stretch;
+  gap: 4px;
+  height: 34px;
+  padding: 0 6px 0 10px;
+}
+.code-panel-tabs > button:not(.icon-btn) {
+  position: relative;
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 0 8px;
+  font-size: 12px;
+  font-weight: 600;
+  letter-spacing: 0.02em;
+  color: var(--text-3);
+}
+.code-panel-tabs > button:not(.icon-btn):hover {
+  color: var(--text);
+}
+.code-panel-tabs > button.is-active {
+  color: var(--text);
+}
+.code-panel-tabs > button.is-active::after {
+  content: '';
+  position: absolute;
+  left: 6px;
+  right: 6px;
+  bottom: 0;
+  height: 2px;
+  border-radius: 2px 2px 0 0;
+  background: var(--accent);
+}
+.code-panel-tabs > .muted,
+.code-panel-tabs > .icon-btn {
+  align-self: center;
+}
+.code-output {
+  flex: 1;
+  overflow: auto;
+  padding: 6px 0 10px;
+  font-family: var(--mono);
+  font-size: 12.5px;
+  line-height: 1.65;
+  scrollbar-width: thin;
+}
+.code-output > .muted,
+.code-output > .out-status {
+  padding-left: 16px;
+  padding-right: 16px;
+}
+.out-line {
+  white-space: pre-wrap;
+  word-break: break-word;
+  padding: 1px 16px 1px 13px;
+  border-left: 3px solid transparent;
+}
+.out-info {
+  color: var(--info);
+}
+.out-warn {
+  color: var(--warning);
+  background: color-mix(in srgb, var(--warning-soft) 55%, transparent);
+  border-left-color: var(--warning);
+}
+.out-error {
+  color: var(--danger);
+  background: color-mix(in srgb, var(--danger-soft) 55%, transparent);
+  border-left-color: var(--danger);
+}
+.out-system {
+  color: var(--text-3);
+  font-size: 11.5px;
+}
+.out-system + .out-line:not(.out-system) {
+  margin-top: 2px;
+}
+.code-output .out-table-wrap,
+.code-output .out-formatted {
+  margin-left: 16px;
+  margin-right: 16px;
+}
+
+/* 오른쪽 미리보기 머리 */
+.code-side-head {
+  min-height: 34px;
+  background: var(--code-chrome);
+}
+
+/* ── 맨 아래 상태 표시줄 (VS Code 처럼) ── */
+.statusbar {
+  display: flex;
+  align-items: stretch;
+  gap: 2px;
+  height: 24px;
+  padding: 0 8px 0 0;
+  font-size: 11.5px;
+  color: var(--text-2);
+  background: var(--code-chrome);
+  border-top: 1px solid var(--border);
+  flex: none;
+  white-space: nowrap;
+  overflow: hidden;
+}
+.statusbar > * {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+}
+.status-item {
+  padding: 0 8px;
+  border-radius: 4px;
+}
+.statusbar .lang-dot {
+  width: 8px;
+  height: 8px;
+  border-radius: 2px;
+}
+/* 왼쪽 끝: 함께 편집 중인지 (강조색 칸) */
+.status-collab {
+  padding: 0 10px;
+  margin-right: 4px;
+  background: var(--surface-3);
+  color: var(--text-2);
+  font-weight: 600;
+}
+.status-collab.is-live {
+  background: var(--accent);
+  color: var(--on-accent);
+}
+.status-lint {
+  font: inherit;
+  color: inherit;
+  background: none;
+  border: 0;
+  cursor: pointer;
+  gap: 10px;
+}
+.status-lint:hover {
+  background: var(--surface-hover);
+  color: var(--text);
+}
+.lint-count {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+}
+.lint-count.is-error {
+  color: var(--danger);
+}
+.lint-count.is-warning {
+  color: var(--warning);
+}
+.statusbar .status-readonly {
+  align-self: center;
+  padding: 0 8px;
+  font-size: 11px;
+}

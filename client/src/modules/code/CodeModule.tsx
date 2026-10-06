@@ -18,9 +18,11 @@ import {
   Square,
   Terminal,
   Trash2,
+  Users,
   WandSparkles,
   WrapText,
   X,
+  XCircle,
 } from 'lucide-react';
 import { CODE_LANGUAGES, getFiles, getLanguage, renameForLanguage, type CodeLanguage, type YItem } from '@shared/schema';
 import { addCodeFile } from '@shared/create';
@@ -36,6 +38,7 @@ import { useViewers } from '../../components/Cursors';
 import { CodeEditor, type EditorApi, type LintState } from './CodeEditor';
 import { canCheck, canFormat, formatCode, formatError } from './assist/assist';
 import { hasHtml, htmlEntryName, line, withPreviewWatchdog, type OutputLine } from './runner';
+import './ide.css';
 import { buildHtmlPreview, buildMarkdownPreview, buildReactPreview, checkFile, execInfo, executeFile, unsupportedMessage } from './exec';
 
 export function CodeModule() {
@@ -445,9 +448,12 @@ function CodeWorkspace({ file }: { file: YItem }) {
 
   return (
     <div className="code-module">
-      <div className="module-toolbar">
-        <span className="lang-dot lg" style={{ background: lang.color }} />
-        <InlineEdit className="toolbar-title" value={name} disabled={!ws.canEdit} onCommit={(v) => renameItem(ws, 'code', fileId, v)} />
+      <div className="module-toolbar code-toolbar">
+        {/* IDE 의 열린 파일 탭처럼 */}
+        <div className="code-tab">
+          <span className="lang-dot" style={{ background: lang.color }} />
+          <InlineEdit className="toolbar-title" value={name} disabled={!ws.canEdit} onCommit={(v) => renameItem(ws, 'code', fileId, v)} />
+        </div>
         <Menu
           width={230}
           header="언어 선택"
@@ -722,31 +728,55 @@ function CodeWorkspace({ file }: { file: YItem }) {
       </div>
 
       <footer className="statusbar">
-        <span>
-          줄 {pos.line}, 열 {pos.col}
-          {pos.selected > 0 && ` (${pos.selected}자 선택)`}
+        <span className={cx('status-collab', viewers.length > 0 && 'is-live')}>
+          <Users size={12} />
+          {viewers.length > 0 ? `${viewers.length + 1}명이 이 파일에 있음` : '혼자 편집 중'}
         </span>
-        <span>{lang.name}</span>
-        <span>공백 {tabSize}</span>
-        <span>UTF-8</span>
         {lintState && (
           <button
-            className={cx('status-lint', !lintState.loading && lintState.errors > 0 && 'has-error')}
+            className={cx('status-item status-lint', !lintState.loading && lintState.errors > 0 && 'has-error', !lintState.loading && lintState.warnings > 0 && 'has-warning')}
             onClick={() => editorApi.current?.openProblems()}
             data-tip="문제 목록 열기 (오류 밑줄에 마우스를 올리면 설명이 보입니다)"
           >
-            {lintState.loading
-              ? '코드 검사 준비 중…'
-              : lintState.failed
-                ? '코드 검사 도구를 불러오지 못했습니다'
-                : lintState.errors + lintState.warnings === 0
-                  ? '✓ 문제 없음'
-                  : [lintState.errors > 0 && `오류 ${lintState.errors}`, lintState.warnings > 0 && `경고 ${lintState.warnings}`].filter(Boolean).join(' · ')}
+            {lintState.loading ? (
+              '코드 검사 준비 중…'
+            ) : lintState.failed ? (
+              '코드 검사 도구를 불러오지 못했습니다'
+            ) : lintState.errors + lintState.warnings === 0 ? (
+              <>
+                <CheckCircle2 size={12} />
+                문제 없음
+              </>
+            ) : (
+              <>
+                {lintState.errors > 0 && (
+                  <span className="lint-count is-error">
+                    <XCircle size={12} />
+                    오류 {lintState.errors}
+                  </span>
+                )}
+                {lintState.warnings > 0 && (
+                  <span className="lint-count is-warning">
+                    <AlertTriangle size={12} />
+                    경고 {lintState.warnings}
+                  </span>
+                )}
+              </>
+            )}
           </button>
         )}
         <span className="toolbar-spacer" />
         {!ws.canEdit && <span className="status-readonly">읽기 전용</span>}
-        <span>{viewers.length > 0 ? `${viewers.length + 1}명이 이 파일에 있음` : '혼자 편집 중'}</span>
+        <span className="status-item">
+          줄 {pos.line}, 열 {pos.col}
+          {pos.selected > 0 && ` (${pos.selected}자 선택)`}
+        </span>
+        <span className="status-item">공백 {tabSize}</span>
+        <span className="status-item">UTF-8</span>
+        <span className="status-item">
+          <span className="lang-dot" style={{ background: lang.color }} />
+          {lang.name}
+        </span>
       </footer>
     </div>
   );

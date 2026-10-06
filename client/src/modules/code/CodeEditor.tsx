@@ -16,17 +16,14 @@ import {
 import { defaultKeymap, indentWithTab } from '@codemirror/commands';
 import {
   bracketMatching,
-  defaultHighlightStyle,
   foldGutter,
   foldKeymap,
   indentOnInput,
   indentUnit,
-  syntaxHighlighting,
 } from '@codemirror/language';
 import { autocompletion, closeBrackets, closeBracketsKeymap, completionKeymap } from '@codemirror/autocomplete';
 import { highlightSelectionMatches, searchKeymap } from '@codemirror/search';
 import { forceLinting, lintGutter, linter, openLintPanel, type Diagnostic } from '@codemirror/lint';
-import { oneDark } from '@codemirror/theme-one-dark';
 import { yCollab, yUndoManagerKeymap } from 'y-codemirror.next';
 import { getFiles, type YItem } from '@shared/schema';
 import { useWorkspace } from '../../workspace/context';
@@ -35,6 +32,7 @@ import { alpha } from '../../lib/util';
 import { CursorLayer } from '../../components/Cursors';
 import { loadLanguage } from './languages';
 import { canCheck, checkCode, checkGroup } from './assist/assist';
+import { editorTheme } from './theme';
 
 /** 코드 검사 상태 (상태 표시줄) */
 export type LintState = { loading: true } | { loading: false; errors: number; warnings: number; failed?: boolean };
@@ -62,17 +60,6 @@ interface Props {
   onRun: () => void;
   onFormat: () => void;
   onLint: (s: LintState | null) => void;
-}
-
-const lightTheme = EditorView.theme({
-  '&': { backgroundColor: 'var(--surface)', color: 'var(--text)' },
-  '.cm-gutters': { backgroundColor: 'var(--surface)', color: 'var(--text-3)', borderRight: '1px solid var(--border)' },
-  '.cm-activeLine': { backgroundColor: 'var(--code-active-line)' },
-  '.cm-activeLineGutter': { backgroundColor: 'var(--code-active-line)' },
-});
-
-function themeExtension(dark: boolean): Extension {
-  return dark ? [oneDark] : [lightTheme, syntaxHighlighting(defaultHighlightStyle, { fallback: true })];
 }
 
 /** CodeMirror 6 + Yjs: 여러 사람이 같은 파일을 동시에 편집 */
@@ -151,7 +138,7 @@ export function CodeEditor({ file, readOnly, wrap, tabSize, lint, apiRef, onCurs
             indentWithTab,
           ]),
           c.lang.of([]),
-          c.theme.of(themeExtension(dark)),
+          c.theme.of(editorTheme(dark)),
           c.wrap.of(wrap ? EditorView.lineWrapping : []),
           c.ro.of([EditorState.readOnly.of(readOnly), EditorView.editable.of(!readOnly)]),
           c.tab.of([EditorState.tabSize.of(tabSize), indentUnit.of(' '.repeat(tabSize))]),
@@ -301,7 +288,7 @@ export function CodeEditor({ file, readOnly, wrap, tabSize, lint, apiRef, onCurs
   }, [file]); // eslint-disable-line react-hooks/exhaustive-deps
 
   useEffect(() => {
-    viewRef.current?.dispatch({ effects: c.theme.reconfigure(themeExtension(dark)) });
+    viewRef.current?.dispatch({ effects: c.theme.reconfigure(editorTheme(dark)) });
   }, [dark, c]);
   useEffect(() => {
     viewRef.current?.dispatch({ effects: c.wrap.reconfigure(wrap ? EditorView.lineWrapping : []) });

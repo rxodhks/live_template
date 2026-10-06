@@ -53,7 +53,7 @@ test('자동 정렬 · 오류 밑줄 · 오류 줄로 이동', async ({ page }) 
   await expect(editor(page)).toContainText('const point = { x: 1, y: 2 };', { timeout: 30_000 });
   await expect(editor(page)).toContainText('console.log(point.x + point.y);');
   // 문제 없는 코드는 ‘문제 없음’
-  await expect(status(page)).toHaveText('✓ 문제 없음', { timeout: 60_000 });
+  await expect(status(page)).toHaveText('문제 없음', { timeout: 60_000 });
 
   // TypeScript 타입 오류 → 밑줄 + 상태 표시줄 (한국어 메시지)
   await chooseLanguage(page, 'TypeScript');
@@ -70,11 +70,11 @@ test('자동 정렬 · 오류 밑줄 · 오류 줄로 이동', async ({ page }) 
   await page.locator('.code-module .cm-lintRange-error').hover();
   await page.locator('.cm-tooltip-lint .cm-diagnosticAction', { hasText: 'count' }).click();
   await expect(editor(page)).toContainText('console.log(score.count);');
-  await expect(status(page)).toHaveText('✓ 문제 없음', { timeout: 30_000 });
+  await expect(status(page)).toHaveText('문제 없음', { timeout: 30_000 });
 
   // 실행 오류의 파일:줄을 누르면 그 줄로
   await replaceCode(page, "function boom() {\n  throw new Error('터짐');\n}\n\nboom();");
-  await expect(status(page)).toHaveText('✓ 문제 없음', { timeout: 30_000 });
+  await expect(status(page)).toHaveText('문제 없음', { timeout: 30_000 });
   await page.locator('.code-module .module-toolbar').getByRole('button', { name: '실행', exact: true }).click();
   const loc = page.locator('.code-panel .out-loc', { hasText: 'main.ts:2' });
   await expect(loc).toBeVisible({ timeout: 60_000 });
