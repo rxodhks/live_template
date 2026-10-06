@@ -746,6 +746,20 @@
   color: var(--text-3);
   font-style: italic;
 }
+/* 출력의 ‘파일:줄’ — 누르면 그 줄로 */
+.out-loc {
+  font: inherit;
+  color: inherit;
+  padding: 0;
+  background: none;
+  border: 0;
+  text-decoration: underline dotted;
+  text-underline-offset: 2px;
+  cursor: pointer;
+}
+.out-loc:hover {
+  text-decoration-style: solid;
+}
 .code-preview {
   flex: 1;
   border: 0;
@@ -880,6 +894,17 @@
   flex: none;
   white-space: nowrap;
   overflow: hidden;
+}
+.status-lint {
+  font: inherit;
+  color: inherit;
+  background: none;
+  border: 0;
+  padding: 0;
+  cursor: pointer;
+}
+.status-lint.has-error {
+  color: var(--danger);
 }
 
 /* ───────────────────────── 문서 ───────────────────────── */

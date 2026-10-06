@@ -1,4 +1,4 @@
-import { useEffect, useLayoutEffect, useRef, useState, type CSSProperties, type PointerEvent as ReactPointerEvent } from 'react';
+import { useEffect, useLayoutEffect, useRef, useState, type CSSProperties, type PointerEvent as ReactPointerEvent, type ReactNode } from 'react';
 import { useNavigate } from 'react-router-dom';
 import * as Y from 'yjs';
 import {
@@ -18,6 +18,7 @@ import {
   Square,
   Terminal,
   Trash2,
+  WandSparkles,
   WrapText,
   X,
 } from 'lucide-react';
@@ -32,7 +33,8 @@ import { toast } from '../../store/toasts';
 import { copyText, cx, downloadText, newId } from '../../lib/util';
 import { Avatar, Button, EmptyState, IconButton, InlineEdit, Menu, Spinner } from '../../components/ui';
 import { useViewers } from '../../components/Cursors';
-import { CodeEditor } from './CodeEditor';
+import { CodeEditor, type EditorApi, type LintState } from './CodeEditor';
+import { canCheck, canFormat, formatCode, formatError } from './assist/assist';
 import { hasHtml, htmlEntryName, line, withPreviewWatchdog, type OutputLine } from './runner';
 import { buildHtmlPreview, buildMarkdownPreview, buildReactPreview, checkFile, execInfo, executeFile, unsupportedMessage } from './exec';
 
@@ -83,9 +85,15 @@ function CodeWorkspace({ file }: { file: YItem }) {
   const langId = useYField<string>(file, 'language') ?? 'plaintext';
   const lang = getLanguage(langId);
   const viewers = useViewers(ws.view);
+  const navigate = useNavigate();
 
   const [wrap, setWrap] = useState(() => localStorage.getItem('lt.code.wrap') === '1');
   const [tabSize, setTabSize] = useState(() => Number(localStorage.getItem('lt.code.tab')) || 2);
+  // 오류 밑줄 (JS · TS · 파이썬) — 기본으로 켜 두고, 끄면 이 기기에 기억한다
+  const [lintOn, setLintOn] = useState(() => readLocal('lt.code.lint') !== '0');
+  const [lintState, setLintState] = useState<LintState | null>(null);
+  const [formatting, setFormatting] = useState(false);
+  const editorApi = useRef<EditorApi | null>(null);
   const [pos, setPos] = useState({ line: 1, col: 1, selected: 0 });
   // 아래 패널: 실행 결과(출력) · 표준 입력. 미리보기는 편집기 오른쪽에 따로 띄운다
   const [panel, setPanel] = useState<null | 'output' | 'input'>(null);
@@ -238,6 +246,47 @@ function CodeWorkspace({ file }: { file: YItem }) {
   const reloadPreview = () => setPreview((p) => p && { ...p, v: ++previewSeq.current });
 
   useEffect(() => () => running?.(), [running]);
+
+  // 출력의 오류 줄을 눌러 다른 파일로 왔으면 그 줄로 이동
+  useEffect(() => {
+    const g = pendingGoto;
+    if (g && g.fileId === fileId) {
+      pendingGoto = null;
+      editorApi.current?.goTo(g.line, g.col);
+    }
+  }, [fileId]);
+
+  /** 출력에 나온 ‘파일:줄’로 이동 */
+  const goToLocation = (fileName: string, lineNo: number, col?: number) => {
+    if (fileName === name) return editorApi.current?.goTo(lineNo, col);
+    const target = Array.from(getFiles(ws.doc).values()).find((f) => String(f.get('name')) === fileName);
+    if (!target) return;
+    pendingGoto = { fileId: String(target.get('id')), line: lineNo, col };
+    navigate(viewPath(ws.template.id, 'code', String(target.get('id'))));
+  };
+  const fileNames = Array.from(getFiles(ws.doc).values()).map((f) => String(f.get('name')));
+
+  /** 자동 정렬 (Shift+Alt+F) */
+  const formatNow = async () => {
+    const api = editorApi.current;
+    if (!api || !ws.canEdit || !canFormat(lang.id) || formatting) return;
+    const before = api.getText();
+    setFormatting(true);
+    try {
+      const out = await formatCode(lang.id, name, before, lang.id === 'python' ? 4 : tabSize);
+      if (api.getText() !== before) toast.error('정렬하는 동안 내용이 바뀌어 적용하지 않았습니다', '다시 한 번 눌러 주세요.');
+      else if (out === before) toast.success('이미 정렬되어 있습니다');
+      else {
+        api.replaceAll(out);
+        ws.action('✨ 코드 정렬');
+        toast.success('코드를 정렬했습니다', '되돌리려면 Ctrl/⌘ + Z');
+      }
+    } catch (err) {
+      toast.error('정렬하지 못했습니다', `문법 오류를 먼저 고쳐 주세요. ${formatError(err)}`);
+    } finally {
+      setFormatting(false);
+    }
+  };
 
   const run = async () => {
     ws.report({ type: 'code.run', targetId: fileId, targetName: name });
@@ -456,6 +505,11 @@ function CodeWorkspace({ file }: { file: YItem }) {
         <IconButton label="출력 패널" active={panel === 'output'} onClick={() => setPanel(panel === 'output' ? null : 'output')}>
           <Terminal size={16} />
         </IconButton>
+        {canFormat(lang.id) && ws.canEdit && (
+          <IconButton label="자동 정렬 (Shift + Alt + F)" onClick={() => void formatNow()} disabled={formatting}>
+            {formatting ? <Spinner size={14} /> : <WandSparkles size={16} />}
+          </IconButton>
+        )}
         <IconButton label={wrap ? '자동 줄바꿈 끄기' : '자동 줄바꿈 켜기'} active={wrap} onClick={() => setWrap((w) => !w)}>
           <WrapText size={16} />
         </IconButton>
@@ -466,6 +520,19 @@ function CodeWorkspace({ file }: { file: YItem }) {
             { label: '전체 복사', icon: <Copy size={14} />, onSelect: async () => (await copyText(content())) && toast.success('코드를 복사했습니다') },
             { divider: true, label: '' },
             ...[2, 4].map((n) => ({ label: `들여쓰기 ${n}칸`, checked: tabSize === n, hint: tabSize === n ? <Check size={14} /> : undefined, onSelect: () => setTabSize(n) })),
+            ...(canCheck(lang.id)
+              ? [
+                  {
+                    label: '오류 밑줄 표시',
+                    checked: lintOn,
+                    hint: lintOn ? <Check size={14} /> : undefined,
+                    onSelect: () => {
+                      setLintOn(!lintOn);
+                      writeLocal('lt.code.lint', lintOn ? '0' : null);
+                    },
+                  },
+                ]
+              : []),
             { divider: true, label: '' },
             { label: '파일 삭제', icon: <Trash2 size={14} />, danger: true, disabled: !ws.canEdit, onSelect: () => void deleteItem(ws, 'code', fileId) },
           ]}
@@ -488,7 +555,11 @@ function CodeWorkspace({ file }: { file: YItem }) {
             readOnly={!ws.canEdit}
             wrap={wrap}
             tabSize={tabSize}
+            lint={lintOn}
+            apiRef={editorApi}
             onRun={run}
+            onFormat={() => void formatNow()}
+            onLint={setLintState}
             onCursor={(l, c, selected) => setPos({ line: l, col: c, selected })}
           />
           {panel && (
@@ -552,7 +623,7 @@ function CodeWorkspace({ file }: { file: YItem }) {
                       <OutputTable key={o.id} note={o.text} table={o.table} />
                     ) : (
                       <div key={o.id} className={`out-line out-${o.level}`}>
-                        {o.text}
+                        {o.fromPreview ? o.text : linkLocations(o.text, fileNames, name, goToLocation)}
                       </div>
                     ),
                   )}
@@ -658,6 +729,21 @@ function CodeWorkspace({ file }: { file: YItem }) {
         <span>{lang.name}</span>
         <span>공백 {tabSize}</span>
         <span>UTF-8</span>
+        {lintState && (
+          <button
+            className={cx('status-lint', !lintState.loading && lintState.errors > 0 && 'has-error')}
+            onClick={() => editorApi.current?.openProblems()}
+            data-tip="문제 목록 열기 (오류 밑줄에 마우스를 올리면 설명이 보입니다)"
+          >
+            {lintState.loading
+              ? '코드 검사 준비 중…'
+              : lintState.failed
+                ? '코드 검사 도구를 불러오지 못했습니다'
+                : lintState.errors + lintState.warnings === 0
+                  ? '✓ 문제 없음'
+                  : [lintState.errors > 0 && `오류 ${lintState.errors}`, lintState.warnings > 0 && `경고 ${lintState.warnings}`].filter(Boolean).join(' · ')}
+          </button>
+        )}
         <span className="toolbar-spacer" />
         {!ws.canEdit && <span className="status-readonly">읽기 전용</span>}
         <span>{viewers.length > 0 ? `${viewers.length + 1}명이 이 파일에 있음` : '혼자 편집 중'}</span>
@@ -721,4 +807,37 @@ function writeLocal(key: string, value: string | null) {
   } catch {
     /* 무시 */
   }
+}
+
+/** 다른 파일로 이동할 때 열고 나서 갈 줄 */
+let pendingGoto: { fileId: string; line: number; col?: number } | null = null;
+
+const escapeRe = (s: string) => s.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+
+/**
+ * 출력에 나온 ‘파일 이름 + 줄 번호’를 누르면 그 줄로 가는 링크로 바꾼다
+ *  - JS · Lua · Ruby: main.js:3 · Python: File "main.py", line 3 · PHP: main.php on line 3 · JSON/YAML 검사: 3번째 줄, 5번째 글자
+ */
+export function linkLocations(text: string, fileNames: string[], current: string, go: (file: string, line: number, col?: number) => void): ReactNode {
+  const names = [...fileNames].sort((a, b) => b.length - a.length).map(escapeRe);
+  const alt = names.length ? names.join('|') : '(?!)';
+  const re = new RegExp(`File "(${alt})", line (\\d+)|(${alt}):(\\d+)(?::(\\d+))?|(${alt}) on line (\\d+)|(\\d+)번째 줄(?:, (\\d+)번째 글자)?`, 'g');
+  const parts: ReactNode[] = [];
+  let last = 0;
+  for (const m of text.matchAll(re)) {
+    const file = m[1] ?? m[3] ?? m[6] ?? current;
+    const lineNo = Number(m[2] ?? m[4] ?? m[7] ?? m[8]);
+    const col = m[5] ?? m[9] ? Number(m[5] ?? m[9]) : undefined;
+    if (!lineNo) continue;
+    parts.push(text.slice(last, m.index));
+    parts.push(
+      <button key={m.index} type="button" className="out-loc" onClick={() => go(file, lineNo, col)} data-tip={`${file} ${lineNo}번째 줄로 이동`}>
+        {m[0]}
+      </button>,
+    );
+    last = m.index + m[0].length;
+  }
+  if (!parts.length) return text;
+  parts.push(text.slice(last));
+  return parts;
 }
