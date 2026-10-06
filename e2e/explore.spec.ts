@@ -13,7 +13,12 @@ test('로그인 화면에서 예시를 열어 직접 고치고 실행해 볼 수
   await page.getByRole('link', { name: '가입 없이 체험해 보기' }).click();
   await expect(page).toHaveURL(/\/explore$/);
   const writes: string[] = [];
-  page.on('request', (r) => r.method() !== 'GET' && new URL(r.url()).pathname.startsWith('/api/') && writes.push(`${r.method()} ${r.url()}`));
+  // 로그인 화면이 띄우는 패스키 자동 채우기 요청(일회용 확인값 받기)은 화면을 떠난 뒤에 늦게 나갈 수 있어 뺀다 — 저장하는 요청이 아니다
+  const ignore = new Set(['/api/auth/passkey/login/options']);
+  page.on('request', (r) => {
+    const path = new URL(r.url()).pathname;
+    if (r.method() !== 'GET' && path.startsWith('/api/') && !ignore.has(path)) writes.push(`${r.method()} ${r.url()}`);
+  });
   await expect(page.getByRole('heading', { name: '예시 템플릿 체험하기' })).toBeVisible();
 
   await page.getByRole('link', { name: /웹 프로젝트/ }).click();
