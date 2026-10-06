@@ -696,55 +696,19 @@
   cursor: row-resize;
   z-index: 2;
 }
-.code-panel-tabs {
-  display: flex;
-  align-items: center;
-  gap: 2px;
-  padding: 4px 6px;
-  border-bottom: 1px solid var(--border);
+/* 출력의 ‘파일:줄’ — 누르면 그 줄로 */
+.out-loc {
+  font: inherit;
+  color: inherit;
+  padding: 0;
+  background: none;
+  border: 0;
+  text-decoration: underline dotted;
+  text-underline-offset: 2px;
+  cursor: pointer;
 }
-.code-panel-tabs > button:not(.icon-btn) {
-  display: inline-flex;
-  align-items: center;
-  gap: 5px;
-  padding: 4px 10px;
-  border-radius: 6px;
-  font-size: 12.5px;
-  font-weight: 600;
-  color: var(--text-2);
-}
-.code-panel-tabs > button.is-active {
-  background: var(--surface-2);
-  color: var(--text);
-}
-.code-output {
-  flex: 1;
-  overflow: auto;
-  padding: 8px 14px;
-  font-family: var(--mono);
-  font-size: 12.5px;
-  line-height: 1.6;
-}
-.out-line {
-  white-space: pre-wrap;
-  word-break: break-word;
-  padding: 1px 0;
-}
-.out-line + .out-line {
-  border-top: 1px dashed color-mix(in srgb, var(--border) 60%, transparent);
-}
-.out-info {
-  color: var(--info);
-}
-.out-warn {
-  color: var(--warning);
-}
-.out-error {
-  color: var(--danger);
-}
-.out-system {
-  color: var(--text-3);
-  font-style: italic;
+.out-loc:hover {
+  text-decoration-style: solid;
 }
 .code-preview {
   flex: 1;
@@ -867,21 +831,6 @@
   overflow: auto;
   white-space: pre;
 }
-.statusbar {
-  display: flex;
-  align-items: center;
-  gap: 16px;
-  height: 26px;
-  padding: 0 14px;
-  font-size: 11.5px;
-  color: var(--text-3);
-  background: var(--surface);
-  border-top: 1px solid var(--border);
-  flex: none;
-  white-space: nowrap;
-  overflow: hidden;
-}
-
 /* ───────────────────────── 문서 ───────────────────────── */
 
 .doc-editor {
