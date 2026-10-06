@@ -6,6 +6,13 @@ export interface AssistDiagnostic {
   severity: 'error' | 'warning' | 'info';
   message: string;
   source: string;
+  /** 빠른 수정 (검사한 내용 기준의 글자 위치) */
+  fixes?: AssistFix[];
+}
+
+export interface AssistFix {
+  title: string;
+  changes: { from: number; to: number; insert: string }[];
 }
 
 export interface CheckRequest {

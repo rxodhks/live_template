@@ -64,6 +64,14 @@ test('자동 정렬 · 오류 밑줄 · 오류 줄로 이동', async ({ page }) 
   await expect(page.locator('.cm-panel.cm-panel-lint')).toContainText("'string' 형식은 'number' 형식에 할당할 수 없습니다");
   await page.keyboard.press('Escape');
 
+  // 빠른 수정: 오타 난 속성 이름 → 설명 아래 버튼으로 고친다
+  await replaceCode(page, "const score = { count: 3 };\nconsole.log(score.cuont);");
+  await expect(status(page)).toHaveText('오류 1', { timeout: 30_000 });
+  await page.locator('.code-module .cm-lintRange-error').hover();
+  await page.locator('.cm-tooltip-lint .cm-diagnosticAction', { hasText: 'count' }).click();
+  await expect(editor(page)).toContainText('console.log(score.count);');
+  await expect(status(page)).toHaveText('✓ 문제 없음', { timeout: 30_000 });
+
   // 실행 오류의 파일:줄을 누르면 그 줄로
   await replaceCode(page, "function boom() {\n  throw new Error('터짐');\n}\n\nboom();");
   await expect(status(page)).toHaveText('✓ 문제 없음', { timeout: 30_000 });
@@ -84,6 +92,12 @@ test('자동 정렬 · 오류 밑줄 · 오류 줄로 이동', async ({ page }) 
   await status(page).click();
   await expect(page.locator('.cm-panel.cm-panel-lint')).toContainText("정의되지 않은 이름입니다: 'undefined_name'");
   await page.keyboard.press('Escape');
+  // 빠른 수정: 안 쓰는 import 지우기
+  await page.mouse.move(0, 0);
+  await page.locator('.code-module .cm-lintRange-warning').first().hover();
+  await page.locator('.cm-tooltip-lint .cm-diagnosticAction', { hasText: '안 쓰는 import 지우기' }).click();
+  await expect(editor(page)).not.toContainText('import os');
+  await expect(status(page)).toHaveText('경고 1', { timeout: 30_000 });
   await dismissToasts(page);
   await editor(page).click();
   await page.keyboard.press('Shift+Alt+F');

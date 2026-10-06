@@ -5,7 +5,7 @@
  */
 import ts from 'typescript';
 import ko from 'typescript/lib/ko/diagnosticMessages.generated.json';
-import type { AssistDiagnostic, CheckRequest } from './protocol';
+import type { AssistDiagnostic, AssistFix, CheckRequest } from './protocol';
 
 // 표준 라이브러리 타입 (ES2022 + 브라우저 DOM)
 const LIBS = import.meta.glob('../../../../../node_modules/typescript/lib/lib.{es5,es2015*,es2016*,es2017*,es2018*,es2019*,es2020*,es2021*,es2022*,dom,dom.iterable,dom.asynciterable,decorators,decorators.legacy}.d.ts', {
@@ -113,6 +113,7 @@ function check({ name, files: all }: CheckRequest): AssistDiagnostic[] {
     const semantic = d.code >= 2000;
     if (isJs && semantic && JS_IGNORE.has(d.code)) continue;
     out.push({
+      fixes: fixesFor(key, d),
       from: d.start,
       to: d.start + (d.length ?? 0),
       severity: d.category === ts.DiagnosticCategory.Error ? (isJs && semantic ? 'warning' : 'error') : d.category === ts.DiagnosticCategory.Warning ? 'warning' : 'info',
@@ -121,6 +122,29 @@ function check({ name, files: all }: CheckRequest): AssistDiagnostic[] {
     });
   }
   return out;
+}
+
+const FORMAT: ts.FormatCodeSettings = { indentSize: 2, tabSize: 2, convertTabsToSpaces: true, semicolons: ts.SemicolonPreference.Ignore };
+const PREFS: ts.UserPreferences = { quotePreference: 'auto', importModuleSpecifierEnding: 'minimal' };
+
+/** 빠른 수정 (오타 이름 바꾸기, 빠진 import 추가, await 붙이기 …) — 이 파일만 고치는 것만 */
+function fixesFor(key: string, d: ts.Diagnostic): AssistFix[] | undefined {
+  if (d.start === undefined) return undefined;
+  let found: readonly ts.CodeFixAction[];
+  try {
+    found = service.getCodeFixesAtPosition(key, d.start, d.start + (d.length ?? 0), [d.code], FORMAT, PREFS);
+  } catch {
+    return undefined;
+  }
+  const fixes = found
+    // ‘이 파일 검사 끄기’ 같은 수정은 빼고, 이 파일만 고치는 것만
+    .filter((f) => f.fixName !== 'disableJsDiagnostics' && f.changes.length > 0 && f.changes.every((c) => c.fileName === key) && !f.commands?.length)
+    .slice(0, 3)
+    .map((f) => ({
+      title: f.description,
+      changes: f.changes.flatMap((c) => c.textChanges.map((t) => ({ from: t.span.start, to: t.span.start + t.span.length, insert: t.newText }))),
+    }));
+  return fixes.length ? fixes : undefined;
 }
 
 self.onmessage = (e: MessageEvent<{ id: number; req: CheckRequest }>) => {

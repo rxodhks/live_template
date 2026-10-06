@@ -12,6 +12,10 @@ interface RuffDiagnostic {
   message: string;
   start_location: { row: number; column: number };
   end_location: { row: number; column: number };
+  fix: {
+    message: string | null;
+    edits: { content: string | null; location: { row: number; column: number }; end_location: { row: number; column: number } }[];
+  } | null;
 }
 
 let ready: Promise<Workspace> | null = null;
@@ -50,6 +54,14 @@ async function check({ name, files }: CheckRequest): Promise<AssistDiagnostic[]>
       severity: d.code ? 'warning' : 'error',
       message: korean(d.code, d.message),
       source: d.code ? `Ruff ${d.code}` : 'Ruff',
+      fixes: d.fix?.edits.length
+        ? [
+            {
+              title: fixTitle(d.code, d.fix.message),
+              changes: d.fix.edits.map((e) => ({ from: at(e.location.row, e.location.column), to: at(e.end_location.row, e.end_location.column), insert: e.content ?? '' })),
+            },
+          ]
+        : undefined,
     };
   });
 }
@@ -67,6 +79,16 @@ const KO: Record<string, (names: string[]) => string> = {
   E722: () => '어떤 오류든 잡는 except: 는 실수를 숨깁니다. except Exception: 처럼 종류를 적으세요',
   E741: ([n]) => `${n}은(는) 숫자 1 · 0 과 헷갈리기 쉬운 이름입니다 (l · O · I)`,
 };
+const FIX_KO: Record<string, string> = {
+  F401: '안 쓰는 import 지우기',
+  F841: '안 쓰는 변수 지우기',
+  F541: 'f 빼기',
+  F632: '== 로 바꾸기',
+  E711: 'is 로 바꾸기',
+  E712: '조건 그대로 쓰기',
+};
+const fixTitle = (code: string | null, message: string | null) => (code && FIX_KO[code]) || message || '고치기';
+
 function korean(code: string | null, message: string): string {
   const ko = code && KO[code];
   if (!ko) return message;

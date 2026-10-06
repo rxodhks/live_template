@@ -895,6 +895,17 @@
   white-space: nowrap;
   overflow: hidden;
 }
+/* 오류 설명: 문장은 한 줄로, 빠른 수정 버튼은 그 아래에 */
+.cm-tooltip-lint .cm-diagnostic {
+  max-width: min(560px, 80vw);
+}
+.cm-tooltip-lint .cm-diagnosticText {
+  display: block;
+  margin-bottom: 4px;
+}
+.cm-tooltip-lint .cm-diagnosticAction {
+  margin: 0 6px 2px 0;
+}
 .status-lint {
   font: inherit;
   color: inherit;

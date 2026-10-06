@@ -95,6 +95,8 @@ export function CodeEditor({ file, readOnly, wrap, tabSize, lint, apiRef, onCurs
   );
   const cb = useRef({ onCursor, onRun, onFormat, onLint });
   cb.current = { onCursor, onRun, onFormat, onLint };
+  const readOnlyRef = useRef(readOnly);
+  readOnlyRef.current = readOnly;
   const lintRef = useRef(lint);
   lintRef.current = lint;
   const relintRef = useRef<(() => void) | null>(null);
@@ -233,10 +235,24 @@ export function CodeEditor({ file, readOnly, wrap, tabSize, lint, apiRef, onCurs
               else if (group.has(String(f.get('language')))) files[String(f.get('name'))] = (f.get('content') as Y.Text).toString();
             }
             try {
+              const checked = v.state.doc.toString();
               const found = await checkCode(langId, { name, files });
               checkedOnce = true;
               const len = v.state.doc.length;
-              const diags = found.map((d) => ({ ...d, from: Math.min(d.from, len), to: Math.min(Math.max(d.to, d.from), len) }));
+              const diags: Diagnostic[] = found.map(({ fixes, ...d }) => ({
+                ...d,
+                from: Math.min(d.from, len),
+                to: Math.min(Math.max(d.to, d.from), len),
+                // 빠른 수정: 검사한 뒤 내용이 바뀌었으면 위치가 어긋나므로 적용하지 않는다 (곧 다시 검사된다)
+                actions: fixes?.map((f) => ({
+                  name: f.title,
+                  apply: (target: EditorView) => {
+                    if (readOnlyRef.current || target.state.doc.toString() !== checked) return;
+                    target.dispatch({ changes: f.changes, userEvent: 'input.fix' });
+                    wsRef.current.action('🔧 빠른 수정');
+                  },
+                })),
+              }));
               report({ loading: false, errors: diags.filter((d) => d.severity === 'error').length, warnings: diags.filter((d) => d.severity !== 'error').length });
               return diags;
             } catch {
