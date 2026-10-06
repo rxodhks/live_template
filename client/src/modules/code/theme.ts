@@ -114,9 +114,9 @@ function base(dark: boolean) {
         border: '1px solid var(--border)',
         borderRadius: '8px',
         boxShadow: 'var(--shadow-lg)',
-        overflow: 'hidden',
       },
-      '.cm-tooltip.cm-tooltip-autocomplete > ul': { fontFamily: 'var(--mono)', padding: '4px', maxHeight: '16em' },
+      // 자동 완성 옆 설명(타입 · 문서)이 목록 밖에 붙어 보이도록 목록 상자는 잘라 내지 않는다
+      '.cm-tooltip.cm-tooltip-autocomplete > ul': { fontFamily: 'var(--mono)', padding: '4px', maxHeight: '16em', borderRadius: '8px' },
       '.cm-tooltip.cm-tooltip-autocomplete > ul > li': { borderRadius: '5px', padding: '2px 8px 2px 4px', lineHeight: '1.6' },
       '.cm-tooltip-autocomplete ul li[aria-selected]': { backgroundColor: 'var(--accent-soft)', color: 'var(--text)' },
       '.cm-completionMatchedText': { textDecoration: 'none', color: 'var(--accent-text)', fontWeight: '700' },

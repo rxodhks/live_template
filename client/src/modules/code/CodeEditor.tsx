@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useRef, useState, type MutableRefObject } from 'react';
 import * as Y from 'yjs';
-import { Compartment, EditorState, type Extension } from '@codemirror/state';
+import { Compartment, EditorState, Prec, type Extension } from '@codemirror/state';
 import {
   EditorView,
   crosshairCursor,
@@ -13,7 +13,7 @@ import {
   lineNumbers,
   rectangularSelection,
 } from '@codemirror/view';
-import { defaultKeymap, indentWithTab } from '@codemirror/commands';
+import { defaultKeymap, indentMore, indentWithTab } from '@codemirror/commands';
 import {
   bracketMatching,
   foldGutter,
@@ -21,7 +21,7 @@ import {
   indentOnInput,
   indentUnit,
 } from '@codemirror/language';
-import { autocompletion, closeBrackets, closeBracketsKeymap, completionKeymap } from '@codemirror/autocomplete';
+import { acceptCompletion, autocompletion, closeBrackets, closeBracketsKeymap, completionKeymap, completionStatus } from '@codemirror/autocomplete';
 import { highlightSelectionMatches, searchKeymap } from '@codemirror/search';
 import { forceLinting, lintGutter, linter, openLintPanel, type Diagnostic } from '@codemirror/lint';
 import { yCollab, yUndoManagerKeymap } from 'y-codemirror.next';
@@ -62,6 +62,21 @@ interface Props {
   onLint: (s: LintState | null) => void;
 }
 
+/** Tab 으로 추천 고르기 — 추천이 막 뜨는 중이면 잠깐 기다렸다 고른다 (빨리 친 Tab 이 들여쓰기가 되지 않게) */
+function tabAccept(view: EditorView): boolean {
+  if (!completionStatus(view.state)) return false;
+  if (acceptCompletion(view)) return true;
+  const doc = view.state.doc;
+  let tries = 0;
+  const retry = () => {
+    if (view.state.doc !== doc || acceptCompletion(view)) return;
+    if (completionStatus(view.state) && ++tries < 6) setTimeout(retry, 60);
+    else indentMore(view);
+  };
+  setTimeout(retry, 60);
+  return true;
+}
+
 /** CodeMirror 6 + Yjs: 여러 사람이 같은 파일을 동시에 편집 */
 export function CodeEditor({ file, readOnly, wrap, tabSize, lint, apiRef, onCursor, onRun, onFormat, onLint }: Props) {
   const ws = useWorkspace();
@@ -77,7 +92,7 @@ export function CodeEditor({ file, readOnly, wrap, tabSize, lint, apiRef, onCurs
   const dark = theme === 'system' ? systemDark : theme === 'dark';
 
   const c = useMemo(
-    () => ({ lang: new Compartment(), theme: new Compartment(), wrap: new Compartment(), ro: new Compartment(), tab: new Compartment(), lint: new Compartment() }),
+    () => ({ lang: new Compartment(), theme: new Compartment(), wrap: new Compartment(), ro: new Compartment(), tab: new Compartment(), lint: new Compartment(), complete: new Compartment() }),
     [],
   );
   const cb = useRef({ onCursor, onRun, onFormat, onLint });
@@ -137,12 +152,15 @@ export function CodeEditor({ file, readOnly, wrap, tabSize, lint, apiRef, onCurs
             ...completionKeymap,
             indentWithTab,
           ]),
+          // Tab 으로도 추천을 고른다 (VS Code 처럼). 추천이 없으면 원래대로 들여쓰기
+          Prec.high(keymap.of([{ key: 'Tab', run: tabAccept }])),
           c.lang.of([]),
           c.theme.of(editorTheme(dark)),
           c.wrap.of(wrap ? EditorView.lineWrapping : []),
           c.ro.of([EditorState.readOnly.of(readOnly), EditorView.editable.of(!readOnly)]),
           c.tab.of([EditorState.tabSize.of(tabSize), indentUnit.of(' '.repeat(tabSize))]),
           c.lint.of([]),
+          c.complete.of([]),
           yCollab(ytext, awareness, { undoManager }),
           EditorView.updateListener.of((u) => {
             if (u.selectionSet || u.docChanged) {
@@ -195,9 +213,30 @@ export function CodeEditor({ file, readOnly, wrap, tabSize, lint, apiRef, onCurs
     let cancelled = false;
     const applyLanguage = () => {
       view.dispatch({ effects: c.lint.reconfigure(lintExtension(lang, lintRef.current)) });
+      const want = lang;
+      // 언어별 자동 완성 (Emmet · TypeScript 추천 · 코드 조각) — 처음 쓸 때 내려받는다
+      void import('./assist/complete')
+        .then((m) => m.completionFor(want, filesFor))
+        .then((ext) => {
+          if (!cancelled && want === lang) view.dispatch({ effects: c.complete.reconfigure(ext) });
+        })
+        .catch(() => {
+          /* 기본 자동 완성으로 */
+        });
       return loadLanguage(lang).then((ext) => {
         if (!cancelled) view.dispatch({ effects: c.lang.reconfigure(ext) });
       });
+    };
+    /** 검사 · 자동 완성에 넘길 파일들 (지금 파일 + import 를 따라갈 같은 계열 파일) */
+    const filesFor = (state: EditorState) => {
+      const group = checkGroup(lang);
+      const name = String(file.get('name'));
+      const files: Record<string, string> = {};
+      for (const f of getFiles(wsRef.current.doc).values()) {
+        if (f === file) files[name] = state.doc.toString();
+        else if (group.has(String(f.get('language')))) files[String(f.get('name'))] = (f.get('content') as Y.Text).toString();
+      }
+      return { name, files };
     };
     // 오류 밑줄: 검사기는 처음 쓸 때 내려받는다 (그동안은 ‘검사 준비 중’)
     let checkedOnce = false;
@@ -214,13 +253,7 @@ export function CodeEditor({ file, readOnly, wrap, tabSize, lint, apiRef, onCurs
         linter(
           async (v): Promise<Diagnostic[]> => {
             if (!checkedOnce) report({ loading: true });
-            const group = checkGroup(langId);
-            const name = String(file.get('name'));
-            const files: Record<string, string> = {};
-            for (const f of getFiles(wsRef.current.doc).values()) {
-              if (f === file) files[name] = v.state.doc.toString();
-              else if (group.has(String(f.get('language')))) files[String(f.get('name'))] = (f.get('content') as Y.Text).toString();
-            }
+            const { name, files } = filesFor(v.state);
             try {
               const checked = v.state.doc.toString();
               const found = await checkCode(langId, { name, files });

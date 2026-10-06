@@ -416,3 +416,33 @@
   padding: 0 8px;
   font-size: 11px;
 }
+
+/* 자동 완성: 고른 항목의 타입 · 설명 */
+.code-module .cm-tooltip.cm-completionInfo {
+  max-width: 420px;
+  padding: 8px 10px;
+  font-size: 12px;
+  line-height: 1.5;
+}
+.code-module .cm-completionDoc code {
+  display: block;
+  font-family: var(--mono);
+  font-variant-ligatures: none;
+  white-space: pre-wrap;
+  color: var(--text);
+}
+.code-module .cm-completionDoc p {
+  margin: 6px 0 0;
+  color: var(--text-2);
+  font-family: var(--font);
+  white-space: pre-wrap;
+}
+.code-module .cm-completionDetail {
+  font-family: var(--font);
+  font-size: 11.5px;
+}
+/* Emmet 약어로 알아본 글자 */
+.code-module .emmet-tracker {
+  text-decoration: underline 1px dotted var(--accent);
+  text-underline-offset: 3px;
+}
