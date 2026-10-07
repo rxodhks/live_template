@@ -85,6 +85,13 @@
 .notice-body li + li {
   margin-top: 4px;
 }
+.notice-body img {
+  display: block;
+  max-width: 100%;
+  height: auto;
+  margin: 12px 0;
+  border-radius: 16px;
+}
 .notice-body a {
   color: var(--accent-text);
   text-decoration: underline;

@@ -214,14 +214,21 @@ export function CodeEditor({ file, readOnly, wrap, tabSize, lint, apiRef, onCurs
     const applyLanguage = () => {
       view.dispatch({ effects: c.lint.reconfigure(lintExtension(lang, lintRef.current)) });
       const want = lang;
+      // 자동 완성이 붙었는지 (e2e 가 붙은 뒤에 타이핑하도록)
+      delete view.dom.dataset.completeReady;
+      const markReady = () => {
+        if (!cancelled && want === lang) view.dom.dataset.completeReady = want;
+      };
       // 언어별 자동 완성 (Emmet · TypeScript 추천 · 코드 조각) — 처음 쓸 때 내려받는다
       void import('./assist/complete')
         .then((m) => m.completionFor(want, filesFor))
         .then((ext) => {
           if (!cancelled && want === lang) view.dispatch({ effects: c.complete.reconfigure(ext) });
+          markReady();
         })
         .catch(() => {
           /* 기본 자동 완성으로 */
+          markReady();
         });
       return loadLanguage(lang).then((ext) => {
         if (!cancelled) view.dispatch({ effects: c.lang.reconfigure(ext) });
