@@ -48,6 +48,8 @@ function LegalLayout({ title, effectiveDate, children }: { title: string; effect
 export function LegalLinks({ className = 'legal-links' }: { className?: string }) {
   return (
     <nav className={className} aria-label="약관 및 정책">
+      <Link to="/notices">공지사항</Link>
+      <span aria-hidden>·</span>
       <Link to="/terms">이용약관</Link>
       <span aria-hidden>·</span>
       <Link to="/privacy">

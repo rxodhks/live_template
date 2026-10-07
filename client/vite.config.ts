@@ -2,6 +2,7 @@ import { defineConfig, type Plugin } from 'vite';
 import react from '@vitejs/plugin-react';
 import path from 'node:path';
 import { runtimesPlugin } from './build/runtimes';
+import { noticesPlugin } from './build/notices';
 import { CONTACT_EMAIL } from '../shared/contact';
 import { CLIENT_VERSION, CLIENT_VERSION_HEADER } from '../shared/protocol';
 
@@ -43,8 +44,8 @@ function apiPrefetchPlugin(): Plugin {
 }
 
 export default defineConfig(async () => ({
-  // 코드 실행 환경(파이썬 · SQL · Ruby · PHP · Lua · React)을 /runtimes/ 로 함께 배포
-  plugins: [react(), lazyKatexPlugin(), contactPlugin(), apiPrefetchPlugin(), await runtimesPlugin()],
+  // 코드 실행 환경(파이썬 · SQL · Ruby · PHP · Lua · React)을 /runtimes/ 로, 공지사항(notices/*.md)을 /notices.json 으로 함께 배포
+  plugins: [react(), lazyKatexPlugin(), contactPlugin(), apiPrefetchPlugin(), noticesPlugin(), await runtimesPlugin()],
   resolve: {
     alias: { '@shared': path.resolve(__dirname, '../shared') },
     // Yjs/ProseMirror/CodeMirror는 인스턴스가 하나여야 한다

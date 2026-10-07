@@ -4,6 +4,7 @@ import { ArrowRight, Cloud, DoorOpen, HardDrive, History, Hourglass, LogIn, More
 import type { Feature, TemplateEntry, TemplateMode, TimelineEvent } from '@shared/types';
 import { FEATURE_INFO, FEATURE_ORDER, PRESETS } from '@shared/presets';
 import { AppShell } from '../components/AppShell';
+import { NoticeBanner } from '../components/LazyNotices';
 import { Avatar, AvatarStack, Button, EmptyState, IconButton, Menu, Spinner, confirmDialog, promptDialog } from '../components/ui';
 import { isPrivate, useTemplates, onTimelineEvent } from '../store/templates';
 import { useSession } from '../store/session';
@@ -92,6 +93,7 @@ export function Dashboard() {
     <AppShell>
       <div className="page-scroll">
         <div className="page page-wide dashboard">
+          <NoticeBanner />
           <header className="dash-header">
             <div>
               <h1>
