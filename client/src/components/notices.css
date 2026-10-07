@@ -1,0 +1,130 @@
+/* 공지: 상단 새 소식 · 홈 배너 (페이지는 pages/notices.css) — 첫 화면 뒤에 따로 불러온다 */
+.notice-dot {
+  position: absolute;
+  top: 6px;
+  right: 6px;
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background: var(--accent);
+  box-shadow: 0 0 0 2px var(--bg);
+  pointer-events: none;
+}
+.popover.notice-pop {
+  padding: 12px 6px 6px;
+  border-radius: 18px;
+}
+.notice-pop-head {
+  padding: 0 12px 6px;
+  font-size: 12.5px;
+  font-weight: 600;
+  color: var(--text-3);
+}
+.notice-pop-empty {
+  padding: 12px;
+  font-size: 13px;
+  color: var(--text-3);
+}
+.notice-item {
+  display: flex;
+  gap: 10px;
+  width: 100%;
+  padding: 10px 12px;
+  border-radius: 12px;
+  text-align: left;
+  font-size: 13.5px;
+  color: var(--text);
+}
+.notice-item:hover,
+.notice-item:focus-visible {
+  background: var(--fill, var(--surface-hover));
+}
+.notice-item-dot {
+  flex: none;
+  width: 7px;
+  height: 7px;
+  margin-top: 7px;
+  border-radius: 50%;
+  background: var(--accent);
+}
+.notice-item-dot.is-read {
+  background: transparent;
+}
+.notice-item-text {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  min-width: 0;
+  line-height: 1.45;
+}
+.notice-item-text b {
+  font-weight: 600;
+}
+.notice-item-text span {
+  color: var(--text-2);
+}
+.notice-item-text small {
+  margin-top: 2px;
+  font-size: 12px;
+  color: var(--text-3);
+}
+.notice-pop-all {
+  display: block;
+  margin-top: 2px;
+  padding: 9px;
+  border-radius: 12px;
+  text-align: center;
+  font-size: 13px;
+  color: var(--text-2);
+}
+.notice-pop-all:hover {
+  background: var(--fill, var(--surface-hover));
+  color: var(--text);
+}
+
+.notice-banner {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  margin-bottom: 24px;
+  padding: 8px 8px 8px 18px;
+  border-radius: 999px;
+  background: var(--fill, var(--surface-2));
+  font-size: 14px;
+  min-width: 0;
+}
+.notice-banner-dot {
+  flex: none;
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background: var(--accent);
+}
+.notice-banner b {
+  flex: none;
+  font-weight: 650;
+}
+.notice-banner-summary {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+  color: var(--text-3);
+}
+.notice-banner-more {
+  flex: none;
+  padding: 6px 14px;
+  border-radius: 999px;
+  background: var(--pill, var(--text));
+  color: var(--on-pill, var(--bg));
+  font-size: 13px;
+  font-weight: 600;
+}
+.notice-banner-more:hover {
+  opacity: 0.9;
+}
+.notice-banner-close {
+  flex: none;
+  color: var(--text-3);
+}
