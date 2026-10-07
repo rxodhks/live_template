@@ -1,22 +1,34 @@
-/* ───────────────────────── 디자인 토큰 ───────────────────────── */
+/* ───────────────────────── 디자인 토큰 ─────────────────────────
+ * "선 없는 글자" 디자인: 상자 · 테두리 대신 글자 크기 · 색 · 점으로 구분한다.
+ *  - 바탕(--bg)과 패널(--surface)은 같은 색: 영역은 선이 아니라 여백으로 나눈다
+ *  - 떠 있는 것(메뉴 · 대화상자)만 --surface-pop 바탕 + 얇은 고리(--ring)
+ *  - 주황 점(--accent)은 "지금 여기"(선택 · 현재 위치)에만 쓴다. 주 버튼은 글자색 알약(--pill)
+ */
 
 :root {
-  --bg: #f5f6f8;
-  --surface: #ffffff;
-  --surface-2: #f3f4f6;
-  --surface-3: #e9ebef;
-  --surface-hover: #f0f1f4;
-  --border: #e4e6eb;
-  --border-strong: #d1d5dc;
-  --text: #16181d;
-  --text-2: #4a5060;
-  /* 보조 글자: 흰 바탕 · 회색 바탕 · 선택된 바탕(accent-soft) 모두에서 4.5:1 이상 (WCAG AA) */
-  --text-3: #646a77;
-  --accent: #5b5bd6;
-  --accent-hover: #4b4bc5;
-  --accent-soft: #eeeefd;
-  --accent-text: #4545c0;
-  --on-accent: #ffffff;
+  --bg: #f7f6f3;
+  --surface: #f7f6f3;
+  --surface-2: #efeee9;
+  --surface-3: #e6e4de;
+  --surface-hover: #ecebe6;
+  --surface-pop: #ffffff;
+  --border: #e6e4de;
+  --border-strong: #d3d0c8;
+  --ring: rgb(23 24 27 / 0.08);
+  /* 입력칸 · 보조 버튼처럼 '채워진' 자리: 어느 바탕 위에서도 살짝 어둡게 */
+  --fill: rgb(23 24 27 / 0.05);
+  --fill-hover: rgb(23 24 27 / 0.085);
+  --text: #17181b;
+  --text-2: #55575e;
+  /* 보조 글자: 종이 바탕 · 회색 바탕 · 선택된 바탕(accent-soft) 모두에서 4.5:1 이상 (WCAG AA) */
+  --text-3: #66686f;
+  --accent: #e8602c;
+  --accent-hover: #d4521f;
+  --accent-soft: #fbe6dc;
+  --accent-text: #b5410f;
+  --on-accent: #1a0b04;
+  --pill: #17181b;
+  --on-pill: #f7f6f3;
   --danger: #d93f45;
   --danger-soft: #fdeded;
   --success: #1d774d;
@@ -25,20 +37,20 @@
   --warning-soft: #fdf1df;
   --info: #0b6bcb;
   --info-soft: #e6f0fb;
-  --feature-design: #b02a7d;
-  --feature-code: #0868b5;
+  --feature-design: #c8327f;
+  --feature-code: #0a6fbf;
   --feature-docs: #1d774d;
   --feature-notes: #8e4ec6;
-  --canvas-bg: #f3f4f7;
-  --grid-dot: #c5cad3;
-  --code-active-line: #f5f6fa;
-  --overlay: rgb(15 17 22 / 0.42);
-  --shadow-sm: 0 1px 2px rgb(16 24 40 / 0.06);
-  --shadow-md: 0 4px 14px rgb(16 24 40 / 0.08), 0 1px 3px rgb(16 24 40 / 0.06);
-  --shadow-lg: 0 18px 44px rgb(16 24 40 / 0.16), 0 4px 12px rgb(16 24 40 / 0.08);
-  --radius-sm: 6px;
-  --radius: 10px;
-  --radius-lg: 14px;
+  --canvas-bg: #f7f6f3;
+  --grid-dot: #d6d3cb;
+  --code-active-line: #efeee9;
+  --overlay: rgb(15 16 18 / 0.36);
+  --shadow-sm: none;
+  --shadow-md: 0 0 0 1px var(--ring), 0 8px 24px rgb(23 24 27 / 0.08);
+  --shadow-lg: 0 0 0 1px var(--ring), 0 24px 60px rgb(23 24 27 / 0.16);
+  --radius-sm: 10px;
+  --radius: 16px;
+  --radius-lg: 24px;
   --topbar-h: 52px;
   --rail-w: 64px;
   --panel-w: 260px;
@@ -50,79 +62,91 @@
 
 @media (prefers-color-scheme: dark) {
   :root:not([data-theme='light']) {
-    --bg: #0e1014;
-    --surface: #16181d;
-    --surface-2: #1c1f25;
-    --surface-3: #252932;
-    --surface-hover: #20242b;
-    --border: #2a2e37;
-    --border-strong: #3a3f4a;
-    --text: #eceef2;
-    --text-2: #aab0bc;
-    --text-3: #8e94a0;
-    --accent: #6262e0;
-    --accent-hover: #7272ea;
-    --accent-soft: #24244a;
-    --accent-text: #a5a5ff;
-    --on-accent: #ffffff;
+    --bg: #0f1012;
+    --surface: #0f1012;
+    --surface-2: #17181c;
+    --surface-3: #202228;
+    --surface-hover: #18191d;
+    --surface-pop: #1b1d22;
+    --border: #1d1f24;
+    --border-strong: #2a2d34;
+    --ring: #2a2d34;
+  --fill: rgb(233 233 236 / 0.06);
+  --fill-hover: rgb(233 233 236 / 0.1);
+    --fill: rgb(233 233 236 / 0.06);
+    --fill-hover: rgb(233 233 236 / 0.1);
+    --text: #e9e9ec;
+    --text-2: #9a9ca4;
+    --text-3: #83858d;
+    --accent: #ff7a45;
+    --accent-hover: #ff8f63;
+    --accent-soft: #2b1a12;
+    --accent-text: #ff9a70;
+    --on-accent: #160a04;
+    --pill: #e9e9ec;
+    --on-pill: #0f1012;
     --danger: #f1676b;
     --danger-soft: #3a1d20;
-    --success: #4cc38a;
-    --success-soft: #16301f;
+    --success: #3ecf8e;
+    --success-soft: #13291e;
     --warning: #f5a524;
     --warning-soft: #37290f;
-    --info: #5aa9f2;
-    --info-soft: #132a40;
-    --feature-design: #ec6cbc;
-    --feature-code: #4aa8f5;
-    --feature-docs: #4cc38a;
+    --info: #30a8ff;
+    --info-soft: #102838;
+    --feature-design: #ff6fa8;
+    --feature-code: #30a8ff;
+    --feature-docs: #3ecf8e;
     --feature-notes: #b28af0;
-    --canvas-bg: #121419;
-    --grid-dot: #343945;
-    --code-active-line: #1d2027;
+    --canvas-bg: #0f1012;
+    --grid-dot: #26292f;
+    --code-active-line: #16171b;
     --overlay: rgb(0 0 0 / 0.6);
-    --shadow-sm: 0 1px 2px rgb(0 0 0 / 0.4);
-    --shadow-md: 0 4px 14px rgb(0 0 0 / 0.45);
-    --shadow-lg: 0 18px 44px rgb(0 0 0 / 0.6);
+    --shadow-sm: none;
+    --shadow-md: 0 0 0 1px var(--ring), 0 10px 30px rgb(0 0 0 / 0.45);
+    --shadow-lg: 0 0 0 1px var(--ring), 0 24px 60px rgb(0 0 0 / 0.6);
     color-scheme: dark;
   }
 }
 
 :root[data-theme='dark'] {
-  --bg: #0e1014;
-  --surface: #16181d;
-  --surface-2: #1c1f25;
-  --surface-3: #252932;
-  --surface-hover: #20242b;
-  --border: #2a2e37;
-  --border-strong: #3a3f4a;
-  --text: #eceef2;
-  --text-2: #aab0bc;
-  --text-3: #8e94a0;
-  --accent: #6262e0;
-  --accent-hover: #7272ea;
-  --accent-soft: #24244a;
-  --accent-text: #a5a5ff;
-  --on-accent: #ffffff;
+  --bg: #0f1012;
+  --surface: #0f1012;
+  --surface-2: #17181c;
+  --surface-3: #202228;
+  --surface-hover: #18191d;
+  --surface-pop: #1b1d22;
+  --border: #1d1f24;
+  --border-strong: #2a2d34;
+  --ring: #2a2d34;
+  --text: #e9e9ec;
+  --text-2: #9a9ca4;
+  --text-3: #83858d;
+  --accent: #ff7a45;
+  --accent-hover: #ff8f63;
+  --accent-soft: #2b1a12;
+  --accent-text: #ff9a70;
+  --on-accent: #160a04;
+  --pill: #e9e9ec;
+  --on-pill: #0f1012;
   --danger: #f1676b;
   --danger-soft: #3a1d20;
-  --success: #4cc38a;
-  --success-soft: #16301f;
+  --success: #3ecf8e;
+  --success-soft: #13291e;
   --warning: #f5a524;
   --warning-soft: #37290f;
-  --info: #5aa9f2;
-  --info-soft: #132a40;
-  --feature-design: #ec6cbc;
-  --feature-code: #4aa8f5;
-  --feature-docs: #4cc38a;
+  --info: #30a8ff;
+  --info-soft: #102838;
+  --feature-design: #ff6fa8;
+  --feature-code: #30a8ff;
+  --feature-docs: #3ecf8e;
   --feature-notes: #b28af0;
-  --canvas-bg: #121419;
-  --grid-dot: #343945;
-  --code-active-line: #1d2027;
+  --canvas-bg: #0f1012;
+  --grid-dot: #26292f;
+  --code-active-line: #16171b;
   --overlay: rgb(0 0 0 / 0.6);
-  --shadow-sm: 0 1px 2px rgb(0 0 0 / 0.4);
-  --shadow-md: 0 4px 14px rgb(0 0 0 / 0.45);
-  --shadow-lg: 0 18px 44px rgb(0 0 0 / 0.6);
+  --shadow-sm: none;
+  --shadow-md: 0 0 0 1px var(--ring), 0 10px 30px rgb(0 0 0 / 0.45);
+  --shadow-lg: 0 0 0 1px var(--ring), 0 24px 60px rgb(0 0 0 / 0.6);
   color-scheme: dark;
 }
 
@@ -161,9 +185,9 @@ p {
 }
 
 h1 {
-  font-size: 24px;
-  font-weight: 700;
-  letter-spacing: -0.02em;
+  font-size: 26px;
+  font-weight: 750;
+  letter-spacing: -0.035em;
 }
 h2 {
   font-size: 17px;
@@ -214,7 +238,7 @@ a {
 
 * {
   scrollbar-width: thin;
-  scrollbar-color: var(--border-strong) transparent;
+  scrollbar-color: var(--surface-3) transparent;
 }
 
 /* ───────────────────────── 유틸리티 ───────────────────────── */

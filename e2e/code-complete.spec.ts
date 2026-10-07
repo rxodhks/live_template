@@ -22,6 +22,8 @@ async function newFile(page: Page, name: string) {
   await prompt.getByPlaceholder('예) app.ts, main.py, index.html').fill(name);
   await prompt.getByRole('button', { name: '만들기', exact: true }).click();
   await expect(page.locator('.file-tab.is-active')).toContainText(name);
+  // 언어별 자동 완성은 따로 내려받아 붙으므로, 붙은 뒤에 타이핑한다
+  await expect(page.locator('.code-module .cm-editor[data-complete-ready]').first()).toBeAttached();
   await editor(page).click();
   await page.keyboard.press('ControlOrMeta+a');
   await page.keyboard.press('Delete');
