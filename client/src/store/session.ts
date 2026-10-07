@@ -5,12 +5,13 @@ export type ThemePref = 'system' | 'light' | 'dark';
 
 const THEME_KEY = 'lt.theme';
 
+/** 고른 적이 없으면 다크 테마로 시작한다 (마당의 기본 화면). 시스템 설정을 따르려면 'system'을 고른다 */
 function readTheme(): ThemePref {
   try {
     const v = localStorage.getItem(THEME_KEY);
-    return v === 'light' || v === 'dark' ? v : 'system';
+    return v === 'light' || v === 'dark' || v === 'system' ? v : 'dark';
   } catch {
-    return 'system';
+    return 'dark';
   }
 }
 
@@ -60,8 +61,7 @@ export const useSession = create<SessionState>((set) => ({
   setDown: (code) => set({ user: null, account: null, status: 'down', offline: false, downCode: code }),
   setTheme: (theme) => {
     try {
-      if (theme === 'system') localStorage.removeItem(THEME_KEY);
-      else localStorage.setItem(THEME_KEY, theme);
+      localStorage.setItem(THEME_KEY, theme);
     } catch {
       /* 무시 */
     }
