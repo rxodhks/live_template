@@ -80,3 +80,25 @@ test('중요 공지는 홈 위쪽 배너로 뜨고, 닫으면 다시 안 뜬다'
   await expect(page.getByRole('button', { name: /새 소식/ })).toBeVisible();
   await expect(page.getByText('서버 점검 안내')).toHaveCount(0);
 });
+
+test('예약 업데이트 공지는 예정 · 완료를 보여 주고, 완료되면 새 소식으로 다시 알린다', async ({ page }) => {
+  const today = todayKST();
+  const planned = { id: 'e2e-update', title: '편집기 업데이트 안내', date: today, tag: '점검', pin: true, summary: '잠시 새로고침이 필요해요', html: '<p>본문</p>', deployAt: '2999-01-02 14:00' };
+  let list: object[] = [planned];
+  await page.route('**/notices.json', (r) => r.fulfill({ json: list }));
+  await page.goto('/');
+  await signUpViaEmail(page, uniqueEmail('deploy'), '예약확인');
+  await expectDashboard(page, '예약확인');
+
+  // 예정: 배너와 공지 페이지에 시간
+  await expect(page.getByRole('status').filter({ hasText: '편집기 업데이트 안내' })).toContainText('1월 2일 14:00 업데이트 예정');
+  await page.goto('/notices');
+  await expect(page.getByText('1월 2일 14:00 업데이트 예정')).toBeVisible();
+
+  // 완료: 같은 글이 '업데이트 완료'로 바뀌고, 읽었던 글이어도 새 소식 점이 다시 켜진다
+  list = [{ ...planned, deployedAt: `${today} 14:07`, until: today }];
+  await page.goto('/');
+  await expectDashboard(page, '예약확인');
+  await expect(page.getByRole('status').filter({ hasText: '편집기 업데이트 안내' })).toContainText('업데이트 완료');
+  await expect(page.getByRole('button', { name: '새 소식 (읽지 않은 공지 있음)' })).toBeVisible();
+});

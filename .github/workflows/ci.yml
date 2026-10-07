@@ -24,6 +24,9 @@ jobs:
       # 첫 화면에서 받는 JS·CSS(gzip)가 예산(scripts/bundle-budget.json)을 넘으면 실패 — 로딩이 느려지는 변경을 막는다
       - name: 번들 크기 예산
         run: node scripts/check-bundle.mjs
+      # 예약 업데이트(scripts/scheduled-deploy.mjs)의 시간 · 공지 처리
+      - name: 예약 업데이트 스크립트 테스트
+        run: node --test scripts/scheduled-deploy.test.mjs
 
   # 실제 브라우저(크로미움)로 핵심 흐름 확인: 가입·로그인 → 템플릿 만들기 → 초대 링크로 참여한 두 사람의 실시간 편집
   e2e:

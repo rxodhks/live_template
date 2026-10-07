@@ -17,4 +17,11 @@ export interface Notice {
   summary: string;
   /** 본문 (빌드 때 마크다운에서 바꾼 HTML) */
   html: string;
+  /** 예약 업데이트 시간 "YYYY-MM-DD HH:mm" (한국 시간). 있으면 '업데이트 예정' 공지 (scripts/scheduled-deploy.mjs) */
+  deployAt?: string;
+  /** 업데이트를 마친 시간. 있으면 '업데이트 완료' 공지 (예약 업데이트가 배포 뒤 적는다) */
+  deployedAt?: string;
 }
+
+/** 읽음 · 배너 닫기를 기억하는 열쇠. 업데이트를 마치면 바뀌어 완료 소식을 다시 알린다 */
+export const noticeKey = (n: Pick<Notice, 'id' | 'deployedAt'>) => (n.deployedAt ? `${n.id}#done` : n.id);

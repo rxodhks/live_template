@@ -102,3 +102,7 @@
     gap: 4px;
   }
 }
+.notice-tag.is-done {
+  background: var(--success-soft);
+  color: var(--success);
+}
