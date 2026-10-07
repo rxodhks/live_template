@@ -3,8 +3,8 @@
   <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <meta name="theme-color" media="(prefers-color-scheme: light)" content="#ffffff" />
-    <meta name="theme-color" media="(prefers-color-scheme: dark)" content="#16181d" />
+    <meta name="theme-color" media="(prefers-color-scheme: light)" content="#f7f6f3" />
+    <meta name="theme-color" media="(prefers-color-scheme: dark)" content="#0f1012" />
     <meta name="description" content="디자인 · 코딩 · 문서를 한 마당에서 함께 만드는 실시간 협업 템플릿. 내 방에서 시작해, 마당에서 함께." />
     <title>Madang · 함께 만드는 작업 마당</title>
     <link rel="icon" href="/favicon.svg" type="image/svg+xml" />
@@ -44,9 +44,12 @@
     <script>
       // 첫 페인트 전에 테마를 적용해 깜빡임 방지
       try {
+        // 고른 적이 없으면 다크 (store/session.ts와 같은 규칙)
         var t = localStorage.getItem('lt.theme');
-        if (t === 'light' || t === 'dark') document.documentElement.dataset.theme = t;
-      } catch (e) {}
+        if (t !== 'system') document.documentElement.dataset.theme = t === 'light' ? 'light' : 'dark';
+      } catch (e) {
+        document.documentElement.dataset.theme = 'dark';
+      }
     </script>
     <script>
       // 앱 파일(JS · CSS)을 받지 못하면 빈 화면 대신 아래 #app-outage 안내를 보여 준다
@@ -87,23 +90,23 @@
     <div id="root"></div>
     <div id="app-outage" hidden role="alert">
       <style>
-        #app-outage { position: fixed; inset: 0; display: flex; align-items: center; justify-content: center; padding: 24px 16px; background: #f5f6f8; color: #16181d; font: 15px/1.6 system-ui, -apple-system, 'Apple SD Gothic Neo', 'Malgun Gothic', sans-serif; text-align: center; }
+        #app-outage { position: fixed; inset: 0; display: flex; align-items: center; justify-content: center; padding: 24px 16px; background: #f7f6f3; color: #17181b; font: 15px/1.6 system-ui, -apple-system, 'Apple SD Gothic Neo', 'Malgun Gothic', sans-serif; text-align: center; }
         #app-outage[hidden] { display: none; }
-        #app-outage .box { max-width: 440px; padding: 36px 28px 28px; background: #fff; border: 1px solid #e4e6eb; border-radius: 14px; }
+        #app-outage .box { max-width: 440px; padding: 36px 28px 28px; background: transparent; border: 0; border-radius: 24px; }
         #app-outage h1 { margin: 16px 0 8px; font-size: 19px; }
-        #app-outage p { margin: 0 0 10px; color: #4a5060; }
-        #app-outage button { margin: 8px 0 14px; padding: 9px 18px; border: 0; border-radius: 8px; background: #5b5bd6; color: #fff; font: inherit; font-weight: 600; cursor: pointer; }
-        #app-outage a { color: #4545c0; font-weight: 600; }
+        #app-outage p { margin: 0 0 10px; color: #55575e; }
+        #app-outage button { margin: 8px 0 14px; padding: 9px 18px; border: 0; border-radius: 999px; background: #17181b; color: #f7f6f3; font: inherit; font-weight: 600; cursor: pointer; }
+        #app-outage a { color: #c2410c; font-weight: 600; }
         @media (prefers-color-scheme: dark) {
-          html:not([data-theme='light']) #app-outage { background: #0e1014; color: #eceef2; }
-          html:not([data-theme='light']) #app-outage .box { background: #16181d; border-color: #2a2e37; }
-          html:not([data-theme='light']) #app-outage p { color: #aab0bc; }
-          html:not([data-theme='light']) #app-outage a { color: #a5a5ff; }
+          html:not([data-theme='light']) #app-outage { background: #0f1012; color: #e9e9ec; }
+          html:not([data-theme='light']) #app-outage button { background: #e9e9ec; color: #0f1012; }
+          html:not([data-theme='light']) #app-outage p { color: #9a9ca4; }
+          html:not([data-theme='light']) #app-outage a { color: #ff9a70; }
         }
-        html[data-theme='dark'] #app-outage { background: #0e1014; color: #eceef2; }
-        html[data-theme='dark'] #app-outage .box { background: #16181d; border-color: #2a2e37; }
-        html[data-theme='dark'] #app-outage p { color: #aab0bc; }
-        html[data-theme='dark'] #app-outage a { color: #a5a5ff; }
+        html[data-theme='dark'] #app-outage { background: #0f1012; color: #e9e9ec; }
+        html[data-theme='dark'] #app-outage button { background: #e9e9ec; color: #0f1012; }
+        html[data-theme='dark'] #app-outage p { color: #9a9ca4; }
+        html[data-theme='dark'] #app-outage a { color: #ff9a70; }
       </style>
       <div class="box">
         <img src="/favicon.svg" width="40" height="40" alt="" />

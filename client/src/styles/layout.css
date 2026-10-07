@@ -20,7 +20,6 @@
   width: var(--panel-w);
   flex: none;
   background: var(--surface);
-  border-right: 1px solid var(--border);
   min-height: 0;
   display: flex;
   flex-direction: column;
@@ -40,7 +39,6 @@
   width: var(--drawer-w);
   flex: none;
   background: var(--surface);
-  border-left: 1px solid var(--border);
   min-height: 0;
   display: flex;
   flex-direction: column;
@@ -88,9 +86,8 @@ body.is-resizing {
   grid-template-columns: 1fr minmax(180px, 320px) 1fr;
   align-items: center;
   column-gap: 20px;
-  padding: 0 12px 0 14px;
-  background: var(--surface);
-  border-bottom: 1px solid var(--border);
+  padding: 0 14px 0 20px;
+  background: var(--bg);
   min-width: 0;
   position: relative;
   z-index: 20;
@@ -127,8 +124,8 @@ body.is-resizing {
   align-items: center;
   gap: 8px;
   font-weight: 750;
-  font-size: 15px;
-  letter-spacing: -0.02em;
+  font-size: 16px;
+  letter-spacing: -0.03em;
   padding-right: 4px;
   flex: none;
 }
@@ -200,18 +197,17 @@ body.is-resizing {
   align-items: center;
   gap: 8px;
   height: 34px;
-  padding: 0 8px 0 12px;
-  border: 1px solid var(--border);
-  background: var(--surface-2);
-  border-radius: 9px;
+  padding: 0 7px 0 14px;
+  background: var(--fill);
+  border-radius: 999px;
   color: var(--text-3);
   width: 100%;
   min-width: 0;
-  transition: border-color 0.15s, background 0.15s;
+  transition: background 0.15s, color 0.15s;
 }
 .search-trigger:hover {
-  border-color: var(--border-strong);
-  background: var(--surface);
+  background: var(--fill-hover);
+  color: var(--text-2);
 }
 .search-trigger > svg,
 .search-trigger .kbd {
@@ -254,7 +250,7 @@ body.is-resizing {
   display: grid;
   place-items: center;
   pointer-events: none;
-  border: 2px solid var(--surface);
+  border: 2px solid var(--bg);
   box-sizing: content-box;
 }
 
@@ -273,8 +269,7 @@ body.is-resizing {
 .rail {
   width: var(--rail-w);
   flex: none;
-  background: var(--surface);
-  border-right: 1px solid var(--border);
+  background: var(--bg);
   display: flex;
   flex-direction: column;
   align-items: center;
@@ -292,9 +287,8 @@ body.is-resizing {
   width: 100%;
 }
 .rail-modules {
-  padding-top: 8px;
-  margin-top: 4px;
-  border-top: 1px solid var(--border);
+  padding-top: 10px;
+  margin-top: 6px;
 }
 .rail-bottom {
   margin-top: auto;
@@ -322,37 +316,35 @@ body.is-resizing {
   transition: background 0.15s, color 0.15s;
 }
 .rail-item:hover {
-  background: var(--surface-hover);
   color: var(--text);
 }
+/* 현재 화면: 상자 대신 글자를 밝히고 왼쪽에 주황 점 */
 .rail-item.is-active {
-  background: var(--accent-soft);
-  color: var(--accent-text);
+  color: var(--text);
+}
+.rail-item.is-active .rail-label {
+  font-weight: 700;
 }
 .rail-item.is-active::before {
   content: '';
   position: absolute;
-  left: -6px;
-  top: 10px;
-  bottom: 10px;
-  width: 3px;
-  border-radius: 0 3px 3px 0;
+  left: 0;
+  top: 16px;
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
   background: var(--accent);
+  box-shadow: 0 0 0 4px color-mix(in srgb, var(--accent) 18%, transparent);
 }
-.rail-feature.rail-design.is-active {
+/* 기능 화면은 아이콘이 그 기능 색을 띤다 (디자인 분홍 · 코딩 파랑 · 문서 초록) */
+.rail-feature.rail-design.is-active svg {
   color: var(--feature-design);
-  background: color-mix(in srgb, var(--feature-design) 12%, transparent);
 }
-.rail-feature.rail-code.is-active {
+.rail-feature.rail-code.is-active svg {
   color: var(--feature-code);
-  background: color-mix(in srgb, var(--feature-code) 12%, transparent);
 }
-.rail-feature.rail-docs.is-active {
+.rail-feature.rail-docs.is-active svg {
   color: var(--feature-docs);
-  background: color-mix(in srgb, var(--feature-docs) 12%, transparent);
-}
-.rail-feature.is-active::before {
-  background: currentColor;
 }
 
 .rail-label {
@@ -372,7 +364,7 @@ body.is-resizing {
   width: 8px;
   height: 8px;
   border-radius: 50%;
-  border: 1.5px solid var(--surface);
+  border: 1.5px solid var(--bg);
   margin-left: -3px;
   box-sizing: content-box;
 }
@@ -504,8 +496,7 @@ body.is-resizing {
   padding: 10px 12px 10px 14px;
   background: var(--warning-soft);
   color: var(--text);
-  border: 1px solid var(--warning);
-  border-radius: 12px;
+  border-radius: 24px;
   box-shadow: var(--shadow-lg, 0 8px 24px rgba(0, 0, 0, 0.12));
   font-size: 13px;
   line-height: 1.5;
@@ -528,12 +519,11 @@ body.is-resizing {
   align-items: center;
   gap: 10px;
   width: min(760px, calc(100% - 32px));
-  padding: 10px 12px 10px 14px;
-  background: var(--accent-soft);
+  padding: 10px 12px 10px 18px;
+  background: var(--surface-pop);
   color: var(--text);
-  border: 1px solid var(--accent);
-  border-radius: 12px;
-  box-shadow: var(--shadow-lg, 0 8px 24px rgba(0, 0, 0, 0.12));
+  border-radius: 24px;
+  box-shadow: var(--shadow-lg);
   font-size: 13px;
   line-height: 1.5;
 }
@@ -543,4 +533,7 @@ body.is-resizing {
 .demo-banner > svg,
 .demo-banner .btn {
   flex-shrink: 0;
+}
+.demo-banner > svg {
+  color: var(--accent);
 }
