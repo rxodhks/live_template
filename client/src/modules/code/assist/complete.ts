@@ -4,7 +4,7 @@
  *  - HTML · CSS · SCSS · JSX · TSX: Emmet 약어 (! → HTML 기본 구조, ul>li*3, div.box, m10 → margin: 10px; …)
  *  - 파이썬: 키워드 · 내장 함수 · 이 파일의 이름
  *  - 그 밖의 언어: 키워드 · 이 파일에 나온 단어
- *  - 모든 언어: 자주 쓰는 코드 조각 (for, if, 함수 …) — Tab 으로 넣고, Tab 으로 다음 칸으로
+ *  - 모든 언어: 자주 쓰는 코드 조각 (for, if, 함수 …) — Tab 으로 넣고, Tab 으로 다음 칸으로. 목록에는 이름 · 아이콘만
  */
 import {
   autocompletion,
@@ -26,8 +26,9 @@ import type { CheckRequest } from './protocol';
 export type FilesFor = (state: EditorState) => CheckRequest;
 
 // ── 코드 조각 ──
-type Snip = [label: string, template: string, detail: string];
-const snip = ([label, template, detail]: Snip): Completion => snippetCompletion(template, { label, detail, type: 'snippet', boost: -1 });
+// 세 번째 값은 코드를 읽는 사람을 위한 메모 — 추천 목록에는 IDE 처럼 이름과 아이콘만 보인다
+type Snip = [label: string, template: string, note: string];
+const snip = ([label, template]: Snip): Completion => snippetCompletion(template, { label, type: 'snippet', boost: -1 });
 
 const JS: Snip[] = [
   ['log', 'console.log(${})', '콘솔에 출력'],
@@ -266,10 +267,10 @@ function tsSource(filesFor: FilesFor): CompletionSource {
   };
 }
 
-/** Emmet 추천: 이름을 친 약어 그대로 보이게 하고, ‘!’ 는 아래 한국어 기본 구조 추천에 맡긴다 */
+/** Emmet 추천: 친 약어 그대로 보이게 하고, ‘!’ 는 HTML 기본 구조 추천(htmlBang)에 맡긴다 */
 function emmetSource(src: CompletionSource): CompletionSource {
   const relabel = (state: EditorState, from: number, to: number, options: readonly Completion[]) =>
-    options.map((o) => ({ ...o, label: state.sliceDoc(from, to) || o.label, detail: 'Emmet 펼치기' }));
+    options.map((o) => ({ ...o, label: state.sliceDoc(from, to) || o.label }));
   return async (ctx) => {
     if (ctx.matchBefore(/!$/)) return null;
     const r = await src(ctx);
@@ -303,7 +304,7 @@ const htmlBang: CompletionSource = (ctx) => {
     options: [
       snippetCompletion(
         '<!DOCTYPE html>\n<html lang="ko">\n<head>\n\t<meta charset="UTF-8">\n\t<meta name="viewport" content="width=device-width, initial-scale=1.0">\n\t<title>${Document}</title>\n</head>\n<body>\n\t${}\n</body>\n</html>',
-        { label: '!', detail: 'HTML 기본 구조', type: 'snippet', boost: 99 },
+        { label: '!', type: 'snippet', boost: 99 },
       ),
     ],
   };

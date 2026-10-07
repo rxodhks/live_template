@@ -44,7 +44,6 @@ test('언어별 자동 완성 · Emmet', async ({ page }) => {
   await newFile(page, 'index.html');
   await page.keyboard.type('!');
   await expect(options(page).first()).toContainText('!');
-  await expect(page.locator('.cm-tooltip-autocomplete')).toContainText('HTML 기본 구조');
   await page.keyboard.press('Tab');
   await expect(editor(page)).toContainText('<!DOCTYPE html>');
   await expect(editor(page)).toContainText('<meta name="viewport"');
@@ -75,7 +74,7 @@ test('언어별 자동 완성 · Emmet', async ({ page }) => {
   await page.keyboard.press('End');
   await page.keyboard.press('Enter');
   await page.keyboard.type('log');
-  await expect(page.locator('.cm-tooltip-autocomplete')).toContainText('콘솔에 출력');
+  await expect(options(page).first()).toHaveText(/^log/);
   await page.keyboard.press('Tab');
   await expect(editor(page)).toContainText('console.log()');
 
