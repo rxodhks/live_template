@@ -20,6 +20,7 @@ import { GlobalTimeline } from './pages/GlobalTimeline';
 // 처음 화면에 필요 없는 페이지는 들어갈 때 불러온다
 const PrivacyPage = lazy(() => import('./pages/Legal').then((m) => ({ default: m.PrivacyPage })));
 const TermsPage = lazy(() => import('./pages/Legal').then((m) => ({ default: m.TermsPage })));
+const NoticesPage = lazy(() => import('./pages/Notices').then((m) => ({ default: m.NoticesPage })));
 const JoinPage = lazy(() => import('./pages/JoinPage').then((m) => ({ default: m.JoinPage })));
 // 아래 화면은 Suspense 없이 불러온다 (lib/lazy.ts) — Suspense 대체 화면이 한 번 나오면 그 뒤 300ms 동안 다른 화면 전환도 늦어진다
 const Workspace = lazyWithPreload(() => import('./workspace/Workspace').then((m) => m.Workspace), BootScreen);
@@ -97,6 +98,8 @@ export function App() {
           {/* 약관 · 개인정보처리방침은 누구나 볼 수 있다 */}
           <Route path="/privacy" element={<PrivacyPage />} />
           <Route path="/terms" element={<TermsPage />} />
+          {/* 공지사항도 누구나 볼 수 있다 */}
+          <Route path="/notices/:id?" element={<NoticesPage />} />
           {/* 초대장은 로그인하지 않아도 볼 수 있다 (참여하려면 로그인) */}
           <Route path="/join/:code" element={<JoinPage />} />
           <Route path="*" element={status === 'authed' ? <AuthedApp /> : <GuestApp />} />

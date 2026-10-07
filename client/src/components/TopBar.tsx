@@ -31,6 +31,7 @@ import { Avatar, IconButton, Kbd, Menu } from './ui';
 import { SaveIndicator } from './SaveIndicator';
 import { BRAND, BrandMark } from './Brand';
 import { PresenceBar } from './PresenceBar';
+import { NoticeBell } from './LazyNotices';
 import { modKey } from '../lib/util';
 import { logout } from '../lib/auth';
 import { MODULE_NAMES } from '../workspace/viewLabel';
@@ -147,6 +148,7 @@ export function TopBar() {
             {ws.unread > 0 && <span className="badge-count">{ws.unread > 99 ? '99+' : ws.unread}</span>}
           </span>
         )}
+        {user && !guest && <NoticeBell />}
         <IconButton className="theme-toggle" label={`${THEME_LABEL[theme]} (클릭하여 전환)`} onClick={() => setTheme(THEME_NEXT[theme])}>
           <ThemeIcon size={17} />
         </IconButton>
