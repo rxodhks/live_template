@@ -1,5 +1,5 @@
 import { useEffect, useSyncExternalStore } from 'react';
-import type { Notice } from '@shared/notices';
+import { noticeKey, type Notice } from '@shared/notices';
 
 /*
  * 공지사항 — 빌드 때 만든 /notices.json 을 한 번 받아 쓴다 (서버 API 없음)
@@ -55,7 +55,7 @@ export function loadNotices(): Promise<void> {
       // 이 기기에서 처음이면 오래된 글은 읽은 것으로
       if (readSet(READ_KEY) === null) {
         const cut = new Date(Date.now() + 9 * 3600_000 - FRESH_DAYS * 86400_000).toISOString().slice(0, 10);
-        const read = new Set(list.filter((n) => n.date < cut).map((n) => n.id));
+        const read = new Set(list.filter((n) => n.date < cut).map(noticeKey));
         writeSet(READ_KEY, read);
         set({ list, read });
       } else set({ list });
@@ -74,6 +74,7 @@ export function useNotices() {
   return s;
 }
 
+/** ids: noticeKey() 값 */
 export function markRead(ids: string[]) {
   if (ids.every((id) => state.read.has(id))) return;
   const read = new Set(state.read);
@@ -82,6 +83,7 @@ export function markRead(ids: string[]) {
   set({ read });
 }
 
+/** id: noticeKey() 값 */
 export function hideBanner(id: string) {
   const hidden = new Set(state.hidden);
   hidden.add(id);
@@ -92,5 +94,14 @@ export function hideBanner(id: string) {
 /** 홈에 띄울 배너 (가장 최근 하나) */
 export function bannerOf(s: State): Notice | undefined {
   const today = todayKST();
-  return s.list?.find((n) => n.pin && !s.hidden.has(n.id) && (!n.until || today <= n.until));
+  return s.list?.find((n) => n.pin && !s.hidden.has(noticeKey(n)) && (!n.until || today <= n.until));
+}
+
+/** 예약 업데이트 상태 한 줄: "10월 12일 14:00 업데이트 예정" · "업데이트 완료" */
+export function deployLabel(n: Notice): string | null {
+  if (n.deployedAt) return '업데이트 완료';
+  if (!n.deployAt) return null;
+  const [d, t] = n.deployAt.split(' ');
+  const [, m, day] = d.split('-').map(Number);
+  return `${m}월 ${day}일 ${t} 업데이트 예정`;
 }

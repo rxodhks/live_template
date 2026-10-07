@@ -17,6 +17,7 @@ import { NOTICE_TAGS } from '../../shared/notices';
 const DIR = path.resolve(__dirname, '..', '..', 'notices');
 const FILE = 'notices.json';
 const DATE = /^\d{4}-\d{2}-\d{2}$/;
+const STAMP = /^\d{4}-\d{2}-\d{2} \d{2}:\d{2}$/;
 
 function readNotice(file: string): Notice {
   const id = file.replace(/\.md$/, '');
@@ -39,10 +40,27 @@ function readNotice(file: string): Notice {
   if (until && !DATE.test(until)) fail('until은 2026-10-07 형식이어야 합니다');
   if (!NOTICE_TAGS.includes(tag)) fail(`tag는 ${NOTICE_TAGS.join(' · ')} 중 하나여야 합니다`);
   if (!body) fail('본문이 비어 있습니다');
+  const deployAt = meta.deploy_at == null ? undefined : String(meta.deploy_at);
+  const deployedAt = meta.deployed_at == null ? undefined : String(meta.deployed_at);
+  if (deployAt && !STAMP.test(deployAt)) fail('deploy_at은 2026-10-12 14:00 형식(한국 시간)이어야 합니다');
+  if (deployedAt && !STAMP.test(deployedAt)) fail('deployed_at은 2026-10-12 14:00 형식이어야 합니다');
   // 요약: 따로 적지 않으면 본문 첫 문단 (마크다운 기호는 뺀다)
   const firstPara = body.split(/\n\s*\n/)[0].replace(/[*_`#>[\]]|\(https?:[^)]*\)/g, '').replace(/\s+/g, ' ').trim();
   const summary = String(meta.summary ?? firstPara).slice(0, 120);
-  return { id, title, date, tag, pin: meta.pin === true, until, summary, html: marked.parse(body, { async: false }) };
+  return {
+    id,
+    title,
+    // 업데이트를 마치면 그날 올라온 글로 본다 (목록 맨 위 · 새 소식)
+    date: deployedAt ? deployedAt.slice(0, 10) : date,
+    tag,
+    // 예약 업데이트 공지는 따로 적지 않으면 배너로 띄우고, 마친 날까지 둔다
+    pin: meta.pin === undefined ? !!deployAt : meta.pin === true,
+    until: until ?? (deployedAt ? deployedAt.slice(0, 10) : undefined),
+    summary,
+    html: marked.parse(body, { async: false }),
+    ...(deployAt ? { deployAt } : {}),
+    ...(deployedAt ? { deployedAt } : {}),
+  };
 }
 
 export function readNotices(): Notice[] {

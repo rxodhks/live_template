@@ -5,7 +5,8 @@ import { AppShell } from '../components/AppShell';
 import { BRAND, BrandMark } from '../components/Brand';
 import { isUrgent } from '../components/Notices';
 import { LegalLinks } from './Legal';
-import { markRead, useNotices } from '../lib/notices';
+import { deployLabel, markRead, useNotices } from '../lib/notices';
+import { noticeKey } from '@shared/notices';
 import { useSession } from '../store/session';
 import { cx } from '../lib/util';
 import { Spinner } from '../components/ui';
@@ -53,7 +54,7 @@ export function NoticesPage() {
     return () => void (document.title = prev);
   }, [open]);
   useEffect(() => {
-    if (s.list?.length) markRead(s.list.map((n) => n.id));
+    if (s.list?.length) markRead(s.list.map(noticeKey));
   }, [s.list]);
   useEffect(() => {
     if (open) openRef.current?.scrollIntoView({ block: 'start' });
@@ -78,6 +79,7 @@ export function NoticesPage() {
                   <Link className="notice-row-title" to={isOpen ? '/notices' : `/notices/${n.id}`} aria-expanded={isOpen}>
                     {n.title}
                     <span className={cx('notice-tag', isUrgent(n) && 'is-urgent')}>{n.tag}</span>
+                    {deployLabel(n) && <span className={cx('notice-tag', n.deployedAt ? 'is-done' : 'is-urgent')}>{deployLabel(n)}</span>}
                   </Link>
                   {isOpen ? (
                     <article className="notice-body" dangerouslySetInnerHTML={{ __html: n.html }} />
