@@ -4,7 +4,7 @@
  *  - 파이썬 검사 · 정렬: Ruff (워커, 웹어셈블리)
  *  - 그 밖의 정렬: Prettier (JS · TS · CSS · SCSS · HTML · JSON · YAML · Markdown)
  */
-import type { AssistDiagnostic, CheckRequest } from './protocol';
+import type { AssistDiagnostic, CheckRequest, CompleteRequest, CompleteResult, DetailRequest } from './protocol';
 
 export type { AssistDiagnostic } from './protocol';
 
@@ -19,7 +19,14 @@ export const canFormat = (lang: string) => PRETTIER_LANGS.has(lang) || lang === 
 /** 검사할 때 함께 넘길 파일 (import 를 따라가는 언어끼리) */
 export const checkGroup = (lang: string) => (TS_LANGS.has(lang) ? TS_LANGS : new Set([lang]));
 
-type Reply = { id: number; diagnostics?: AssistDiagnostic[]; formatted?: string; error?: string };
+type Reply = {
+  id: number;
+  diagnostics?: AssistDiagnostic[];
+  formatted?: string;
+  completions?: CompleteResult;
+  detail?: { detail: string; doc: string } | null;
+  error?: string;
+};
 
 class WorkerClient {
   private worker: Worker | null = null;
@@ -63,6 +70,15 @@ export async function checkCode(lang: string, req: CheckRequest): Promise<Assist
   if (TS_LANGS.has(lang)) return (await tsWorker.call({ req })).diagnostics ?? [];
   if (lang === 'python') return (await pyWorker.call({ req })).diagnostics ?? [];
   return [];
+}
+
+/** 자동 완성 (JS · TS · JSX · TSX) — TypeScript 언어 서비스 */
+export const canComplete = (lang: string) => TS_LANGS.has(lang);
+export async function completeCode(req: CompleteRequest): Promise<CompleteResult> {
+  return (await tsWorker.call({ complete: req })).completions ?? { from: req.pos, items: [] };
+}
+export async function completionDetail(req: DetailRequest) {
+  return (await tsWorker.call({ detail: req })).detail ?? null;
 }
 
 /** 자동 정렬 — 정렬된 코드를 돌려준다 (문법 오류가 있으면 예외) */

@@ -5,7 +5,7 @@
  */
 import ts from 'typescript';
 import ko from 'typescript/lib/ko/diagnosticMessages.generated.json';
-import type { AssistDiagnostic, AssistFix, CheckRequest } from './protocol';
+import type { AssistCompletion, AssistDiagnostic, AssistFix, CheckRequest, CompleteRequest, CompleteResult, DetailRequest } from './protocol';
 
 // 표준 라이브러리 타입 (ES2022 + 브라우저 DOM)
 const LIBS = import.meta.glob('../../../../../node_modules/typescript/lib/lib.{es5,es2015*,es2016*,es2017*,es2018*,es2019*,es2020*,es2021*,es2022*,dom,dom.iterable,dom.asynciterable,decorators,decorators.legacy}.d.ts', {
@@ -147,10 +147,52 @@ function fixesFor(key: string, d: ts.Diagnostic): AssistFix[] | undefined {
   return fixes.length ? fixes : undefined;
 }
 
-self.onmessage = (e: MessageEvent<{ id: number; req: CheckRequest }>) => {
-  const { id, req } = e.data;
+/** 자동 완성: 커서 자리에서 쓸 수 있는 이름 (변수 · 함수 · 객체의 속성 · 메서드 …) */
+function complete({ name, files: all, pos }: CompleteRequest): CompleteResult {
+  sync(all);
+  const key = '/' + name;
+  const text = files.get(key)?.text ?? '';
+  let from = pos;
+  while (from > 0 && /[\w$]/.test(text[from - 1])) from--;
+  const info = service.getCompletionsAtPosition(key, pos, {
+    includeCompletionsWithInsertText: true,
+    includeAutomaticOptionalChainCompletions: true,
+    includeCompletionsForModuleExports: false,
+  });
+  if (!info) return { from, items: [] };
+  const items: AssistCompletion[] = [];
+  for (const e of info.entries) {
+    // JS에서 이 파일의 아무 단어나 넣어 주는 추천(warning)은 빼고 진짜 이름만
+    if (e.kind === ts.ScriptElementKind.warning) continue;
+    items.push({
+      label: e.name,
+      kind: e.kind,
+      sort: e.sortText,
+      insert: e.insertText && e.insertText !== e.name ? e.insertText : undefined,
+      from: e.replacementSpan?.start,
+      to: e.replacementSpan ? e.replacementSpan.start + e.replacementSpan.length : undefined,
+      source: e.source,
+      data: e.data,
+    });
+    if (items.length >= 400) break;
+  }
+  return { from, items };
+}
+
+function detail({ name, files: all, pos, entry, source, data }: DetailRequest): { detail: string; doc: string } | null {
+  sync(all);
+  const d = service.getCompletionEntryDetails('/' + name, pos, entry, FORMAT, source, PREFS, data as ts.CompletionEntryData | undefined);
+  if (!d) return null;
+  return { detail: ts.displayPartsToString(d.displayParts), doc: ts.displayPartsToString(d.documentation) };
+}
+
+type Msg = { id: number; req?: CheckRequest; complete?: CompleteRequest; detail?: DetailRequest };
+self.onmessage = (e: MessageEvent<Msg>) => {
+  const { id, req, complete: c, detail: dt } = e.data;
   try {
-    self.postMessage({ id, diagnostics: check(req) });
+    if (c) self.postMessage({ id, completions: complete(c) });
+    else if (dt) self.postMessage({ id, detail: detail(dt) });
+    else if (req) self.postMessage({ id, diagnostics: check(req) });
   } catch (err) {
     self.postMessage({ id, error: err instanceof Error ? err.message : String(err) });
   }
