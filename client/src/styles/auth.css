@@ -42,17 +42,15 @@
   align-items: center;
   justify-content: center;
   gap: 10px;
-  border-radius: 10px;
-  border: 1px solid var(--border-strong);
-  background: var(--surface);
+  border-radius: 999px;
+  background: var(--fill);
   color: var(--text);
   font-weight: 600;
   font-size: 14.5px;
-  transition: background 0.15s, border-color 0.15s, box-shadow 0.15s;
+  transition: background 0.15s;
 }
 .auth-provider:hover:not(:disabled) {
-  background: var(--surface-hover);
-  box-shadow: var(--shadow-sm);
+  background: var(--fill-hover);
 }
 .auth-provider:disabled {
   opacity: 0.6;
