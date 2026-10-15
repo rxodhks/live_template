@@ -171,8 +171,9 @@ function CodeWorkspace({ file }: { file: YItem }) {
     const onMsg = (e: MessageEvent) => {
       // 이 미리보기 창이 보낸 것만 (문서의 임베드 같은 다른 창이 가짜 콘솔 줄을 넣지 못하게)
       if (e.source !== frameRef.current?.contentWindow) return;
-      const d = e.data as { __ltPreview?: boolean; level?: OutputLine['level']; text?: string };
-      if (d?.__ltPreview) setOutput((o) => [...o.slice(-300), { ...line(d.level ?? 'log', t('[미리보기] {x}', { x: d.text ?? '' })), fromPreview: true }]);
+      const d = e.data as { __ltPreview?: boolean; level?: OutputLine['level']; text?: string; file?: unknown };
+      const from = typeof d?.file === 'string' ? d.file : undefined;
+      if (d?.__ltPreview) setOutput((o) => [...o.slice(-300), { ...line(d.level ?? 'log', t('[미리보기] {x}', { x: d.text ?? '' })), fromPreview: true, file: from }]);
     };
     window.addEventListener('message', onMsg);
     return () => window.removeEventListener('message', onMsg);
@@ -418,8 +419,11 @@ function CodeWorkspace({ file }: { file: YItem }) {
   };
 
   const errorCount = output.filter((o) => o.level === 'error').length;
-  const previewLogs = output.filter((o) => o.fromPreview).length;
-  const previewErrors = output.filter((o) => o.fromPreview && o.level === 'error').length;
+  // 미리보기 메시지는 이 파일에서 난 것만 보여 준다 (main.html을 보는데 main.js 오류가 섞여 헷갈리지 않게)
+  const shown = output.filter((o) => !o.fromPreview || !o.file || o.file === name);
+  const otherFiles = [...new Set(output.filter((o) => !shown.includes(o)).map((o) => o.file as string))];
+  const previewLogs = shown.filter((o) => o.fromPreview).length;
+  const previewErrors = shown.filter((o) => o.fromPreview && o.level === 'error').length;
   const previewTitle = previewKind === 'react' ? t('React 미리보기') : previewKind === 'markdown' ? t('Markdown 미리보기') : t('HTML 미리보기');
   // CSS · JS 파일을 보고 있을 때는 어떤 HTML 파일을 보여 주는지 함께 적는다
   const previewHtmlName = previewKind === 'html' && lang.id !== 'html' ? htmlEntryName(ws.doc) : null;
@@ -618,10 +622,10 @@ function CodeWorkspace({ file }: { file: YItem }) {
                       <Spinner size={12} /> {status}
                     </div>
                   )}
-                  {output.length === 0 && !status && (
+                  {shown.length === 0 && !status && (
                     <div className="muted">{info.mode === 'preview' ? t('미리보기의 console.log · 오류가 여기에 표시됩니다.') : t('실행 결과가 여기에 표시됩니다. (Ctrl/⌘ + Enter)')}</div>
                   )}
-                  {output.map((o) =>
+                  {shown.map((o) =>
                     o.table ? (
                       <OutputTable key={o.id} note={o.text} table={o.table} />
                     ) : (
@@ -629,6 +633,9 @@ function CodeWorkspace({ file }: { file: YItem }) {
                         {o.fromPreview ? o.text : linkLocations(o.text, fileNames, name, goToLocation)}
                       </div>
                     ),
+                  )}
+                  {otherFiles.length > 0 && (
+                    <div className="out-line out-system muted">{t('다른 파일({x})의 미리보기 메시지는 그 파일을 열면 보입니다.', { x: otherFiles.join(', ') })}</div>
                   )}
                   {formatted && (
                     <div className="out-formatted">

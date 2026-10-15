@@ -1,6 +1,6 @@
 import type * as Y from 'yjs';
 import { getFiles, getLanguage, type YItem } from '@shared/schema';
-import { buildPreview, line, type OutputLine } from './runner';
+import { PREVIEW_CONSOLE, buildPreview, line, type OutputLine } from './runner';
 import { runInSandbox, type TableOutput } from './sandbox';
 import { RUNTIMES, isRuntimeCached, loadRuntimeText, runtimeSizeMB, type RuntimeId } from './runtimes';
 import { reloadIfNewVersion } from '../../lib/staleBuild';
@@ -164,7 +164,6 @@ export async function executeFile(doc: Y.Doc, file: YItem, stdin: string, cb: Ex
 
 /* ───────────── JSX · TSX 미리보기 (React 컴포넌트) ───────────── */
 
-const PREVIEW_CONSOLE = `<script>(function(){var p=function(l,a){try{parent.postMessage({__ltPreview:true,level:l,text:Array.prototype.map.call(a,function(x){try{return typeof x==='string'?x:JSON.stringify(x)}catch(e){return String(x)}}).join(' ')},'*')}catch(e){}};['log','info','warn','error'].forEach(function(l){var o=console[l];console[l]=function(){p(l,arguments);o&&o.apply(console,arguments)}});window.addEventListener('error',function(e){p('error',[e.message])});window.addEventListener('unhandledrejection',function(e){p('error',[String(e.reason&&e.reason.message||e.reason)])});})();<\/script>`;
 
 /**
  * React 컴포넌트 미리보기 HTML
