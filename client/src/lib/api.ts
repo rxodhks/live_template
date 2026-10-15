@@ -5,6 +5,7 @@
 
 import { CLIENT_VERSION, CLIENT_VERSION_HEADER, CLIENT_VERSION_PARAM } from '@shared/protocol';
 import { isChunkError, reloadIfNewVersion } from './staleBuild';
+import { lang, t, translateServer } from '../i18n';
 
 export const API_BASE = (import.meta.env.VITE_API_BASE ?? '').replace(/\/$/, '');
 
@@ -58,16 +59,16 @@ export async function api<T>(method: 'GET' | 'POST' | 'PATCH' | 'DELETE', path: 
       (await fetch(apiUrl(path), {
         method,
         credentials: 'same-origin',
-        headers: { [CLIENT_VERSION_HEADER]: String(CLIENT_VERSION), ...(body !== undefined ? { 'content-type': 'application/json' } : {}) },
+        headers: { [CLIENT_VERSION_HEADER]: String(CLIENT_VERSION), 'x-lang': lang, ...(body !== undefined ? { 'content-type': 'application/json' } : {}) },
         body: body !== undefined ? JSON.stringify(body) : undefined,
       }));
   } catch {
-    throw new ApiError(0, '서버에 연결할 수 없습니다. 네트워크 상태를 확인해 주세요.');
+    throw new ApiError(0, t('서버에 연결할 수 없습니다. 네트워크 상태를 확인해 주세요.'));
   }
   const data = (await res.json().catch(() => ({}))) as Record<string, unknown>;
   if (!res.ok) {
     if (res.status === 401 && data.reason === 'login_required' && !path.startsWith('/auth/')) onUnauthorized?.();
-    throw new ApiError(res.status, String(data.error ?? `요청 실패 (${res.status})`), data);
+    throw new ApiError(res.status, typeof data.error === 'string' ? translateServer(data.error) : t('요청 실패 ({status})', { status: res.status }), data);
   }
   return data as T;
 }
@@ -85,9 +86,9 @@ export function errorMessage(err: unknown): string {
   if (isChunkError(err)) {
     // 배포 전에 열어 둔 탭이 사라진 예전 화면 파일을 찾은 경우 — 새 버전이면 곧 새로고침된다
     void reloadIfNewVersion();
-    return '필요한 화면 파일을 불러오지 못했습니다. 새 버전이 나왔다면 곧 자동으로 새로고침되고, 아니면 인터넷 연결을 확인한 뒤 다시 시도해 주세요.';
+    return t('필요한 화면 파일을 불러오지 못했습니다. 새 버전이 나왔다면 곧 자동으로 새로고침되고, 아니면 인터넷 연결을 확인한 뒤 다시 시도해 주세요.');
   }
-  return err instanceof Error ? err.message : '알 수 없는 오류가 발생했습니다.';
+  return err instanceof Error ? err.message : t('알 수 없는 오류가 발생했습니다.');
 }
 
 /* 로그인 기능 이전(가입 없이 쓰던 때)에 이 브라우저에 남은 값 — 처음 로그인할 때 계정으로 옮기고 지운다 */

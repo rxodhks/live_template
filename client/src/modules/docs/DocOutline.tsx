@@ -3,6 +3,7 @@ import type * as Y from 'yjs';
 import { getDocs } from '@shared/schema';
 import { useWorkspace } from '../../workspace/context';
 import { outlineOf, type OutlineEntry } from './yxml';
+import { t } from '../../i18n';
 
 /** 탐색기에 붙는 문서 목차 (다른 사람이 제목을 바꿔도 실시간 반영) */
 export function DocOutline({ docId }: { docId: string }) {
@@ -26,7 +27,7 @@ export function DocOutline({ docId }: { docId: string }) {
   }, [fragment]);
 
   if (!fragment) return null;
-  if (entries.length === 0) return <p className="ex-empty">제목(H1~H3)을 추가하면 목차가 만들어집니다</p>;
+  if (entries.length === 0) return <p className="ex-empty">{t('제목(H1~H3)을 추가하면 목차가 만들어집니다')}</p>;
   return (
     <ul className="outline">
       {entries.map((e) => (
@@ -35,7 +36,7 @@ export function DocOutline({ docId }: { docId: string }) {
             className={`outline-item level-${e.level}`}
             onClick={() => window.dispatchEvent(new CustomEvent('lt:doc-heading', { detail: { key: docId, index: e.index } }))}
           >
-            {e.text || <span className="muted">(빈 제목)</span>}
+            {e.text || <span className="muted">{t('(빈 제목)')}</span>}
           </button>
         </li>
       ))}

@@ -5,6 +5,7 @@ import { bannerOf, deployLabel, hideBanner, markRead, todayKST, useNotices } fro
 import { IconButton, Popover } from './ui';
 import { cx } from '../lib/util';
 import './notices.css';
+import { t } from '../i18n';
 
 /*
  * 공지 알림 두 가지 (글은 /notices 페이지)
@@ -16,13 +17,14 @@ import './notices.css';
 /** 오늘 · 어제 · 10월 6일 */
 export function noticeDay(date: string) {
   const today = todayKST();
-  if (date === today) return '오늘';
+  if (date === today) return t('오늘');
   const y = new Date(Date.parse(today) - 86400_000).toISOString().slice(0, 10);
-  if (date === y) return '어제';
+  if (date === y) return t('어제');
   const [, m, d] = date.split('-').map(Number);
-  return `${m}월 ${d}일`;
+  return t('{m}월 {d}일', { m, d });
 }
 
+// i18n-ignore — 공지 파일(notices/*.md)의 tag 값
 export const isUrgent = (n: Notice) => n.tag === '중요' || n.tag === '점검';
 
 export function NoticeBell() {
@@ -35,10 +37,10 @@ export function NoticeBell() {
       align="end"
       width={360}
       className="notice-pop"
-      label="새 소식"
+      label={t('새 소식')}
       trigger={({ toggle, ref, open }) => (
         <span className="badge-anchor">
-          <IconButton ref={ref} label={unread ? '새 소식 (읽지 않은 공지 있음)' : '새 소식'} active={open} onClick={toggle} aria-expanded={open}>
+          <IconButton ref={ref} label={unread ? t('새 소식 (읽지 않은 공지 있음)') : t('새 소식')} active={open} onClick={toggle} aria-expanded={open}>
             <Bell size={17} />
           </IconButton>
           {unread && <span className="notice-dot" aria-hidden />}
@@ -47,9 +49,9 @@ export function NoticeBell() {
     >
       {(close) => (
         <>
-          <div className="notice-pop-head">새 소식</div>
-          {s.list === null && <p className="notice-pop-empty">{s.failed ? '공지를 불러오지 못했습니다' : '불러오는 중…'}</p>}
-          {s.list?.length === 0 && <p className="notice-pop-empty">아직 공지가 없습니다</p>}
+          <div className="notice-pop-head">{t('새 소식')}</div>
+          {s.list === null && <p className="notice-pop-empty">{s.failed ? t('공지를 불러오지 못했습니다') : t('불러오는 중…')}</p>}
+          {s.list?.length === 0 && <p className="notice-pop-empty">{t('아직 공지가 없습니다')}</p>}
           {recent.map((n) => {
             const read = s.read.has(noticeKey(n));
             const deploy = deployLabel(n);
@@ -63,7 +65,7 @@ export function NoticeBell() {
                   navigate(`/notices/${n.id}`);
                 }}
               >
-                <span className={cx('notice-item-dot', read && 'is-read')} aria-label={read ? undefined : '읽지 않음'} />
+                <span className={cx('notice-item-dot', read && 'is-read')} aria-label={read ? undefined : t('읽지 않음')} />
                 <span className="notice-item-text">
                   <b>{n.title}</b>
                   <span>{n.summary}</span>
@@ -76,7 +78,7 @@ export function NoticeBell() {
             );
           })}
           <Link className="notice-pop-all" to="/notices" onClick={close}>
-            공지사항 전체 보기
+            {t('공지사항 전체 보기')}
           </Link>
         </>
       )}
@@ -95,9 +97,9 @@ export function NoticeBanner() {
       <b>{n.title}</b>
       <span className="notice-banner-summary">{deploy ? `${deploy} · ${n.summary}` : n.summary}</span>
       <Link className="notice-banner-more" to={`/notices/${n.id}`} onClick={() => markRead([noticeKey(n)])}>
-        자세히
+        {t('자세히')}
       </Link>
-      <IconButton className="notice-banner-close" label="이 공지 닫기" onClick={() => hideBanner(noticeKey(n))}>
+      <IconButton className="notice-banner-close" label={t('이 공지 닫기')} onClick={() => hideBanner(noticeKey(n))}>
         <X size={15} />
       </IconButton>
     </div>

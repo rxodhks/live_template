@@ -12,6 +12,7 @@ import { createPortal } from 'react-dom';
 import { X } from 'lucide-react';
 import type { PublicUser } from '@shared/types';
 import { cx } from '../lib/util';
+import { t, tr } from '../i18n';
 
 /* ───────────── 버튼 ───────────── */
 
@@ -69,7 +70,7 @@ export const IconButton = forwardRef<HTMLButtonElement, IconButtonProps>(functio
 });
 
 export function Spinner({ size = 16 }: { size?: number }) {
-  return <span className="spinner" style={{ width: size, height: size }} aria-label="로딩 중" />;
+  return <span className="spinner" style={{ width: size, height: size }} aria-label={t('로딩 중')} />;
 }
 
 export function Kbd({ children }: { children: ReactNode }) {
@@ -113,7 +114,7 @@ export function AvatarStack({ users, max = 4, size = 26 }: { users: PublicUser[]
         <Avatar key={u.id} user={u} size={size} />
       ))}
       {rest > 0 && (
-        <span className="avatar avatar-more" style={{ width: size, height: size }} data-tip={`외 ${rest}명`}>
+        <span className="avatar avatar-more" style={{ width: size, height: size }} data-tip={t('외 {rest}명', { rest })}>
           +{rest}
         </span>
       )}
@@ -217,7 +218,7 @@ export function Modal({ title, description, onClose, children, footer, width = 4
             <h2 id={titleId}>{title}</h2>
             {description && <p id={descId}>{description}</p>}
           </div>
-          <IconButton label="닫기" onClick={onClose} size="sm">
+          <IconButton label={t('닫기')} onClick={onClose} size="sm">
             <X size={16} />
           </IconButton>
         </header>
@@ -438,7 +439,7 @@ export function InlineEdit({
       <span
         className={cx('inline-edit', !disabled && 'is-editable', className)}
         onDoubleClick={() => !disabled && setEditing(true)}
-        title={disabled ? undefined : '더블클릭하여 이름 변경'}
+        title={disabled ? undefined : t('더블클릭하여 이름 변경')}
       >
         {value || <span className="muted">{placeholder}</span>}
       </span>
@@ -532,17 +533,17 @@ export function ConfirmHost() {
       footer={
         <>
           <Button variant="ghost" onClick={() => close(false)}>
-            취소
+            {t('취소')}
           </Button>
           <Button variant={req.danger ? 'danger' : 'primary'} onClick={() => close(true)} disabled={blocked} data-autofocus>
-            {req.confirmText ?? '확인'}
+            {req.confirmText ?? t('확인')}
           </Button>
         </>
       }
     >
       {req.message && <div className="confirm-message">{req.message}</div>}
       {req.requireText !== undefined && (
-        <Field label={<>확인을 위해 <b>{req.requireText}</b> 을(를) 입력하세요</>}>
+        <Field label={tr('확인을 위해 {text} 을(를) 입력하세요', { text: <b>{req.requireText}</b> })}>
           <input className="input" value={typed} onChange={(e) => setTyped(e.target.value)} autoFocus />
         </Field>
       )}
@@ -607,15 +608,15 @@ export function PromptHost() {
       footer={
         <>
           <Button variant="ghost" onClick={() => close(null)}>
-            취소
+            {t('취소')}
           </Button>
           <Button variant="primary" onClick={submit} disabled={!value.trim() || !!error}>
-            {req.confirmText ?? '확인'}
+            {req.confirmText ?? t('확인')}
           </Button>
         </>
       }
     >
-      <Field label={req.label ?? '이름'} error={error}>
+      <Field label={req.label ?? t('이름')} error={error}>
         {req.multiline ? (
           <textarea
             className={cx('input', req.mono && 'is-mono')}

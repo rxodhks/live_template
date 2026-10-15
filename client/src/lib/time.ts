@@ -1,9 +1,10 @@
-const rtf = new Intl.RelativeTimeFormat('ko', { numeric: 'auto' });
+import { lang, locale, t } from '../i18n';
+const rtf = new Intl.RelativeTimeFormat(lang, { numeric: 'auto' });
 
 export function relativeTime(ts: number, now = Date.now()): string {
   const diff = Math.round((ts - now) / 1000);
   const abs = Math.abs(diff);
-  if (abs < 10) return '방금 전';
+  if (abs < 10) return t('방금 전');
   if (abs < 60) return rtf.format(diff, 'second');
   if (abs < 3600) return rtf.format(Math.round(diff / 60), 'minute');
   if (abs < 86400) return rtf.format(Math.round(diff / 3600), 'hour');
@@ -12,11 +13,11 @@ export function relativeTime(ts: number, now = Date.now()): string {
 }
 
 export function formatDate(ts: number): string {
-  return new Date(ts).toLocaleDateString('ko-KR', { year: 'numeric', month: 'long', day: 'numeric' });
+  return new Date(ts).toLocaleDateString(locale, { year: 'numeric', month: 'long', day: 'numeric' });
 }
 
 export function formatTime(ts: number): string {
-  return new Date(ts).toLocaleTimeString('ko-KR', { hour: '2-digit', minute: '2-digit', hourCycle: 'h23' });
+  return new Date(ts).toLocaleTimeString(locale, { hour: '2-digit', minute: '2-digit', hourCycle: 'h23' });
 }
 
 export function dayKey(ts: number): string {
@@ -29,7 +30,7 @@ export function dayLabel(ts: number): string {
   const d = new Date(ts);
   const startOf = (x: Date) => new Date(x.getFullYear(), x.getMonth(), x.getDate()).getTime();
   const days = Math.round((startOf(today) - startOf(d)) / 86400000);
-  if (days === 0) return '오늘';
-  if (days === 1) return '어제';
-  return d.toLocaleDateString('ko-KR', { month: 'long', day: 'numeric', weekday: 'short' });
+  if (days === 0) return t('오늘');
+  if (days === 1) return t('어제');
+  return d.toLocaleDateString(locale, { month: 'long', day: 'numeric', weekday: 'short' });
 }

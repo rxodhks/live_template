@@ -41,6 +41,7 @@ import { hasHtml, htmlEntryName, line, withPreviewWatchdog, type OutputLine } fr
 import { FileTabs } from './FileTabs';
 import './ide.css';
 import { buildHtmlPreview, buildMarkdownPreview, buildReactPreview, checkFile, execInfo, executeFile, unsupportedMessage } from './exec';
+import { lang as uiLang, t } from '../../i18n';
 
 export function CodeModule() {
   const ws = useWorkspace();
@@ -65,16 +66,16 @@ export function CodeModule() {
     return (
       <EmptyState
         icon={<Terminal size={34} />}
-        title={files.length ? '파일을 여는 중…' : '아직 코드 파일이 없습니다'}
+        title={files.length ? t('파일을 여는 중…') : t('아직 코드 파일이 없습니다')}
         action={
           ws.canEdit && !files.length ? (
             <Button variant="primary" icon={<FilePlus2 size={15} />} onClick={() => void createCodeFile(ws, me)}>
-              새 파일 만들기
+              {t('새 파일 만들기')}
             </Button>
           ) : undefined
         }
       >
-        파일 이름의 확장자로 언어가 자동 선택되며, 편집기 상단에서 언어를 바꿀 수 있습니다.
+        {t('파일 이름의 확장자로 언어가 자동 선택되며, 편집기 상단에서 언어를 바꿀 수 있습니다.')}
       </EmptyState>
     );
   }
@@ -172,7 +173,7 @@ function CodeWorkspace({ file }: { file: YItem }) {
       if (e.source !== frameRef.current?.contentWindow) return;
       const d = e.data as { __ltPreview?: boolean; level?: OutputLine['level']; text?: string; file?: unknown };
       const from = typeof d?.file === 'string' ? d.file : undefined;
-      if (d?.__ltPreview) setOutput((o) => [...o.slice(-300), { ...line(d.level ?? 'log', `[미리보기] ${d.text ?? ''}`), fromPreview: true, file: from }]);
+      if (d?.__ltPreview) setOutput((o) => [...o.slice(-300), { ...line(d.level ?? 'log', t('[미리보기] {x}', { x: d.text ?? '' })), fromPreview: true, file: from }]);
     };
     window.addEventListener('message', onMsg);
     return () => window.removeEventListener('message', onMsg);
@@ -182,7 +183,7 @@ function CodeWorkspace({ file }: { file: YItem }) {
   useEffect(() => {
     if (!showPreview || !previewKind) return;
     const files = getFiles(ws.doc);
-    let t: ReturnType<typeof setTimeout>;
+    let timer: ReturnType<typeof setTimeout>;
     let alive = true;
     let seq = 0;
     const rebuild = async () => {
@@ -196,18 +197,18 @@ function CodeWorkspace({ file }: { file: YItem }) {
               : await buildHtmlPreview(ws.doc, lang.id === 'html' ? fileId : null);
         if (alive && my === seq) setPreview(html === null ? null : { html: withPreviewWatchdog(html), v: ++previewSeq.current });
       } catch (err) {
-        if (alive) setOutput((o) => [...o.slice(-300), line('error', `미리보기를 만들지 못했습니다: ${err instanceof Error ? err.message : String(err)}`)]);
+        if (alive) setOutput((o) => [...o.slice(-300), line('error', t('미리보기를 만들지 못했습니다: {x}', { x: err instanceof Error ? err.message : String(err) }))]);
       }
     };
     const schedule = () => {
-      clearTimeout(t);
-      t = setTimeout(() => void rebuild(), 450);
+      clearTimeout(timer);
+      timer = setTimeout(() => void rebuild(), 450);
     };
     void rebuild();
     files.observeDeep(schedule);
     return () => {
       alive = false;
-      clearTimeout(t);
+      clearTimeout(timer);
       files.unobserveDeep(schedule);
     };
   }, [showPreview, ws.doc, fileId, lang.id, previewKind, file]);
@@ -235,7 +236,7 @@ function CodeWorkspace({ file }: { file: YItem }) {
       setPreviewHung(true);
       setOutput((o) => [
         ...o.slice(-300),
-        { ...line('warn', `[미리보기] ${PREVIEW_HANG_MS / 1000}초 넘게 응답이 없어 미리보기를 멈췄습니다. 끝나지 않는 반복(while (true) 등)이 있는지 확인해 보세요.`), fromPreview: true },
+        { ...line('warn', t('[미리보기] {x}초 넘게 응답이 없어 미리보기를 멈췄습니다. 끝나지 않는 반복(while (true) 등)이 있는지 확인해 보세요.', { x: PREVIEW_HANG_MS / 1000 })), fromPreview: true },
       ]);
     }, 500);
     window.addEventListener('message', onBeat);
@@ -279,15 +280,15 @@ function CodeWorkspace({ file }: { file: YItem }) {
     setFormatting(true);
     try {
       const out = await formatCode(lang.id, name, before, lang.id === 'python' ? 4 : tabSize);
-      if (api.getText() !== before) toast.error('정렬하는 동안 내용이 바뀌어 적용하지 않았습니다', '다시 한 번 눌러 주세요.');
-      else if (out === before) toast.success('이미 정렬되어 있습니다');
+      if (api.getText() !== before) toast.error(t('정렬하는 동안 내용이 바뀌어 적용하지 않았습니다'), t('다시 한 번 눌러 주세요.'));
+      else if (out === before) toast.success(t('이미 정렬되어 있습니다'));
       else {
         api.replaceAll(out);
-        ws.action('✨ 코드 정렬');
-        toast.success('코드를 정렬했습니다', '되돌리려면 Ctrl/⌘ + Z');
+        ws.action(t('✨ 코드 정렬'));
+        toast.success(t('코드를 정렬했습니다'), t('되돌리려면 Ctrl/⌘ + Z'));
       }
     } catch (err) {
-      toast.error('정렬하지 못했습니다', `문법 오류를 먼저 고쳐 주세요. ${formatError(err)}`);
+      toast.error(t('정렬하지 못했습니다'), t('문법 오류를 먼저 고쳐 주세요. {x}', { x: formatError(err) }));
     } finally {
       setFormatting(false);
     }
@@ -300,7 +301,7 @@ function CodeWorkspace({ file }: { file: YItem }) {
     if (info.mode === 'preview') {
       if (!previewKind) {
         setPanel('output');
-        setOutput([line('system', 'HTML 파일이 없어 미리보기를 만들 수 없습니다. index.html 파일을 만들고 이 파일을 연결해 보세요.')]);
+        setOutput([line('system', t('HTML 파일이 없어 미리보기를 만들 수 없습니다. index.html 파일을 만들고 이 파일을 연결해 보세요.'))]);
         return;
       }
       // 이미 열려 있으면 처음부터 다시 불러온다 (스크립트 · 애니메이션 다시 시작)
@@ -323,8 +324,8 @@ function CodeWorkspace({ file }: { file: YItem }) {
     }
     running?.();
     setPanel('output');
-    const note = info.stdin && stdinLines ? ` · 입력 ${stdinLines}줄` : '';
-    setOutput([line('system', `▶ ${name} 실행 (${lang.name} · 격리된 샌드박스 · ${Math.round((info.timeoutMs ?? 10000) / 1000)}초 제한${note})`)]);
+    const note = info.stdin && stdinLines ? t(' · 입력 {stdinLines}줄', { stdinLines }) : '';
+    setOutput([line('system', t('▶ {name} 실행 ({name2} · 격리된 샌드박스 · {x}초 제한{note})', { name, name2: lang.name, x: Math.round((info.timeoutMs ?? 10000) / 1000), note }))]);
     const add = (l: OutputLine) => setOutput((o) => [...o.slice(-800), l]);
     let stopFn: (() => void) | null = null;
     let cancelled = false;
@@ -336,7 +337,7 @@ function CodeWorkspace({ file }: { file: YItem }) {
     });
     const stop = await executeFile(ws.doc, file, info.stdin ? stdin : '', {
       onLine: add,
-      onTable: (t) => add({ ...line('log', t.note ?? ''), table: t }),
+      onTable: (table) => add({ ...line('log', table.note ?? ''), table: table }),
       onStatus: setStatus,
       onEnd: () => {
         setRunning(null);
@@ -350,12 +351,12 @@ function CodeWorkspace({ file }: { file: YItem }) {
   /** JSON 정리 결과를 파일에 적용 */
   const applyFormatted = () => {
     if (!formatted || !ws.canEdit) return;
-    const t = file.get('content') as Y.Text;
+    const ytext = file.get('content') as Y.Text;
     ws.doc.transact(() => {
-      t.delete(0, t.length);
-      t.insert(0, formatted.text + '\n');
+      ytext.delete(0, ytext.length);
+      ytext.insert(0, formatted.text + '\n');
     });
-    toast.success('정리된 내용을 파일에 적용했습니다');
+    toast.success(t('정리된 내용을 파일에 적용했습니다'));
   };
 
   /** 변환된 CSS를 같은 이름의 .css 파일로 저장 */
@@ -364,17 +365,17 @@ function CodeWorkspace({ file }: { file: YItem }) {
     const cssName = name.replace(/\.(scss|sass)$/i, '') + '.css';
     const existing = Array.from(getFiles(ws.doc).values()).find((f) => String(f.get('name')).toLowerCase() === cssName.toLowerCase());
     if (existing) {
-      const t = existing.get('content') as Y.Text;
+      const ytext = existing.get('content') as Y.Text;
       ws.doc.transact(() => {
-        t.delete(0, t.length);
-        t.insert(0, formatted.text);
+        ytext.delete(0, ytext.length);
+        ytext.insert(0, formatted.text);
       });
     } else {
       const id = newId();
       addCodeFile(ws.doc, { id, name: cssName, language: 'css', content: formatted.text, createdBy: me.id });
       ws.report({ type: 'code.create', targetId: id, targetName: cssName });
     }
-    toast.success(`${cssName} 파일에 저장했습니다`);
+    toast.success(t('{cssName} 파일에 저장했습니다', { cssName }));
   };
 
   const changeLanguage = (next: CodeLanguage) => {
@@ -390,13 +391,13 @@ function CodeWorkspace({ file }: { file: YItem }) {
       if (newName !== name) file.set('name', newName);
       if (swapStarter) {
         text.delete(0, text.length);
-        text.insert(0, starterCode(next.id));
+        text.insert(0, starterCode(next.id, uiLang));
       }
     });
     ws.report({ type: 'code.language', targetId: fileId, targetName: newName, detail: next.name });
-    ws.action(`언어 변경 → ${next.name}`);
-    const notes = [newName !== name ? `파일 이름도 ${name} → ${newName}(으)로 바꿨습니다.` : '', swapStarter ? `시작 코드도 ${next.name}에 맞게 바꿨습니다.` : ''].filter(Boolean);
-    toast.success(`언어 변경: ${next.name}`, notes.length ? notes.join(' ') : undefined);
+    ws.action(t('언어 변경 → {name}', { name: next.name }));
+    const notes = [newName !== name ? t('파일 이름도 {name} → {newName}(으)로 바꿨습니다.', { name, newName }) : '', swapStarter ? t('시작 코드도 {name}에 맞게 바꿨습니다.', { name: next.name }) : ''].filter(Boolean);
+    toast.success(t('언어 변경: {name}', { name: next.name }), notes.length ? notes.join(' ') : undefined);
   };
 
   const content = () => (file.get('content') as Y.Text).toString();
@@ -423,7 +424,7 @@ function CodeWorkspace({ file }: { file: YItem }) {
   const otherFiles = [...new Set(output.filter((o) => !shown.includes(o)).map((o) => o.file as string))];
   const previewLogs = shown.filter((o) => o.fromPreview).length;
   const previewErrors = shown.filter((o) => o.fromPreview && o.level === 'error').length;
-  const previewTitle = previewKind === 'react' ? 'React 미리보기' : previewKind === 'markdown' ? 'Markdown 미리보기' : 'HTML 미리보기';
+  const previewTitle = previewKind === 'react' ? t('React 미리보기') : previewKind === 'markdown' ? t('Markdown 미리보기') : t('HTML 미리보기');
   // CSS · JS 파일을 보고 있을 때는 어떤 HTML 파일을 보여 주는지 함께 적는다
   const previewHtmlName = previewKind === 'html' && lang.id !== 'html' ? htmlEntryName(ws.doc) : null;
 
@@ -457,7 +458,7 @@ function CodeWorkspace({ file }: { file: YItem }) {
         <FileTabs activeId={fileId} />
         <Menu
           width={230}
-          header="언어 선택"
+          header={t('언어 선택')}
           items={() =>
             CODE_LANGUAGES.map((l) => ({
               label: l.name,
@@ -468,7 +469,7 @@ function CodeWorkspace({ file }: { file: YItem }) {
             }))
           }
           trigger={({ toggle, ref, open }) => (
-            <button ref={ref} className="lang-select" onClick={toggle} aria-expanded={open} data-tip={ws.canEdit ? '언어 변경 (모든 사람에게 적용)' : '읽기 전용'}>
+            <button ref={ref} className="lang-select" onClick={toggle} aria-expanded={open} data-tip={ws.canEdit ? t('언어 변경 (모든 사람에게 적용)') : t('읽기 전용')}>
               {lang.name}
               <ChevronDown size={14} />
             </button>
@@ -477,13 +478,13 @@ function CodeWorkspace({ file }: { file: YItem }) {
         {viewers.length > 0 && (
           <span className="toolbar-viewers">
             {viewers.map((v) => (
-              <Avatar key={v.socketId} user={v.user} size={22} status={v.idle ? 'idle' : 'online'} tooltip={`${v.user.name} 님이 이 파일을 보는 중`} />
+              <Avatar key={v.socketId} user={v.user} size={22} status={v.idle ? 'idle' : 'online'} tooltip={t('{name} 님이 이 파일을 보는 중', { name: v.user.name })} />
             ))}
           </span>
         )}
         {running ? (
           <Button size="sm" variant="danger" icon={<Square size={13} />} onClick={() => running()}>
-            중지
+            {t('중지')}
           </Button>
         ) : (
           <Button
@@ -499,37 +500,37 @@ function CodeWorkspace({ file }: { file: YItem }) {
           </Button>
         )}
         {previewKind === 'html' && info.mode !== 'preview' && (
-          <IconButton label={showPreview ? 'HTML 미리보기 닫기' : 'HTML 미리보기 (오른쪽)'} active={showPreview} onClick={() => setPreviewOpen(!showPreview)}>
+          <IconButton label={showPreview ? t('HTML 미리보기 닫기') : t('HTML 미리보기 (오른쪽)')} active={showPreview} onClick={() => setPreviewOpen(!showPreview)}>
             <Eye size={16} />
           </IconButton>
         )}
         {info.stdin && (
-          <IconButton label={`입력값 (표준 입력)${stdinLines ? ` · ${stdinLines}줄` : ''}`} active={panel === 'input'} onClick={() => setPanel(panel === 'input' ? null : 'input')}>
+          <IconButton label={stdinLines ? t('입력값 (표준 입력) · {n}줄', { n: stdinLines }) : t('입력값 (표준 입력)')} active={panel === 'input'} onClick={() => setPanel(panel === 'input' ? null : 'input')}>
             <Keyboard size={16} />
           </IconButton>
         )}
-        <IconButton label="출력 패널" active={panel === 'output'} onClick={() => setPanel(panel === 'output' ? null : 'output')}>
+        <IconButton label={t('출력 패널')} active={panel === 'output'} onClick={() => setPanel(panel === 'output' ? null : 'output')}>
           <Terminal size={16} />
         </IconButton>
         {canFormat(lang.id) && ws.canEdit && (
-          <IconButton label="자동 정렬 (Shift + Alt + F)" onClick={() => void formatNow()} disabled={formatting}>
+          <IconButton label={t('자동 정렬 (Shift + Alt + F)')} onClick={() => void formatNow()} disabled={formatting}>
             {formatting ? <Spinner size={14} /> : <WandSparkles size={16} />}
           </IconButton>
         )}
-        <IconButton label={wrap ? '자동 줄바꿈 끄기' : '자동 줄바꿈 켜기'} active={wrap} onClick={() => setWrap((w) => !w)}>
+        <IconButton label={wrap ? t('자동 줄바꿈 끄기') : t('자동 줄바꿈 켜기')} active={wrap} onClick={() => setWrap((w) => !w)}>
           <WrapText size={16} />
         </IconButton>
         <Menu
           align="end"
           items={[
-            { label: '파일 다운로드', icon: <Download size={14} />, onSelect: () => downloadText(name, content()) },
-            { label: '전체 복사', icon: <Copy size={14} />, onSelect: async () => (await copyText(content())) && toast.success('코드를 복사했습니다') },
+            { label: t('파일 다운로드'), icon: <Download size={14} />, onSelect: () => downloadText(name, content()) },
+            { label: t('전체 복사'), icon: <Copy size={14} />, onSelect: async () => (await copyText(content())) && toast.success(t('코드를 복사했습니다')) },
             { divider: true, label: '' },
-            ...[2, 4].map((n) => ({ label: `들여쓰기 ${n}칸`, checked: tabSize === n, hint: tabSize === n ? <Check size={14} /> : undefined, onSelect: () => setTabSize(n) })),
+            ...[2, 4].map((n) => ({ label: t('들여쓰기 {n}칸', { n }), checked: tabSize === n, hint: tabSize === n ? <Check size={14} /> : undefined, onSelect: () => setTabSize(n) })),
             ...(canCheck(lang.id)
               ? [
                   {
-                    label: '오류 밑줄 표시',
+                    label: t('오류 밑줄 표시'),
                     checked: lintOn,
                     hint: lintOn ? <Check size={14} /> : undefined,
                     onSelect: () => {
@@ -540,10 +541,10 @@ function CodeWorkspace({ file }: { file: YItem }) {
                 ]
               : []),
             { divider: true, label: '' },
-            { label: '파일 삭제', icon: <Trash2 size={14} />, danger: true, disabled: !ws.canEdit, onSelect: () => void deleteItem(ws, 'code', fileId) },
+            { label: t('파일 삭제'), icon: <Trash2 size={14} />, danger: true, disabled: !ws.canEdit, onSelect: () => void deleteItem(ws, 'code', fileId) },
           ]}
           trigger={({ toggle, ref }) => (
-            <IconButton ref={ref} label="더 보기" onClick={toggle}>
+            <IconButton ref={ref} label={t('더 보기')} onClick={toggle}>
               <MoreHorizontal size={16} />
             </IconButton>
           )}
@@ -586,11 +587,11 @@ function CodeWorkspace({ file }: { file: YItem }) {
               />
               <div className="code-panel-tabs">
                 <button className={cx(panel === 'output' && 'is-active')} onClick={() => setPanel('output')}>
-                  <Terminal size={13} /> 출력 {errorCount > 0 && <span className="dot-danger" />}
+                  <Terminal size={13} /> {t('출력')} {errorCount > 0 && <span className="dot-danger" />}
                 </button>
                 {info.stdin && (
                   <button className={cx(panel === 'input' && 'is-active')} onClick={() => setPanel('input')}>
-                    <Keyboard size={13} /> 입력{stdinLines > 0 && <span className="tab-count">{stdinLines}</span>}
+                    <Keyboard size={13} /> {t('입력')}{stdinLines > 0 && <span className="tab-count">{stdinLines}</span>}
                   </button>
                 )}
                 <span className="toolbar-spacer" />
@@ -602,15 +603,15 @@ function CodeWorkspace({ file }: { file: YItem }) {
                     }}
                     className="muted"
                   >
-                    지우기
+                    {t('지우기')}
                   </button>
                 )}
                 {panel === 'input' && stdin && (
                   <button onClick={() => setStdin('')} className="muted">
-                    비우기
+                    {t('비우기')}
                   </button>
                 )}
-                <IconButton label="패널 닫기" size="sm" onClick={() => setPanel(null)}>
+                <IconButton label={t('패널 닫기')} size="sm" onClick={() => setPanel(null)}>
                   <X size={14} />
                 </IconButton>
               </div>
@@ -622,7 +623,7 @@ function CodeWorkspace({ file }: { file: YItem }) {
                     </div>
                   )}
                   {shown.length === 0 && !status && (
-                    <div className="muted">{info.mode === 'preview' ? '미리보기의 console.log · 오류가 여기에 표시됩니다.' : '실행 결과가 여기에 표시됩니다. (Ctrl/⌘ + Enter)'}</div>
+                    <div className="muted">{info.mode === 'preview' ? t('미리보기의 console.log · 오류가 여기에 표시됩니다.') : t('실행 결과가 여기에 표시됩니다. (Ctrl/⌘ + Enter)')}</div>
                   )}
                   {shown.map((o) =>
                     o.table ? (
@@ -634,24 +635,24 @@ function CodeWorkspace({ file }: { file: YItem }) {
                     ),
                   )}
                   {otherFiles.length > 0 && (
-                    <div className="out-line out-system muted">{`다른 파일(${otherFiles.join(', ')})의 미리보기 메시지는 그 파일을 열면 보입니다.`}</div>
+                    <div className="out-line out-system muted">{t('다른 파일({x})의 미리보기 메시지는 그 파일을 열면 보입니다.', { x: otherFiles.join(', ') })}</div>
                   )}
                   {formatted && (
                     <div className="out-formatted">
                       <div className="out-formatted-head">
                         <b>{formatted.title}</b>
                         <span className="toolbar-spacer" />
-                        <button className="link small" onClick={async () => (await copyText(formatted.text)) && toast.success('복사했습니다')}>
-                          복사
+                        <button className="link small" onClick={async () => (await copyText(formatted.text)) && toast.success(t('복사했습니다'))}>
+                          {t('복사')}
                         </button>
                         {lang.id === 'json' && ws.canEdit && (
                           <button className="link small" onClick={applyFormatted}>
-                            파일에 적용
+                            {t('파일에 적용')}
                           </button>
                         )}
                         {lang.id === 'scss' && ws.canEdit && (
                           <button className="link small" onClick={saveCss}>
-                            CSS 파일로 저장
+                            {t('CSS 파일로 저장')}
                           </button>
                         )}
                       </div>
@@ -665,10 +666,10 @@ function CodeWorkspace({ file }: { file: YItem }) {
                     value={stdin}
                     onChange={(e) => setStdin(e.target.value)}
                     spellCheck={false}
-                    aria-label="표준 입력"
-                    placeholder={'실행할 때 프로그램에 넣을 입력값을 한 줄에 하나씩 적으세요.\n예) 파이썬 input(), Ruby gets, Lua io.read(), PHP fgets(STDIN)'}
+                    aria-label={t('표준 입력')}
+                    placeholder={t('실행할 때 프로그램에 넣을 입력값을 한 줄에 하나씩 적으세요.\n예) 파이썬 input(), Ruby gets, Lua io.read(), PHP fgets(STDIN)')}
                   />
-                  <p className="muted small">이 파일을 실행할 때마다 위 내용이 표준 입력으로 들어갑니다. 입력값은 이 기기에만 저장됩니다.</p>
+                  <p className="muted small">{t('이 파일을 실행할 때마다 위 내용이 표준 입력으로 들어갑니다. 입력값은 이 기기에만 저장됩니다.')}</p>
                 </div>
               )}
             </div>
@@ -681,8 +682,8 @@ function CodeWorkspace({ file }: { file: YItem }) {
               className="code-side-resize"
               role="separator"
               aria-orientation="vertical"
-              aria-label="미리보기 너비 조절"
-              data-tip="끌어서 너비 조절 · 두 번 눌러 반반"
+              aria-label={t('미리보기 너비 조절')}
+              data-tip={t('끌어서 너비 조절 · 두 번 눌러 반반')}
               onPointerDown={startSideResize}
               onDoubleClick={() => setSideRatio(SIDE_DEFAULT_RATIO)}
             />
@@ -692,24 +693,24 @@ function CodeWorkspace({ file }: { file: YItem }) {
               {previewKind === 'html' && lang.id !== 'html' && previewHtmlName && <span className="muted small">{previewHtmlName}</span>}
               <span className="toolbar-spacer" />
               {previewLogs > 0 && (
-                <button className={cx('side-console', previewErrors > 0 && 'has-error')} onClick={() => setPanel('output')} data-tip="미리보기의 console 출력을 아래 출력 패널에서 봅니다">
-                  <Terminal size={13} /> 콘솔 {previewLogs}
+                <button className={cx('side-console', previewErrors > 0 && 'has-error')} onClick={() => setPanel('output')} data-tip={t('미리보기의 console 출력을 아래 출력 패널에서 봅니다')}>
+                  <Terminal size={13} /> {t('콘솔')} {previewLogs}
                 </button>
               )}
-              <IconButton label="새로 고침" size="sm" onClick={reloadPreview}>
+              <IconButton label={t('새로 고침')} size="sm" onClick={reloadPreview}>
                 <RotateCw size={14} />
               </IconButton>
-              <IconButton label="미리보기 닫기" size="sm" onClick={() => setPreviewOpen(false)}>
+              <IconButton label={t('미리보기 닫기')} size="sm" onClick={() => setPreviewOpen(false)}>
                 <X size={14} />
               </IconButton>
             </div>
             {preview && previewHung ? (
               <div className="code-side-empty is-hung" role="alert">
                 <AlertTriangle size={22} />
-                <b>미리보기가 응답하지 않아 멈췄습니다</b>
-                <span className="muted small">끝나지 않는 반복(while (true) 등)이 있는지 확인해 보세요. 코드를 고치면 자동으로 다시 불러옵니다.</span>
+                <b>{t('미리보기가 응답하지 않아 멈췄습니다')}</b>
+                <span className="muted small">{t('끝나지 않는 반복(while (true) 등)이 있는지 확인해 보세요. 코드를 고치면 자동으로 다시 불러옵니다.')}</span>
                 <Button size="sm" icon={<RotateCw size={13} />} onClick={reloadPreview}>
-                  다시 불러오기
+                  {t('다시 불러오기')}
                 </Button>
               </div>
             ) : preview ? (
@@ -723,7 +724,7 @@ function CodeWorkspace({ file }: { file: YItem }) {
               />
             ) : (
               <div className="code-side-empty muted">
-                <Spinner size={16} /> 미리보기를 만드는 중…
+                <Spinner size={16} /> {t('미리보기를 만드는 중…')}
               </div>
             )}
           </aside>
@@ -733,35 +734,35 @@ function CodeWorkspace({ file }: { file: YItem }) {
       <footer className="statusbar">
         <span className={cx('status-collab', viewers.length > 0 && 'is-live')}>
           <Users size={12} />
-          {viewers.length > 0 ? `${viewers.length + 1}명이 이 파일에 있음` : '혼자 편집 중'}
+          {viewers.length > 0 ? t('{x}명이 이 파일에 있음', { x: viewers.length + 1 }) : t('혼자 편집 중')}
         </span>
         {lintState && (
           <button
             className={cx('status-item status-lint', !lintState.loading && lintState.errors > 0 && 'has-error', !lintState.loading && lintState.warnings > 0 && 'has-warning')}
             onClick={() => editorApi.current?.openProblems()}
-            data-tip="문제 목록 열기 (오류 밑줄에 마우스를 올리면 설명이 보입니다)"
+            data-tip={t('문제 목록 열기 (오류 밑줄에 마우스를 올리면 설명이 보입니다)')}
           >
             {lintState.loading ? (
-              '코드 검사 준비 중…'
+              t('코드 검사 준비 중…')
             ) : lintState.failed ? (
-              '코드 검사 도구를 불러오지 못했습니다'
+              t('코드 검사 도구를 불러오지 못했습니다')
             ) : lintState.errors + lintState.warnings === 0 ? (
               <>
                 <CheckCircle2 size={12} />
-                문제 없음
+                {t('문제 없음')}
               </>
             ) : (
               <>
                 {lintState.errors > 0 && (
                   <span className="lint-count is-error">
                     <XCircle size={12} />
-                    오류 {lintState.errors}
+                    {t('오류')} {lintState.errors}
                   </span>
                 )}
                 {lintState.warnings > 0 && (
                   <span className="lint-count is-warning">
                     <AlertTriangle size={12} />
-                    경고 {lintState.warnings}
+                    {t('경고')} {lintState.warnings}
                   </span>
                 )}
               </>
@@ -769,12 +770,12 @@ function CodeWorkspace({ file }: { file: YItem }) {
           </button>
         )}
         <span className="toolbar-spacer" />
-        {!ws.canEdit && <span className="status-readonly">읽기 전용</span>}
+        {!ws.canEdit && <span className="status-readonly">{t('읽기 전용')}</span>}
         <span className="status-item">
-          줄 {pos.line}, 열 {pos.col}
-          {pos.selected > 0 && ` (${pos.selected}자 선택)`}
+          {t('줄 {line}, 열 {col}', { line: pos.line, col: pos.col })}
+          {pos.selected > 0 && t(' ({n}자 선택)', { n: pos.selected })}
         </span>
-        <span className="status-item">공백 {tabSize}</span>
+        <span className="status-item">{t('공백 {n}', { n: tabSize })}</span>
         <span className="status-item">UTF-8</span>
         <span className="status-item">
           <span className="lang-dot" style={{ background: lang.color }} />
@@ -813,7 +814,7 @@ function OutputTable({ note, table }: { note: string; table: NonNullable<OutputL
         </table>
       </div>
       <div className="muted small">
-        {table.total === 0 ? '결과 없음 (0행)' : table.total > table.rows.length ? `처음 ${table.rows.length}행만 표시 (전체 ${table.total}행)` : `${table.total}행`}
+        {table.total === 0 ? t('결과 없음 (0행)') : table.total > table.rows.length ? t('처음 {n}행만 표시 (전체 {total}행)', { n: table.rows.length, total: table.total }) : t('{total}행', { total: table.total })}
       </div>
     </div>
   );
@@ -849,22 +850,24 @@ const escapeRe = (s: string) => s.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
 
 /**
  * 출력에 나온 ‘파일 이름 + 줄 번호’를 누르면 그 줄로 가는 링크로 바꾼다
- *  - JS · Lua · Ruby: main.js:3 · Python: File "main.py", line 3 · PHP: main.php on line 3 · JSON/YAML 검사: 3번째 줄, 5번째 글자
+ *  - JS · Lua · Ruby: main.js:3 · Python: File "main.py", line 3 · PHP: main.php on line 3 · JSON/YAML 검사: 3번째 줄, 5번째 글자 (영어 화면: (line 3, column 5))
  */
 export function linkLocations(text: string, fileNames: string[], current: string, go: (file: string, line: number, col?: number) => void): ReactNode {
   const names = [...fileNames].sort((a, b) => b.length - a.length).map(escapeRe);
   const alt = names.length ? names.join('|') : '(?!)';
-  const re = new RegExp(`File "(${alt})", line (\\d+)|(${alt}):(\\d+)(?::(\\d+))?|(${alt}) on line (\\d+)|(\\d+)번째 줄(?:, (\\d+)번째 글자)?`, 'g');
+  // i18n-ignore (JSON · YAML 검사 결과의 위치 — 한국어 · 영어 화면 둘 다)
+  const re = new RegExp(`File "(${alt})", line (\\d+)|(${alt}):(\\d+)(?::(\\d+))?|(${alt}) on line (\\d+)|(\\d+)번째 줄(?:, (\\d+)번째 글자)?|\\(line (\\d+), column (\\d+)\\)`, 'g');
   const parts: ReactNode[] = [];
   let last = 0;
   for (const m of text.matchAll(re)) {
     const file = m[1] ?? m[3] ?? m[6] ?? current;
-    const lineNo = Number(m[2] ?? m[4] ?? m[7] ?? m[8]);
-    const col = m[5] ?? m[9] ? Number(m[5] ?? m[9]) : undefined;
+    const lineNo = Number(m[2] ?? m[4] ?? m[7] ?? m[8] ?? m[10]);
+    const colText = m[5] ?? m[9] ?? m[11];
+    const col = colText ? Number(colText) : undefined;
     if (!lineNo) continue;
     parts.push(text.slice(last, m.index));
     parts.push(
-      <button key={m.index} type="button" className="out-loc" onClick={() => go(file, lineNo, col)} data-tip={`${file} ${lineNo}번째 줄로 이동`}>
+      <button key={m.index} type="button" className="out-loc" onClick={() => go(file, lineNo, col)} data-tip={t('{file} {lineNo}번째 줄로 이동', { file, lineNo })}>
         {m[0]}
       </button>,
     );

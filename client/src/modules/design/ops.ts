@@ -4,6 +4,7 @@ import type { PageUnit, Shape, ShapeType } from '@shared/schema';
 import { newId } from '../../lib/util';
 import { STICKY_COLORS } from './store';
 import { boundsOf, contains } from './geometry';
+import { t } from '../../i18n';
 
 export type ShapeMap = Y.Map<Shape>;
 
@@ -76,7 +77,7 @@ export function defaultShape(type: ShapeType, x: number, y: number, z: number, c
     case 'text':
       return { ...base, fill: 'transparent', stroke: 'transparent', strokeWidth: 0, text: '', fontSize: 22, textColor: '#111827', align: 'left' };
     case 'frame':
-      return { ...base, fill: '#ffffff', stroke: 'transparent', strokeWidth: 0, name: '아트보드' };
+      return { ...base, fill: '#ffffff', stroke: 'transparent', strokeWidth: 0, name: t('아트보드') };
     case 'sticky':
       return {
         ...base,

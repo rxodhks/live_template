@@ -1,5 +1,6 @@
 import type { EmailVerifyResult, PasskeyInfo, PublicUser } from '@shared/types';
 import { api } from './api';
+import { t } from '../i18n';
 
 /*
  * 패스키 (지문 · 얼굴 · 기기 PIN으로 로그인)
@@ -80,7 +81,7 @@ export async function registerPasskey(): Promise<PasskeyInfo> {
   const res = cred.response as AuthenticatorAttestationResponse;
   const publicKey = res.getPublicKey?.();
   const authenticatorData = res.getAuthenticatorData?.();
-  if (!publicKey || !authenticatorData) throw new Error('이 브라우저에서는 패스키를 등록할 수 없습니다. 최신 브라우저에서 다시 시도해 주세요.');
+  if (!publicKey || !authenticatorData) throw new Error(t('이 브라우저에서는 패스키를 등록할 수 없습니다. 최신 브라우저에서 다시 시도해 주세요.'));
   const { passkey } = await api<{ passkey: PasskeyInfo }>('POST', '/auth/passkey/register', {
     id: toB64url(cred.rawId),
     clientDataJSON: toB64url(res.clientDataJSON),

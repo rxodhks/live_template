@@ -1,24 +1,36 @@
-import { useEffect, type ReactNode } from 'react';
+import { Suspense, lazy, useEffect, useState, type ReactNode } from 'react';
 import { Link } from 'react-router-dom';
 import { ArrowLeft } from 'lucide-react';
 import { BRAND, BrandMark, CONTACT_EMAIL, OPERATOR } from '../components/Brand';
 import { useSession } from '../store/session';
+import { isEn, t } from '../i18n';
+import { LanguageSwitch } from '../components/LanguageSwitch';
+
+// 참고용 영어 번역은 영어 화면에서 약관 페이지를 열 때만 받는다 (로그인 화면이 이 파일의 LegalLinks를 함께 쓴다)
+const MetaEn = lazy(() => import('./LegalEn').then((m) => ({ default: m.MetaEn })));
+const PrivacyEn = lazy(() => import('./LegalEn').then((m) => ({ default: m.PrivacyEn })));
+const TermsEn = lazy(() => import('./LegalEn').then((m) => ({ default: m.TermsEn })));
 
 /*
  * 개인정보처리방침 · 이용약관 — 로그인하지 않아도 볼 수 있다 (Google 로그인 앱 게시 요건)
  * 내용을 바꾸면 그 문서의 시행일과 부칙을 함께 고친다.
  */
 
+// i18n-ignore-start (약관 · 방침 본문은 한국어 원문만 둔다)
 const TERMS_EFFECTIVE_DATE = '2026년 9월 25일';
 /** 2026-10-03 개정: 패스키 · 새 기기 로그인 알림 · 기기 쿠키 · 로그인 유지 90일 */
 const PRIVACY_EFFECTIVE_DATE = '2026년 10월 3일';
 const PRIVACY_PREVIOUS = ['2026년 9월 25일'];
+// i18n-ignore-end
 
-function LegalLayout({ title, effectiveDate, children }: { title: string; effectiveDate: string; children: ReactNode }) {
+/** en: 영어 화면에 보이는 참고용 번역 — 법적 효력은 한국어 원문(children)에 있고, 원문도 바로 펼쳐 볼 수 있다 */
+function LegalLayout({ title, effectiveDate, en, children }: { title: string; effectiveDate: string; en: ReactNode; children: ReactNode }) {
   const authed = useSession((s) => s.status === 'authed');
+  const [original, setOriginal] = useState(false);
+  const english = isEn && !original;
   useEffect(() => {
     const prev = document.title;
-    document.title = `${title} · ${BRAND}`;
+    document.title = `${t(title)} · ${BRAND}`;
     window.scrollTo(0, 0);
     return () => void (document.title = prev);
   }, [title]);
@@ -29,15 +41,36 @@ function LegalLayout({ title, effectiveDate, children }: { title: string; effect
           <BrandMark size={26} /> {BRAND}
         </Link>
         <Link to={authed ? '/' : '/login'} className="legal-back">
-          <ArrowLeft size={15} /> {authed ? '내 공간으로' : '로그인 화면으로'}
+          <ArrowLeft size={15} /> {authed ? t('내 공간으로') : t('로그인 화면으로')}
         </Link>
       </header>
       <main className="legal-body">
-        <h1>{title}</h1>
-        <p className="legal-meta">
-          시행일 {effectiveDate} · 운영 {OPERATOR} · 문의 <a href={`mailto:${CONTACT_EMAIL}`}>{CONTACT_EMAIL}</a>
-        </p>
-        {children}
+        <h1>{t(title)}</h1>
+        {isEn && (
+          <p className="legal-translation-note" lang="en">
+            This English translation is provided for reference only. The Korean original is the legally binding version and prevails in the event of any discrepancy.{' '}
+            <button type="button" className="link" onClick={() => setOriginal(!original)}>
+              {original ? 'Show the English translation' : 'View the Korean original'}
+            </button>
+          </p>
+        )}
+        {english ? (
+          <div lang="en">
+            <Suspense fallback={null}>
+              <MetaEn effectiveDate={effectiveDate} />
+              {en}
+            </Suspense>
+          </div>
+        ) : (
+          <div lang="ko">
+            {/* i18n-ignore-start */}
+            <p className="legal-meta">
+              시행일 {effectiveDate} · 운영 {OPERATOR} · 문의 <a href={`mailto:${CONTACT_EMAIL}`}>{CONTACT_EMAIL}</a>
+            </p>
+            {/* i18n-ignore-end */}
+            {children}
+          </div>
+        )}
       </main>
       <LegalLinks />
     </div>
@@ -47,23 +80,26 @@ function LegalLayout({ title, effectiveDate, children }: { title: string; effect
 /** 로그인 화면 · 가입 화면 · 약관 페이지 아래에 붙는 링크 */
 export function LegalLinks({ className = 'legal-links' }: { className?: string }) {
   return (
-    <nav className={className} aria-label="약관 및 정책">
-      <Link to="/notices">공지사항</Link>
+    <nav className={className} aria-label={t('약관 및 정책')}>
+      <Link to="/notices">{t('공지사항')}</Link>
       <span aria-hidden>·</span>
-      <Link to="/terms">이용약관</Link>
+      <Link to="/terms">{t('이용약관')}</Link>
       <span aria-hidden>·</span>
       <Link to="/privacy">
-        <b>개인정보처리방침</b>
+        <b>{t('개인정보처리방침')}</b>
       </Link>
       <span aria-hidden>·</span>
-      <a href={`mailto:${CONTACT_EMAIL}`}>문의 {CONTACT_EMAIL}</a>
+      <a href={`mailto:${CONTACT_EMAIL}`}>{t('문의 {email}', { email: CONTACT_EMAIL })}</a>
+      <span aria-hidden>·</span>
+      <LanguageSwitch />
     </nav>
   );
 }
 
+// i18n-ignore-start
 export function PrivacyPage() {
   return (
-    <LegalLayout title="개인정보처리방침" effectiveDate={PRIVACY_EFFECTIVE_DATE}>
+    <LegalLayout title="개인정보처리방침" effectiveDate={PRIVACY_EFFECTIVE_DATE} en={<PrivacyEn effectiveDate={PRIVACY_EFFECTIVE_DATE} previous={PRIVACY_PREVIOUS} />}>
       <p>
         {OPERATOR}(이하 “운영팀”)은 {BRAND}(madang.party, 이하 “서비스”)를 이용하는 분의 개인정보를 소중히 다루며, 「개인정보 보호법」 등 관련 법령을 지킵니다. 이 방침은 운영팀이
         어떤 정보를 왜 수집하고, 얼마나 보관하며, 어떻게 보호하는지 알려 드립니다.
@@ -293,7 +329,7 @@ export function PrivacyPage() {
 
 export function TermsPage() {
   return (
-    <LegalLayout title="이용약관" effectiveDate={TERMS_EFFECTIVE_DATE}>
+    <LegalLayout title="이용약관" effectiveDate={TERMS_EFFECTIVE_DATE} en={<TermsEn effectiveDate={TERMS_EFFECTIVE_DATE} />}>
       <h2>제1조 (목적)</h2>
       <p>
         이 약관은 {OPERATOR}(이하 “운영팀”)이 제공하는 {BRAND}(madang.party, 이하 “서비스”)의 이용 조건과 절차, 운영팀과 회원의 권리 · 의무 및 책임 사항을 정합니다.
@@ -394,3 +430,4 @@ export function TermsPage() {
     </LegalLayout>
   );
 }
+// i18n-ignore-end

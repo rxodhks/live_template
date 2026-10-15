@@ -8,6 +8,7 @@ import { backupPending } from './templateOps';
 import { useTemplates } from '../store/templates';
 import { useConnection } from '../store/connection';
 import { confirmDialog } from '../components/ui';
+import { t } from '../i18n';
 
 /*
  * 로그인
@@ -99,7 +100,7 @@ export async function claimLegacyAccount(): Promise<boolean> {
   try {
     const r = await api<{ merged: boolean; templates: number }>('POST', '/auth/claim', { token });
     clearLegacy();
-    if (r.merged && r.templates > 0) toast.success('예전에 참여한 협업 템플릿을 옮겼습니다', `${r.templates}개의 템플릿을 이 계정에서 계속 쓸 수 있습니다.`);
+    if (r.merged && r.templates > 0) toast.success(t('예전에 참여한 협업 템플릿을 옮겼습니다'), t('{templates}개의 템플릿을 이 계정에서 계속 쓸 수 있습니다.', { templates: r.templates }));
     return r.merged;
   } catch (err) {
     // 서버에 연결할 수 없으면 다음에 다시 시도
@@ -124,11 +125,15 @@ export async function logout(): Promise<void> {
   const unsaved = useConnection.getState().pending > 0;
   if (local.length || unsaved) {
     const ok = await confirmDialog({
-      title: '아직 클라우드에 저장되지 않은 내용이 있습니다',
-      message: `${local.length ? `개인 템플릿 ${local.length}개가 아직 이 기기에만 있습니다. ` : ''}${
-        unsaved ? '방금 고친 내용이 아직 저장 중입니다. ' : ''
-      }로그아웃해도 이 내용은 이 기기에 남겨 두었다가, 다음에 로그인하면 자동으로 저장합니다.`,
-      confirmText: '로그아웃',
+      title: t('아직 클라우드에 저장되지 않은 내용이 있습니다'),
+      message: [
+        local.length ? t('개인 템플릿 {n}개가 아직 이 기기에만 있습니다.', { n: local.length }) : '',
+        unsaved ? t('방금 고친 내용이 아직 저장 중입니다.') : '',
+        t('로그아웃해도 이 내용은 이 기기에 남겨 두었다가, 다음에 로그인하면 자동으로 저장합니다.'),
+      ]
+        .filter(Boolean)
+        .join(' '),
+      confirmText: t('로그아웃'),
     });
     if (!ok) return;
   }
@@ -147,7 +152,7 @@ setUnauthorizedHandler(() => {
   if (s.status !== 'authed' || expiredNotified) return;
   expiredNotified = true;
   writeCache(null);
-  toast.show({ kind: 'warning', title: '로그인이 만료되었습니다', message: '다시 로그인해 주세요.', duration: 4000 });
+  toast.show({ kind: 'warning', title: t('로그인이 만료되었습니다'), message: t('다시 로그인해 주세요.'), duration: 4000 });
   const next = `${window.location.pathname}${window.location.search}`;
   setTimeout(() => window.location.assign(`/login?next=${encodeURIComponent(next)}`), 1200);
 });

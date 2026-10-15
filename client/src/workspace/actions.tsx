@@ -22,14 +22,15 @@ import { useTemplates } from '../store/templates';
 import type { WorkspaceValue } from './context';
 import { placeNewPage, restoreBuiltinSection } from './layout';
 import { NAME_KEY, itemLabel, itemsMap, type ItemModule } from './items';
+import { ko, lang, t } from '../i18n';
 
 export { itemLabel, itemsMap, type ItemModule } from './items';
 
-const NOUN: Record<ItemModule, string> = { code: '파일', docs: '문서', design: '보드' };
+const NOUN: Record<ItemModule, string> = { code: t('파일#item'), docs: t('문서#item'), design: t('보드#item') };
 
 function guard(ws: WorkspaceValue): boolean {
   if (ws.canEdit) return true;
-  toast.warning('읽기 전용', '뷰어 권한으로는 편집할 수 없습니다.');
+  toast.warning(t('읽기 전용'), t('뷰어 권한으로는 편집할 수 없습니다.'));
   return false;
 }
 
@@ -43,21 +44,21 @@ export interface CreateOptions {
  * 꺼져 있었으면 켜고, 지웠던 기본 목록도 되살린다. 켜진 뒤의 기능 목록을 돌려준다 (실패하면 null)
  */
 export async function ensureFeature(ws: WorkspaceValue, module: ItemModule, opts: { quiet?: boolean } = {}): Promise<Feature[] | null> {
-  const t = useTemplates.getState().templates[ws.template.id] ?? ws.template;
-  if (t.features.includes(module)) return t.features;
+  const tpl = useTemplates.getState().templates[ws.template.id] ?? ws.template;
+  if (tpl.features.includes(module)) return tpl.features;
   try {
-    const next = await updateTemplate(t, { features: [...t.features, module] });
+    const next = await updateTemplate(tpl, { features: [...tpl.features, module] });
     restoreBuiltinSection(ws.doc, module);
-    if (!opts.quiet) toast.success(`${FEATURE_INFO[module].name} 영역을 추가했습니다`, '왼쪽 목록과 메뉴에 바로 나타납니다.');
+    if (!opts.quiet) toast.success(t('{name} 영역을 추가했습니다', { name: t(FEATURE_INFO[module].name) }), t('왼쪽 목록과 메뉴에 바로 나타납니다.'));
     return next.features;
   } catch (err) {
-    toast.error(`${FEATURE_INFO[module].name} 영역을 추가하지 못했습니다`, errorMessage(err));
+    toast.error(t('{name} 영역을 추가하지 못했습니다', { name: t(FEATURE_INFO[module].name) }), errorMessage(err));
     return null;
   }
 }
 
 const currentFeatures = (ws: WorkspaceValue): Feature[] => (useTemplates.getState().templates[ws.template.id] ?? ws.template).features;
-const areaNote = (added: boolean, m: ItemModule) => (added ? ` · ${FEATURE_INFO[m].name} 영역도 함께 추가했습니다` : '');
+const areaNote = (added: boolean, m: ItemModule) => (added ? t(' · {name} 영역도 함께 추가했습니다', { name: t(FEATURE_INFO[m].name) }) : '');
 
 /** 영역을 켜고, 비어 있으면 첫 페이지를 하나 만들어 준다 (설정 · 개요의 영역 추가) */
 export async function enableFeature(ws: WorkspaceValue, module: ItemModule, me: PublicUser): Promise<boolean> {
@@ -72,7 +73,7 @@ export async function enableFeature(ws: WorkspaceValue, module: ItemModule, me: 
     const d = BLANK_CONTENT.docs[0];
     addDocument(doc, { id: newId(), title: d.title, emoji: d.emoji, blocks: d.blocks, createdBy: me.id });
   }
-  if (module === 'design' && getBoards(doc).size === 0) addBoard(doc, { id: newId(), name: '보드 1', createdBy: me.id });
+  if (module === 'design' && getBoards(doc).size === 0) addBoard(doc, { id: newId(), name: t('보드 1'), createdBy: me.id });
   return true;
 }
 
@@ -85,14 +86,14 @@ export async function createCodeFile(ws: WorkspaceValue, me: PublicUser, opts: C
   if (!guard(ws)) return;
   const names = new Set(Array.from(getFiles(ws.doc).values()).map((f) => String(f.get('name')).toLowerCase()));
   const raw = await promptDialog({
-    title: '새 파일',
-    label: '파일 이름 · 확장자로 언어가 자동 선택됩니다',
-    placeholder: '예) app.ts, main.py, index.html',
-    confirmText: '만들기',
+    title: t('새 파일'),
+    label: t('파일 이름 · 확장자로 언어가 자동 선택됩니다'),
+    placeholder: t('예) app.ts, main.py, index.html'),
+    confirmText: t('만들기'),
     validate: (v) => {
       const name = v.includes('.') ? v : `${v}.js`;
-      if (names.has(name.toLowerCase())) return '같은 이름의 파일이 이미 있습니다.';
-      if (/[\\/:*?"<>|]/.test(v)) return '파일 이름에 사용할 수 없는 문자가 있습니다.';
+      if (names.has(name.toLowerCase())) return t('같은 이름의 파일이 이미 있습니다.');
+      if (/[\\/:*?"<>|]/.test(v)) return t('파일 이름에 사용할 수 없는 문자가 있습니다.');
       return null;
     },
   });
@@ -105,7 +106,7 @@ export async function createCodeFile(ws: WorkspaceValue, me: PublicUser, opts: C
   addCodeFile(ws.doc, { id, name, language: languageFromFilename(name).id, createdBy: me.id });
   placeNewPage(ws.doc, features, 'code', id, opts.sectionId);
   ws.report({ type: 'code.create', targetId: id, targetName: name });
-  toast.success('파일을 만들었습니다', `${name} · ${languageFromFilename(name).name}${areaNote(added, 'code')}`);
+  toast.success(t('파일을 만들었습니다'), `${name} · ${languageFromFilename(name).name}${areaNote(added, 'code')}`);
   ws.go('code', id);
 }
 
@@ -113,7 +114,7 @@ export async function createDocument(ws: WorkspaceValue, me: PublicUser, opts: C
   if (!guard(ws)) return;
   // 먼저 문서 크기(A4 · 기기 화면 · 직접 입력 · 자유 형식)를 고른다
   const count = getDocs(ws.doc).size;
-  const fallback = count === 0 ? '제목 없는 문서' : `제목 없는 문서 ${count + 1}`;
+  const fallback = count === 0 ? t('제목 없는 문서') : t('제목 없는 문서 {x}', { x: count + 1 });
   const chosen = await pageSetupDialog({ mode: 'create', initial: lastPageSetup(), title: '' });
   if (!chosen) return;
   const added = !currentFeatures(ws).includes('docs');
@@ -123,8 +124,8 @@ export async function createDocument(ws: WorkspaceValue, me: PublicUser, opts: C
   const title = chosen.title || fallback;
   addDocument(ws.doc, { id, title, emoji: '📄', createdBy: me.id, page: chosen.page, blocks: [{ type: 'heading', level: 1, text: '' }] });
   placeNewPage(ws.doc, features, 'docs', id, opts.sectionId);
-  ws.report({ type: 'docs.create', targetId: id, targetName: title, detail: describePage(chosen.page) });
-  toast.success('문서를 만들었습니다', `${title} · ${describePage(chosen.page)}${areaNote(added, 'docs')}`);
+  ws.report({ type: 'docs.create', targetId: id, targetName: title, detail: describePage(chosen.page, ko) });
+  toast.success(t('문서를 만들었습니다'), `${title} · ${describePage(chosen.page)}${areaNote(added, 'docs')}`);
   ws.go('docs', id);
 }
 
@@ -139,8 +140,8 @@ export async function createBoard(ws: WorkspaceValue, me: PublicUser, opts: Crea
   const id = newId();
   const names = new Set(Array.from(getBoards(ws.doc).values()).map((b) => b.get('name')));
   let n = getBoards(ws.doc).size + 1;
-  while (names.has(`보드 ${n}`)) n++;
-  const name = chosen.title || `보드 ${n}`;
+  while (names.has(t('보드 {n}', { n }))) n++;
+  const name = chosen.title || t('보드 {n}', { n });
   const page = chosen.page;
   const preset = page ? ALL_PRESETS.find((p) => p.id === page.preset) : undefined;
   const shapes: Shape[] = page
@@ -158,7 +159,7 @@ export async function createBoard(ws: WorkspaceValue, me: PublicUser, opts: Crea
           strokeWidth: 0,
           opacity: 1,
           z: 0,
-          name: preset?.name ?? '아트보드',
+          name: preset ? t(preset.name) : t('아트보드'),
           preset: page.preset,
           unit: page.unit,
           createdBy: me.id,
@@ -168,8 +169,8 @@ export async function createBoard(ws: WorkspaceValue, me: PublicUser, opts: Crea
   // 속성 패널의 기본 단위도 고른 형식을 따른다 (A4 보드는 mm)
   addBoard(ws.doc, { id, name, createdBy: me.id, shapes, unit: page?.unit ?? 'px' });
   placeNewPage(ws.doc, features, 'design', id, opts.sectionId);
-  ws.report({ type: 'design.create', targetId: id, targetName: name, detail: page ? describePage(page) : '자유 캔버스' });
-  toast.success('보드를 만들었습니다', `${name} · ${page ? describePage(page) : '자유 캔버스'}${areaNote(added, 'design')}`);
+  ws.report({ type: 'design.create', targetId: id, targetName: name, detail: page ? describePage(page, ko) : ko('자유 캔버스') });
+  toast.success(t('보드를 만들었습니다'), `${name} · ${page ? describePage(page) : t('자유 캔버스')}${areaNote(added, 'design')}`);
   ws.go('design', id);
 }
 
@@ -182,7 +183,7 @@ export function renameItem(ws: WorkspaceValue, module: ItemModule, id: string, n
   if (module === 'code') {
     const dup = Array.from(getFiles(ws.doc).values()).some((f) => f !== item && String(f.get('name')).toLowerCase() === next.toLowerCase());
     if (dup) {
-      toast.warning('이름 변경 실패', '같은 이름의 파일이 이미 있습니다.');
+      toast.warning(t('이름 변경 실패'), t('같은 이름의 파일이 이미 있습니다.'));
       return;
     }
   }
@@ -198,14 +199,14 @@ export function renameItem(ws: WorkspaceValue, module: ItemModule, id: string, n
   if (module === 'code') void swapStarterCode(ws, item);
   const type = module === 'code' ? 'code.rename' : module === 'docs' ? 'docs.rename' : 'design.rename';
   ws.report({ type, targetId: id, targetName: next, detail: `${prev} → ${next}` });
-  ws.action(`이름 변경 · ${next}`);
+  ws.action(t('이름 변경 · {next}', { next }));
 }
 
 /** 아직 시작 코드 그대로인 파일은 언어가 바뀌면 새 언어의 시작 코드로 (고친 내용은 그대로 둔다). 언어별 시작 코드는 코드 화면과 함께 불러온다 */
 async function swapStarterCode(ws: WorkspaceValue, item: YItem): Promise<void> {
   const { isStarterCode, starterCode } = await import('@shared/starters');
   const text = item.get('content') as Y.Text;
-  const next = starterCode(item.get('language') as string);
+  const next = starterCode(item.get('language') as string, lang);
   const current = text.toString();
   if (!isStarterCode(current) || current === next) return;
   ws.doc.transact(() => {
@@ -242,34 +243,34 @@ export async function deleteItem(ws: WorkspaceValue, module: ItemModule, id: str
   };
   const toastId = toast.show({
     kind: 'danger',
-    title: `${NOUN[module]}를 삭제했습니다`,
+    title: t('{x}를 삭제했습니다', { x: NOUN[module] }),
     message: name,
     duration: UNDO_DELETE_MS,
     action: {
-      label: '되돌리기',
+      label: t('되돌리기'),
       run: () => {
         if (done) return;
         if (!ws.canEdit) {
           release();
-          toast.warning('되돌리지 못했습니다', '편집 권한이 없습니다.');
+          toast.warning(t('되돌리지 못했습니다'), t('편집 권한이 없습니다.'));
           return;
         }
         undo.undo();
         release();
         if (!map.has(id)) {
-          toast.error('되돌리지 못했습니다', name);
+          toast.error(t('되돌리지 못했습니다'), name);
           return;
         }
         const type = module === 'code' ? 'code.create' : module === 'docs' ? 'docs.create' : 'design.create';
-        ws.report({ type, targetId: id, targetName: name, detail: '삭제 취소' });
-        toast.success(`${NOUN[module]}를 되살렸습니다`, name);
+        ws.report({ type, targetId: id, targetName: name, detail: ko('삭제 취소') });
+        toast.success(t('{x}를 되살렸습니다', { x: NOUN[module] }), name);
         if (wasOpen) ws.go(module, id);
       },
     },
   });
   // 토스트가 사라지면 (시간이 다 되거나 닫으면) 되돌릴 기회도 끝 — 마우스를 올려 두는 동안은 유지된다
   unsubscribe = useToasts.subscribe((st) => {
-    if (!st.toasts.some((t) => t.id === toastId)) release();
+    if (!st.toasts.some((toastItem) => toastItem.id === toastId)) release();
   });
 }
 
@@ -285,7 +286,7 @@ export function duplicateItem(ws: WorkspaceValue, module: ItemModule, id: string
     let i = 1;
     let name = '';
     do {
-      name = dot > 0 ? `${base.slice(0, dot)}-복사본${i > 1 ? i : ''}${base.slice(dot)}` : `${base}-복사본${i > 1 ? i : ''}`;
+      name = dot > 0 ? t('{x}-복사본{x2}{x3}', { x: base.slice(0, dot), x2: i > 1 ? i : '', x3: base.slice(dot) }) : t('{base}-복사본{x}', { base, x: i > 1 ? i : '' });
       i++;
     } while (names.has(name));
     addCodeFile(ws.doc, {
@@ -297,7 +298,7 @@ export function duplicateItem(ws: WorkspaceValue, module: ItemModule, id: string
     });
     ws.report({ type: 'code.create', targetId: newItemId, targetName: name });
   } else if (module === 'docs') {
-    const title = `${base} (복사본)`;
+    const title = t('{base} (복사본)', { base });
     const map = new Y.Map<unknown>();
     ws.doc.transact(() => {
       getDocs(ws.doc).set(newItemId, map);
@@ -316,11 +317,11 @@ export function duplicateItem(ws: WorkspaceValue, module: ItemModule, id: string
     });
     ws.report({ type: 'docs.create', targetId: newItemId, targetName: title });
   } else {
-    const name = `${base} (복사본)`;
+    const name = t('{base} (복사본)', { base });
     const shapes = Array.from((item.get('shapes') as Y.Map<Shape>).values()).map((s) => ({ ...s, id: newId() }));
     addBoard(ws.doc, { id: newItemId, name, background: item.get('background') as string, createdBy: me.id, shapes });
     ws.report({ type: 'design.create', targetId: newItemId, targetName: name });
   }
-  toast.success(`${NOUN[module]}를 복제했습니다`);
+  toast.success(t('{x}를 복제했습니다', { x: NOUN[module] }));
   ws.go(module, newItemId);
 }

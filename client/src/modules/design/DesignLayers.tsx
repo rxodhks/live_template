@@ -5,6 +5,7 @@ import { usePresence } from '../../store/presence';
 import { cx } from '../../lib/util';
 import { useDesign } from './store';
 import { useShapes, updateShapes, type ShapeMap } from './ops';
+import { t } from '../../i18n';
 
 const ICON: Record<Shape['type'], string> = {
   rect: '▭',
@@ -35,7 +36,7 @@ function LayerList({ map }: { map: ShapeMap }) {
   const remoteSel = new Map<string, string>();
   for (const p of Object.values(others)) for (const id of p.selection ?? []) remoteSel.set(id, p.user.color);
 
-  if (shapes.length === 0) return <p className="ex-empty">도형이 없습니다</p>;
+  if (shapes.length === 0) return <p className="ex-empty">{t('도형이 없습니다')}</p>;
   return (
     <ul className="layers">
       {[...shapes].reverse().slice(0, 200).map((s) => (
@@ -45,12 +46,12 @@ function LayerList({ map }: { map: ShapeMap }) {
             onClick={(e) => setSelection(e.shiftKey ? Array.from(new Set([...selection, s.id])) : [s.id])}
           >
             <span className="layer-icon">{ICON[s.type]}</span>
-            <span className="layer-name">{(s.type === 'frame' ? s.name : s.text?.split('\n')[0])?.slice(0, 24) || SHAPE_LABEL[s.type]}</span>
-            {remoteSel.has(s.id) && <span className="layer-remote" style={{ background: remoteSel.get(s.id) }} data-tip="다른 사람이 선택함" />}
+            <span className="layer-name">{(s.type === 'frame' ? s.name : s.text?.split('\n')[0])?.slice(0, 24) || t(SHAPE_LABEL[s.type])}</span>
+            {remoteSel.has(s.id) && <span className="layer-remote" style={{ background: remoteSel.get(s.id) }} data-tip={t('다른 사람이 선택함')} />}
             {s.locked && <Lock size={11} className="muted" />}
           </button>
           {ws.canEdit && (
-            <button className="layer-lock" data-tip={s.locked ? '잠금 해제' : '잠그기'} onClick={() => updateShapes(map, { [s.id]: { locked: !s.locked } })} aria-label="잠금 전환">
+            <button className="layer-lock" data-tip={s.locked ? t('잠금 해제') : t('잠그기')} onClick={() => updateShapes(map, { [s.id]: { locked: !s.locked } })} aria-label={t('잠금 전환')}>
               {s.locked ? '🔒' : '🔓'}
             </button>
           )}

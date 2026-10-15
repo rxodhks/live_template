@@ -9,6 +9,7 @@ import { type LocalNote, deleteLocalNote, listLocalNotes, putLocalNote } from '.
 import type { RoomConnection } from './room';
 import { newId } from './util';
 import { isDemoId } from './demo';
+import { t } from '../i18n';
 
 /*
  * 비밀 노트 — 개인 공간(브라우저)과 협업 공간(서버) 모두 같은 방식으로 암호화된다.
@@ -99,12 +100,12 @@ function localApi(ctx: Ctx): NotesApi {
 
   const verify = async (note: SecretNoteMeta, password: string): Promise<{ row: LocalNote; keys: NoteKeys }> => {
     const row = await notesDb.get(note.id);
-    if (!row) throw new ApiError(404, '비밀 노트를 찾을 수 없습니다.');
+    if (!row) throw new ApiError(404, t('비밀 노트를 찾을 수 없습니다.'));
     const a = attempts.get(note.id) ?? { fails: 0, lockedUntil: 0 };
     const now = Date.now();
     if (a.lockedUntil > now) {
       const retryAfter = Math.ceil((a.lockedUntil - now) / 1000);
-      throw new ApiError(429, `비밀번호를 여러 번 틀려 잠시 잠겼습니다. ${retryAfter}초 후 다시 시도하세요.`, { retryAfter });
+      throw new ApiError(429, t('비밀번호를 여러 번 틀려 잠시 잠겼습니다. {retryAfter}초 후 다시 시도하세요.', { retryAfter }), { retryAfter });
     }
     const keys = await deriveNoteKeys(password, row.kdf);
     if ((await sha256Hex(keys.verifier)) !== row.verifierHash) {
@@ -112,10 +113,10 @@ function localApi(ctx: Ctx): NotesApi {
       a.fails += 1;
       if (a.fails >= LOCAL_MAX_ATTEMPTS) {
         attempts.set(note.id, { fails: 0, lockedUntil: now + LOCAL_LOCKOUT_MS });
-        throw new ApiError(429, `비밀번호를 여러 번 틀려 잠시 잠겼습니다. ${LOCAL_LOCKOUT_MS / 1000}초 후 다시 시도하세요.`, { retryAfter: LOCAL_LOCKOUT_MS / 1000 });
+        throw new ApiError(429, t('비밀번호를 여러 번 틀려 잠시 잠겼습니다. {x}초 후 다시 시도하세요.', { x: LOCAL_LOCKOUT_MS / 1000 }), { retryAfter: LOCAL_LOCKOUT_MS / 1000 });
       }
       attempts.set(note.id, a);
-      throw new ApiError(401, `비밀번호가 올바르지 않습니다. (남은 시도 ${LOCAL_MAX_ATTEMPTS - a.fails}회)`);
+      throw new ApiError(401, t('비밀번호가 올바르지 않습니다. (남은 시도 {x}회)', { x: LOCAL_MAX_ATTEMPTS - a.fails }));
     }
     attempts.delete(note.id);
     return { row, keys };
@@ -358,7 +359,7 @@ class SharedNoteSession implements NoteSession {
     if (!res.ok || !res.data) {
       if (res.status) {
         this.setStatus('error');
-        this.opts.onError(res.error ?? '노트를 열 수 없습니다.', res.status);
+        this.opts.onError(res.error ?? t('노트를 열 수 없습니다.'), res.status);
       }
       return;
     }
@@ -372,7 +373,7 @@ class SharedNoteSession implements NoteSession {
         }
       } catch {
         this.setStatus('error');
-        this.opts.onError('노트를 복호화하지 못했습니다. 비밀번호가 바뀌었을 수 있습니다.');
+        this.opts.onError(t('노트를 복호화하지 못했습니다. 비밀번호가 바뀌었을 수 있습니다.'));
         return;
       }
       this.sinceSnapshot = data.updates.length;

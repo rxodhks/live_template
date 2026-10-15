@@ -10,6 +10,7 @@ import { onTimelineEvent } from '../store/templates';
 import { useTick } from '../hooks/useInterval';
 import { Avatar, Button, EmptyState, Spinner } from './ui';
 import { cx } from '../lib/util';
+import { activityText, locale, t } from '../i18n';
 
 const MODULE_ICON: Record<ActivityModule, string> = {
   presence: '🟢',
@@ -83,7 +84,7 @@ export function TimelineView({ templateId, people, showTemplate }: Props) {
         if (f.templateId && event.templateId !== f.templateId) return;
         if (f.userId && event.user.id !== f.userId) return;
         if (f.module && event.module !== f.module) return;
-        if (f.q && !`${event.user.name} ${event.text} ${event.templateName}`.toLowerCase().includes(f.q.toLowerCase())) return;
+        if (f.q && !`${event.user.name} ${activityText(event)} ${event.templateName}`.toLowerCase().includes(f.q.toLowerCase())) return;
         setEvents((prev) => (prev ? [event, ...prev.filter((e) => e.id !== event.id)] : prev));
         setFresh((s) => new Set(s).add(event.id));
         setTimeout(() => setFresh((s) => {
@@ -125,12 +126,12 @@ export function TimelineView({ templateId, people, showTemplate }: Props) {
       <div className="timeline-filters">
         <label className="search-input">
           <Search size={15} />
-          <input value={q} onChange={(e) => setQ(e.target.value)} placeholder="활동 검색 (이름, 파일명…)" />
+          <input value={q} onChange={(e) => setQ(e.target.value)} placeholder={t('활동 검색 (이름, 파일명…)')} />
         </label>
         <label className="select-wrap">
           <Filter size={14} />
-          <select value={userId} onChange={(e) => setUserId(e.target.value)} aria-label="사용자 필터">
-            <option value="">모든 사람</option>
+          <select value={userId} onChange={(e) => setUserId(e.target.value)} aria-label={t('사용자 필터')}>
+            <option value="">{t('모든 사람')}</option>
             {people.map((p) => (
               <option key={p.id} value={p.id}>
                 {p.avatar} {p.name}
@@ -139,17 +140,17 @@ export function TimelineView({ templateId, people, showTemplate }: Props) {
           </select>
         </label>
         <label className="select-wrap">
-          <select value={module} onChange={(e) => setModule(e.target.value as ActivityModule | '')} aria-label="영역 필터">
-            <option value="">모든 영역</option>
+          <select value={module} onChange={(e) => setModule(e.target.value as ActivityModule | '')} aria-label={t('영역 필터')}>
+            <option value="">{t('모든 영역')}</option>
             {(Object.keys(MODULE_LABEL) as ActivityModule[]).map((m) => (
               <option key={m} value={m}>
-                {MODULE_ICON[m]} {MODULE_LABEL[m]}
+                {MODULE_ICON[m]} {t(MODULE_LABEL[m])}
               </option>
             ))}
           </select>
         </label>
         <button className={cx('chip-toggle', importantOnly && 'is-on')} onClick={() => setImportantOnly((v) => !v)} aria-pressed={importantOnly}>
-          <Star size={13} /> 중요한 활동만
+          <Star size={13} /> {t('중요한 활동만')}
         </button>
       </div>
 
@@ -161,8 +162,8 @@ export function TimelineView({ templateId, people, showTemplate }: Props) {
               <Spinner size={22} />
             </div>
           ) : visible.length === 0 ? (
-            <EmptyState icon={<History size={30} />} title="기록된 활동이 없습니다">
-              필터를 바꾸거나 템플릿에서 작업을 시작해 보세요.
+            <EmptyState icon={<History size={30} />} title={t('기록된 활동이 없습니다')}>
+              {t('필터를 바꾸거나 템플릿에서 작업을 시작해 보세요.')}
             </EmptyState>
           ) : (
             <ol className="timeline-list">
@@ -173,7 +174,7 @@ export function TimelineView({ templateId, people, showTemplate }: Props) {
                 return [
                   header,
                   <li key={e.id} className={cx('timeline-item', e.important && 'is-important', fresh.has(e.id) && 'is-fresh')}>
-                    <span className="timeline-time" title={new Date(e.at).toLocaleString('ko-KR')}>
+                    <span className="timeline-time" title={new Date(e.at).toLocaleString(locale)}>
                       {formatTime(e.at)}
                     </span>
                     <span className="timeline-dot" style={{ ['--user-color' as string]: e.user.color }}>
@@ -181,12 +182,12 @@ export function TimelineView({ templateId, people, showTemplate }: Props) {
                     </span>
                     <button className="timeline-body" onClick={() => open(e)}>
                       <span className="timeline-text">
-                        <b>{e.user.name}</b> {e.text}
-                        {e.count > 1 && <span className="count-chip" data-tip={`5분 안에 ${e.count}번 반복된 활동을 합쳤습니다`}>×{e.count}</span>}
+                        <b>{e.user.name}</b> {activityText(e)}
+                        {e.count > 1 && <span className="count-chip" data-tip={t('5분 안에 {count}번 반복된 활동을 합쳤습니다', { count: e.count })}>×{e.count}</span>}
                       </span>
                       <span className="timeline-meta">
                         <span className={`module-chip module-${e.module}`}>
-                          {MODULE_ICON[e.module]} {MODULE_LABEL[e.module]}
+                          {MODULE_ICON[e.module]} {t(MODULE_LABEL[e.module])}
                         </span>
                         {showTemplate && <span className="muted">{e.templateName}</span>}
                         <span className="muted">{relativeTime(e.at)}</span>
@@ -200,7 +201,7 @@ export function TimelineView({ templateId, people, showTemplate }: Props) {
           {hasMore && (
             <div className="center-fill pad">
               <Button onClick={loadMore} loading={loadingMore}>
-                이전 기록 더 보기
+                {t('이전 기록 더 보기')}
               </Button>
             </div>
           )}
@@ -231,14 +232,15 @@ function ActivitySummary({ events, onPick, selected }: { events: TimelineEvent[]
   if (rows.length === 0) return null;
   const max = Math.max(...rows.map((r) => r.total));
   return (
-    <aside className="activity-summary" aria-label="참여자별 활동량">
-      <h3>참여자별 활동량</h3>
-      <p className="muted small">불러온 기록 기준 · 막대를 누르면 해당 사람만 보기</p>
+    <aside className="activity-summary" aria-label={t('참여자별 활동량')}>
+      <h3>{t('참여자별 활동량')}</h3>
+      <p className="muted small">{t('불러온 기록 기준 · 막대를 누르면 해당 사람만 보기')}</p>
       <ul>
         {rows.map((r) => {
-          const tip = `${r.user.name} · 총 ${r.total}회\n${Array.from(r.byModule.entries())
-            .map(([m, n]) => `${MODULE_LABEL[m]} ${n}`)
-            .join(' · ')}`;
+          const breakdown = Array.from(r.byModule.entries())
+            .map(([m, n]) => `${t(MODULE_LABEL[m])} ${n}`)
+            .join(' · ');
+          const tip = t('{name} · 총 {total}회\n{breakdown}', { name: r.user.name, total: r.total, breakdown });
           return (
             <li key={r.user.id}>
               <button

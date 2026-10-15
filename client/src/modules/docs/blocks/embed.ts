@@ -1,3 +1,4 @@
+import { t } from '../../../i18n';
 /*
  * 임베드: 주소를 알려진 서비스의 '퍼가기' 주소로 바꾼다. 목록에 없는 주소는 임베드하지 않는다 (링크로 넣는다)
  */
@@ -9,7 +10,7 @@ export interface EmbedInfo {
   height?: number;
 }
 
-export const EMBED_PROVIDERS = 'YouTube · Vimeo · Loom · Figma · CodePen · Google 지도 · Spotify';
+export const EMBED_PROVIDERS = t('YouTube · Vimeo · Loom · Figma · CodePen · Google 지도 · Spotify');
 
 export function resolveEmbed(raw: string): EmbedInfo | null {
   let url: URL;
@@ -49,7 +50,7 @@ export function resolveEmbed(raw: string): EmbedInfo | null {
     return m ? { provider: 'CodePen', src: `https://codepen.io/${m[1]}/embed/${m[2]}?default-tab=result`, height: 420 } : null;
   }
   if ((host === 'google.com' || host === 'maps.google.com') && path.startsWith('/maps/embed')) {
-    return { provider: 'Google 지도', src: url.toString(), height: 400 };
+    return { provider: t('Google 지도'), src: url.toString(), height: 400 };
   }
   if (host === 'open.spotify.com') {
     const m = /^\/(?:embed\/)?(track|album|playlist|episode|show|artist)\/(\w+)/.exec(path);

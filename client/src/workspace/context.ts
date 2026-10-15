@@ -64,7 +64,7 @@ export const WorkspaceContext = createContext<WorkspaceValue | null>(null);
 
 export function useWorkspace(): WorkspaceValue {
   const ctx = useContext(WorkspaceContext);
-  if (!ctx) throw new Error('WorkspaceContext 밖에서 사용할 수 없습니다');
+  if (!ctx) throw new Error('useWorkspace must be used inside WorkspaceContext');
   return ctx;
 }
 

@@ -13,6 +13,7 @@ import { DesignToolbar } from './DesignToolbar';
 import { Inspector } from './Inspector';
 import { lastPageSetup, pageSetupDialog } from '../docs/page/PageSetupDialog';
 import { ALL_PRESETS } from '../docs/page/pageSizes';
+import { t } from '../../i18n';
 
 export function DesignModule() {
   const ws = useWorkspace();
@@ -36,16 +37,16 @@ export function DesignModule() {
     return (
       <EmptyState
         icon={<Palette size={34} />}
-        title={boards.length ? '보드를 여는 중…' : '아직 디자인 보드가 없습니다'}
+        title={boards.length ? t('보드를 여는 중…') : t('아직 디자인 보드가 없습니다')}
         action={
           ws.canEdit && !boards.length ? (
             <Button variant="primary" icon={<Plus size={15} />} onClick={() => createBoard(ws, me)}>
-              새 보드 만들기
+              {t('새 보드 만들기')}
             </Button>
           ) : undefined
         }
       >
-        무한 캔버스에서 도형, 스티키 노트, 펜으로 함께 그릴 수 있습니다.
+        {t('무한 캔버스에서 도형, 스티키 노트, 펜으로 함께 그릴 수 있습니다.')}
       </EmptyState>
     );
   }
@@ -70,7 +71,7 @@ function BoardView({ board }: { board: YItem }) {
     const r = await pageSetupDialog({ mode: 'create', kind: 'artboard', initial: lastPageSetup('artboard'), title: '' });
     if (!r?.page) return;
     const preset = ALL_PRESETS.find((p) => p.id === r.page!.preset);
-    api.current?.addFrame(r.page, r.title || preset?.name || '아트보드');
+    api.current?.addFrame(r.page, r.title || (preset ? t(preset.name) : t('아트보드')));
   }, [ws.canEdit]);
 
   useEffect(() => {
@@ -89,13 +90,13 @@ function BoardView({ board }: { board: YItem }) {
         {viewers.length > 0 && (
           <span className="toolbar-viewers">
             {viewers.map((v) => (
-              <Avatar key={v.socketId} user={v.user} size={22} status={v.idle ? 'idle' : 'online'} tooltip={`${v.user.name} 님이 이 보드를 보는 중`} />
+              <Avatar key={v.socketId} user={v.user} size={22} status={v.idle ? 'idle' : 'online'} tooltip={t('{name} 님이 이 보드를 보는 중', { name: v.user.name })} />
             ))}
           </span>
         )}
         <span className="toolbar-spacer" />
-        {!ws.canEdit && <span className="status-readonly">읽기 전용</span>}
-        <IconButton label={inspector ? '속성 패널 닫기' : '속성 패널 열기'} active={inspector} onClick={() => setInspector((v) => !v)}>
+        {!ws.canEdit && <span className="status-readonly">{t('읽기 전용')}</span>}
+        <IconButton label={inspector ? t('속성 패널 닫기') : t('속성 패널 열기')} active={inspector} onClick={() => setInspector((v) => !v)}>
           <PanelRight size={16} />
         </IconButton>
       </div>
@@ -104,16 +105,16 @@ function BoardView({ board }: { board: YItem }) {
           <DesignToolbar readOnly={!ws.canEdit} onUndo={() => api.current?.undo()} onRedo={() => api.current?.redo()} onAddArtboard={() => void addArtboard()} />
           <DesignCanvas board={board} onApi={onApi} onZoom={setZoom} onAddArtboard={() => void addArtboard()} />
           <div className="zoom-controls">
-            <IconButton label="축소 (-)" size="sm" onClick={() => api.current?.zoomBy(1 / 1.2)}>
+            <IconButton label={t('축소 (-)')} size="sm" onClick={() => api.current?.zoomBy(1 / 1.2)}>
               <Minus size={14} />
             </IconButton>
-            <button className="zoom-value" onClick={() => api.current?.zoomTo(1)} data-tip="100%로 (Ctrl+0)">
+            <button className="zoom-value" onClick={() => api.current?.zoomTo(1)} data-tip={t('100%로 (Ctrl+0)')}>
               {Math.round(zoom * 100)}%
             </button>
-            <IconButton label="확대 (+)" size="sm" onClick={() => api.current?.zoomBy(1.2)}>
+            <IconButton label={t('확대 (+)')} size="sm" onClick={() => api.current?.zoomBy(1.2)}>
               <Plus size={14} />
             </IconButton>
-            <IconButton label="화면에 맞추기 (Shift+1)" size="sm" onClick={() => api.current?.fit()}>
+            <IconButton label={t('화면에 맞추기 (Shift+1)')} size="sm" onClick={() => api.current?.fit()}>
               <Maximize size={14} />
             </IconButton>
           </div>

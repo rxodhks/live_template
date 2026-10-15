@@ -1,6 +1,7 @@
 import type { PublicUser, TemplateEntry } from '@shared/types';
 import { PRESETS, getPreset } from '@shared/presets';
 import { useTemplates } from '../store/templates';
+import { lazyText, t } from '../i18n';
 
 /*
  * 가입 전 체험하기 — 예시 템플릿을 로그인 없이 열어 직접 고쳐 본다.
@@ -19,12 +20,12 @@ export const demoPath = (presetId: string) => `/t/${PREFIX}${presetId}`;
 export const demoPresetId = (id: string) => id.slice(PREFIX.length);
 
 /** 둘러보는 사람 (화면 곳곳이 '나'를 필요로 한다) */
-export const GUEST: PublicUser = {
+export const GUEST: PublicUser = lazyText(() => ({
   id: 'guest',
-  name: '둘러보는 중',
+  name: t('둘러보는 중'),
   color: '#64748b',
   avatar: '👀',
-};
+}));
 const MADANG: PublicUser = {
   id: 'madang',
   name: 'Madang',
@@ -38,8 +39,8 @@ export function putDemoEntry(id: string): TemplateEntry {
   const at = Date.UTC(2026, 9, 1);
   const entry: TemplateEntry = {
     id,
-    name: p.name,
-    description: p.description,
+    name: t(p.name),
+    description: t(p.description),
     emoji: p.emoji,
     features: p.features,
     ownerId: MADANG.id,

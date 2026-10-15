@@ -729,6 +729,14 @@ describe('초대 링크', () => {
     assert.match(html, /og:title" content="🚀 우리 팀 랜딩 — Madang 초대장"/);
   });
 
+  it('영어 브라우저에는 미리보기 카드를 영어로 보낸다', async () => {
+    const res = await fetch(`${base}/join/${editorInvite.token}`, { headers: { 'accept-language': 'en-US,en;q=0.9' } });
+    const html = await res.text();
+    assert.match(html, /<html lang="en">/);
+    assert.match(html, /og:title" content="🚀 우리 팀 랜딩 — Madang invitation"/);
+    assert.match(html, /invited you to join as an Editor/);
+  });
+
   it('사용 횟수 제한과 취소', async () => {
     const once = (await api('POST', `/templates/${templateId}/invites`, owner.token, { role: 'viewer', expiresInDays: 1, maxUses: 1, requireApproval: false })).data.invite;
     const u1 = await newUser('박하나');

@@ -7,6 +7,7 @@ import { IconButton, promptDialog } from '../../../components/ui';
 import { cx } from '../../../lib/util';
 import { TURN_INTO, blockLabel, turnSelectionInto } from './blockDefs';
 import { ColorPalette, Popover, applyColor } from './Popover';
+import { t } from '../../../i18n';
 
 /** 글자를 선택하면 위에 뜨는 서식 막대 (노션처럼) */
 export function BubbleToolbar({ editor }: { editor: Editor }) {
@@ -31,7 +32,7 @@ export function BubbleToolbar({ editor }: { editor: Editor }) {
 
   const setLink = async () => {
     const prev = editor.getAttributes('link').href as string | undefined;
-    const url = await promptDialog({ title: '링크', label: 'URL (비우면 링크 제거)', initial: prev ?? 'https://', confirmText: '적용' });
+    const url = await promptDialog({ title: t('링크'), label: t('URL (비우면 링크 제거)'), initial: prev ?? 'https://', confirmText: t('적용') });
     if (url === null) return;
     if (!url || url === 'https://') chain().extendMarkRange('link').unsetLink().run();
     else chain().extendMarkRange('link').setLink({ href: url }).run();
@@ -59,30 +60,30 @@ export function BubbleToolbar({ editor }: { editor: Editor }) {
           {s.label} <ChevronDown size={13} />
         </button>
         <span className="tb-sep" />
-        <IconButton label="굵게 (Ctrl+B)" size="sm" active={s.bold} onMouseDown={(e) => e.preventDefault()} onClick={() => chain().toggleBold().run()}>
+        <IconButton label={t('굵게 (Ctrl+B)')} size="sm" active={s.bold} onMouseDown={(e) => e.preventDefault()} onClick={() => chain().toggleBold().run()}>
           <Bold size={15} />
         </IconButton>
-        <IconButton label="기울임 (Ctrl+I)" size="sm" active={s.italic} onMouseDown={(e) => e.preventDefault()} onClick={() => chain().toggleItalic().run()}>
+        <IconButton label={t('기울임 (Ctrl+I)')} size="sm" active={s.italic} onMouseDown={(e) => e.preventDefault()} onClick={() => chain().toggleItalic().run()}>
           <Italic size={15} />
         </IconButton>
-        <IconButton label="밑줄 (Ctrl+U)" size="sm" active={s.underline} onMouseDown={(e) => e.preventDefault()} onClick={() => chain().toggleUnderline().run()}>
+        <IconButton label={t('밑줄 (Ctrl+U)')} size="sm" active={s.underline} onMouseDown={(e) => e.preventDefault()} onClick={() => chain().toggleUnderline().run()}>
           <Underline size={15} />
         </IconButton>
-        <IconButton label="취소선" size="sm" active={s.strike} onMouseDown={(e) => e.preventDefault()} onClick={() => chain().toggleStrike().run()}>
+        <IconButton label={t('취소선')} size="sm" active={s.strike} onMouseDown={(e) => e.preventDefault()} onClick={() => chain().toggleStrike().run()}>
           <Strikethrough size={15} />
         </IconButton>
-        <IconButton label="인라인 코드" size="sm" active={s.code} onMouseDown={(e) => e.preventDefault()} onClick={() => chain().toggleCode().run()}>
+        <IconButton label={t('인라인 코드')} size="sm" active={s.code} onMouseDown={(e) => e.preventDefault()} onClick={() => chain().toggleCode().run()}>
           <Code size={15} />
         </IconButton>
-        <IconButton label="링크" size="sm" active={s.link} onMouseDown={(e) => e.preventDefault()} onClick={setLink}>
+        <IconButton label={t('링크')} size="sm" active={s.link} onMouseDown={(e) => e.preventDefault()} onClick={setLink}>
           <Link2 size={15} />
         </IconButton>
-        <IconButton label="수식으로 바꾸기" size="sm" onMouseDown={(e) => e.preventDefault()} onClick={toMath}>
+        <IconButton label={t('수식으로 바꾸기')} size="sm" onMouseDown={(e) => e.preventDefault()} onClick={toMath}>
           <Radical size={15} />
         </IconButton>
         <span className="tb-sep" />
         <IconButton
-          label="글자 색 · 배경 색"
+          label={t('글자 색 · 배경 색')}
           size="sm"
           onMouseDown={(e) => e.preventDefault()}
           onClick={(e) => setPop({ kind: 'color', rect: e.currentTarget.getBoundingClientRect() })}
@@ -94,7 +95,7 @@ export function BubbleToolbar({ editor }: { editor: Editor }) {
         <Popover anchor={pop.rect} side="bottom" onClose={() => setPop(null)} className={cx(pop.kind === 'turn' ? 'turn-menu' : 'color-menu')}>
           {pop.kind === 'turn' ? (
             <>
-              <div className="popover-label">전환</div>
+              <div className="popover-label">{t('전환')}</div>
               {TURN_INTO.map((b) => (
                 <button
                   key={b.key}

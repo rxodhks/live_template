@@ -1,5 +1,6 @@
 import { useEffect, useSyncExternalStore } from 'react';
 import { noticeKey, type Notice } from '@shared/notices';
+import { t } from '../i18n';
 
 /*
  * 공지사항 — 빌드 때 만든 /notices.json 을 한 번 받아 쓴다 (서버 API 없음)
@@ -99,9 +100,9 @@ export function bannerOf(s: State): Notice | undefined {
 
 /** 예약 업데이트 상태 한 줄: "10월 12일 14:00 업데이트 예정" · "업데이트 완료" */
 export function deployLabel(n: Notice): string | null {
-  if (n.deployedAt) return '업데이트 완료';
+  if (n.deployedAt) return t('업데이트 완료');
   if (!n.deployAt) return null;
-  const [d, t] = n.deployAt.split(' ');
+  const [d, time] = n.deployAt.split(' ');
   const [, m, day] = d.split('-').map(Number);
-  return `${m}월 ${day}일 ${t} 업데이트 예정`;
+  return t('{m}월 {day}일 {time} 업데이트 예정', { m, day, time });
 }

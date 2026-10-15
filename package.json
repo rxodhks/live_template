@@ -13,7 +13,8 @@
     "typecheck": "npm run typecheck -w worker && npm run typecheck -w client",
     "test": "npm run build && npm test -w worker",
     "deploy": "npm run build && npm run deploy -w worker",
-    "e2e": "playwright test"
+    "e2e": "playwright test",
+    "i18n": "node scripts/i18n-check.mjs"
   },
   "devDependencies": {
     "@playwright/test": "^1.63.0",

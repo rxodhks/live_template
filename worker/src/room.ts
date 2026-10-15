@@ -819,7 +819,7 @@ export class TemplateRoom extends DurableObject<Env> {
     }
     this.broadcast({ t: 'timeline', event, merged: false });
     if (def.important) {
-      this.broadcast({ t: 'toast', toast: { kind: def.toastKind ?? 'info', title: user.name, message: text, user } }, { exceptUser: user.id });
+      this.broadcast({ t: 'toast', toast: { kind: def.toastKind ?? 'info', title: user.name, message: text, user, activity: { type: input.type, targetName: input.targetName, detail: input.detail } } }, { exceptUser: user.id });
     }
     return { event, merged: false };
   }

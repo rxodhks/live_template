@@ -1,6 +1,7 @@
 import type { Role } from '@shared/types';
 import type { ClientMessage, ServerMessage } from '@shared/protocol';
 import { ApiError, api, wsUrl } from './api';
+import { t, translateServer } from '../i18n';
 
 /*
  * 협업 템플릿 하나의 실시간 연결 (클라우드플레어 Durable Object "방"과 WebSocket 하나)
@@ -100,11 +101,11 @@ export class RoomConnection {
 
   request<T = unknown>(msg: Outgoing, timeoutMs = REQUEST_TIMEOUT_MS): Promise<AckResult<T>> {
     const id = ++this.seq;
-    if (!this.raw({ ...msg, id })) return Promise.resolve({ ok: false, status: 0, error: '서버에 연결되어 있지 않습니다.' });
+    if (!this.raw({ ...msg, id })) return Promise.resolve({ ok: false, status: 0, error: t('서버에 연결되어 있지 않습니다.') });
     return new Promise((resolve) => {
       const timer = setTimeout(() => {
         this.acks.delete(id);
-        resolve({ ok: false, status: 0, error: '서버 응답이 없습니다.' });
+        resolve({ ok: false, status: 0, error: t('서버 응답이 없습니다.') });
       }, timeoutMs);
       this.acks.set(id, { resolve: resolve as (r: AckResult) => void, timer });
     });
@@ -199,7 +200,7 @@ export class RoomConnection {
         if (a) {
           clearTimeout(a.timer);
           this.acks.delete(m.id);
-          a.resolve({ ok: m.ok, data: m.data, error: m.error, status: m.status });
+          a.resolve({ ok: m.ok, data: m.data, error: m.error && translateServer(m.error), status: m.status });
         }
         return;
       } else if (m.t === 'role') {
@@ -298,7 +299,7 @@ export class RoomConnection {
     this.pingTimer = this.pongTimer = null;
     for (const [, a] of this.acks) {
       clearTimeout(a.timer);
-      a.resolve({ ok: false, status: 0, error: '연결이 끊겼습니다.' });
+      a.resolve({ ok: false, status: 0, error: t('연결이 끊겼습니다.') });
     }
     this.acks.clear();
   }

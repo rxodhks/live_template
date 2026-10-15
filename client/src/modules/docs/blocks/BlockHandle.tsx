@@ -6,6 +6,7 @@ import { ArrowDown, ArrowUp, Copy, GripVertical, Palette, Plus, Trash2, Ungroup 
 import { cx } from '../../../lib/util';
 import { TURN_INTO, turnBlockInto } from './blockDefs';
 import { ColorPalette, Popover, applyColor } from './Popover';
+import { t } from '../../../i18n';
 
 interface Target {
   node: PMNode;
@@ -13,22 +14,22 @@ interface Target {
 }
 
 const NAMES: Record<string, string> = {
-  paragraph: '텍스트',
-  heading: '제목',
-  bulletList: '글머리 기호 목록',
-  orderedList: '번호 목록',
-  taskList: '할 일 목록',
-  blockquote: '인용',
-  callout: '콜아웃',
-  details: '토글 목록',
-  codeBlock: '코드',
-  horizontalRule: '구분선',
-  table: '표',
-  image: '이미지',
-  embed: '임베드',
-  columns: '다단',
-  tableOfContents: '목차',
-  blockMath: '수식',
+  paragraph: t('텍스트'),
+  heading: t('제목'),
+  bulletList: t('글머리 기호 목록'),
+  orderedList: t('번호 목록'),
+  taskList: t('할 일 목록'),
+  blockquote: t('인용'),
+  callout: t('콜아웃'),
+  details: t('토글 목록'),
+  codeBlock: t('코드'),
+  horizontalRule: t('구분선'),
+  table: t('표'),
+  image: t('이미지'),
+  embed: t('임베드'),
+  columns: t('다단'),
+  tableOfContents: t('목차'),
+  blockMath: t('수식'),
 };
 
 /** 손잡이 위치 — 같은 객체를 써야 한다 (바뀌면 DragHandle이 플러그인을 다시 등록해 손잡이가 사라진다) */
@@ -90,14 +91,14 @@ export function BlockHandle({ editor }: { editor: Editor }) {
     <>
       <DragHandle editor={editor} onNodeChange={onNodeChange} computePositionConfig={HANDLE_POSITION}>
         <div className="block-handle" data-type={target?.node.type.name}>
-          <button type="button" className="block-handle-btn" aria-label="아래에 블록 추가" data-tip="누르면 아래에 블록 추가" onClick={add}>
+          <button type="button" className="block-handle-btn" aria-label={t('아래에 블록 추가')} data-tip={t('누르면 아래에 블록 추가')} onClick={add}>
             <Plus size={16} />
           </button>
           <button
             type="button"
             className="block-handle-btn is-grip"
-            aria-label="블록 메뉴"
-            data-tip="끌어서 옮기기 · 누르면 메뉴"
+            aria-label={t('블록 메뉴')}
+            data-tip={t('끌어서 옮기기 · 누르면 메뉴')}
             onClick={(e) => openMenu(e.currentTarget)}
           >
             <GripVertical size={16} />
@@ -156,7 +157,7 @@ function BlockMenu({ editor, target, anchor, onClose }: { editor: Editor; target
 
   return (
     <Popover anchor={anchor} onClose={onClose} className="block-menu">
-      <div className="popover-title">{type === 'heading' ? `제목 ${target.node.attrs.level}` : (NAMES[type] ?? '블록')}</div>
+      <div className="popover-title">{type === 'heading' ? t('제목 {level}', { level: target.node.attrs.level }) : (NAMES[type] ?? t('블록'))}</div>
       {colors ? (
         <>
           <ColorPalette
@@ -168,14 +169,14 @@ function BlockMenu({ editor, target, anchor, onClose }: { editor: Editor; target
             }}
           />
           <button type="button" className="menu-item" onClick={() => setColors(false)}>
-            ← 돌아가기
+            {t('← 돌아가기')}
           </button>
         </>
       ) : (
         <>
           {textual && (
             <>
-              <div className="popover-label">전환</div>
+              <div className="popover-label">{t('전환')}</div>
               <div className="turn-into-grid">
                 {TURN_INTO.map((b) => (
                   <button
@@ -191,7 +192,7 @@ function BlockMenu({ editor, target, anchor, onClose }: { editor: Editor; target
               </div>
               {type !== 'codeBlock' && (
                 <button type="button" className="menu-item" onClick={() => setColors(true)}>
-                  <Palette size={15} /> 색
+                  <Palette size={15} /> {t('색')}
                 </button>
               )}
               <div className="menu-divider" />
@@ -199,20 +200,20 @@ function BlockMenu({ editor, target, anchor, onClose }: { editor: Editor; target
           )}
           {type === 'columns' && (
             <button type="button" className="menu-item" onClick={() => run((t) => editor.chain().focus().unsetColumns(t.pos).run())}>
-              <Ungroup size={15} /> 단 풀기 (위아래로 늘어놓기)
+              <Ungroup size={15} /> {t('단 풀기 (위아래로 늘어놓기)')}
             </button>
           )}
           <button type="button" className="menu-item" onClick={() => run(({ node, pos }) => editor.chain().focus().insertContentAt(pos + node.nodeSize, node.toJSON()).run())}>
-            <Copy size={15} /> 복제
+            <Copy size={15} /> {t('복제')}
           </button>
           <button type="button" className="menu-item" disabled={!canUp} onClick={() => move(-1)}>
-            <ArrowUp size={15} /> 위로 이동 <span className="menu-hint">Ctrl+Shift+↑</span>
+            <ArrowUp size={15} /> {t('위로 이동')} <span className="menu-hint">Ctrl+Shift+↑</span>
           </button>
           <button type="button" className="menu-item" disabled={!canDown} onClick={() => move(1)}>
-            <ArrowDown size={15} /> 아래로 이동 <span className="menu-hint">Ctrl+Shift+↓</span>
+            <ArrowDown size={15} /> {t('아래로 이동')} <span className="menu-hint">Ctrl+Shift+↓</span>
           </button>
           <button type="button" className="menu-item is-danger" onClick={() => run(({ node, pos }) => editor.chain().focus().deleteRange({ from: pos, to: pos + node.nodeSize }).run())}>
-            <Trash2 size={15} /> 삭제
+            <Trash2 size={15} /> {t('삭제')}
           </button>
         </>
       )}

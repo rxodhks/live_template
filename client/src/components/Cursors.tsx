@@ -3,6 +3,7 @@ import type { PresenceView } from '@shared/types';
 import { usePresence, type RemotePresence } from '../store/presence';
 import { useWorkspace, sameView } from '../workspace/context';
 import { cx } from '../lib/util';
+import { t } from '../i18n';
 
 /** 행동 라벨이 커서 옆에 머무는 시간 */
 export const ACTION_BUBBLE_MS = 3500;
@@ -25,7 +26,7 @@ export function RemoteCursor({ presence, x, y }: { presence: RemotePresence; x: 
       <div className="remote-cursor-tag">
         <span className="remote-cursor-name">
           {presence.user.avatar} {presence.user.name}
-          {presence.idle && <span className="remote-cursor-idle"> · 자리 비움</span>}
+          {presence.idle && <span className="remote-cursor-idle">{t('· 자리 비움')}</span>}
         </span>
         {showAction && (
           <span className="remote-cursor-action" key={presence.actionAt}>

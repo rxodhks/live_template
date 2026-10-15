@@ -97,6 +97,9 @@
   font-weight: 650;
   color: var(--text-3);
 }
+html[lang='en'] .doc-content .ProseMirror .page-break::after {
+  content: 'Page break';
+}
 .doc-content .ProseMirror .page-break.ProseMirror-selectednode::before {
   border-top-color: var(--accent);
 }

@@ -4,6 +4,7 @@ import { NodeViewWrapper, ReactNodeViewRenderer, type ReactNodeViewProps } from 
 import { AlignCenter, AlignLeft, AlignRight, ExternalLink, ImageOff, MessageSquareText, Trash2 } from 'lucide-react';
 import { cx } from '../../../../lib/util';
 import { isSafeImageSrc } from '../images';
+import { t } from '../../../../i18n';
 
 declare module '@tiptap/core' {
   interface Commands<ReturnType> {
@@ -139,7 +140,7 @@ function ImageView({ node, updateAttributes, deleteNode, selected, editor }: Rea
           <img src={src} alt={alt || caption || ''} draggable={false} onError={() => setBroken(true)} />
         ) : (
           <div className="doc-image-broken">
-            <ImageOff size={20} /> 이미지를 불러오지 못했습니다
+            <ImageOff size={20} /> {t('이미지를 불러오지 못했습니다')}
           </div>
         )}
         {editable && (
@@ -148,7 +149,7 @@ function ImageView({ node, updateAttributes, deleteNode, selected, editor }: Rea
             <span className="doc-image-handle is-right" onPointerDown={(e) => startResize(e, 1)} aria-hidden />
             <div className="doc-image-bar" contentEditable={false} onMouseDown={(e) => e.preventDefault()}>
               {(['left', 'center', 'right'] as Align[]).map((a) => (
-                <button key={a} type="button" className={cx(align === a && 'is-active')} aria-label={a === 'left' ? '왼쪽 정렬' : a === 'center' ? '가운데 정렬' : '오른쪽 정렬'} onClick={() => updateAttributes({ align: a })}>
+                <button key={a} type="button" className={cx(align === a && 'is-active')} aria-label={a === 'left' ? t('왼쪽 정렬') : a === 'center' ? t('가운데 정렬') : t('오른쪽 정렬')} onClick={() => updateAttributes({ align: a })}>
                   {a === 'left' ? <AlignLeft size={14} /> : a === 'center' ? <AlignCenter size={14} /> : <AlignRight size={14} />}
                 </button>
               ))}
@@ -159,15 +160,15 @@ function ImageView({ node, updateAttributes, deleteNode, selected, editor }: Rea
                 </button>
               ))}
               <span className="bar-sep" />
-              <button type="button" aria-label="캡션" className={cx(captionOpen && 'is-active')} onClick={() => setCaptionOpen(true)}>
+              <button type="button" aria-label={t('캡션')} className={cx(captionOpen && 'is-active')} onClick={() => setCaptionOpen(true)}>
                 <MessageSquareText size={14} />
               </button>
               {/^https?:/.test(src) && (
-                <a href={src} target="_blank" rel="noreferrer noopener" aria-label="원본 열기">
+                <a href={src} target="_blank" rel="noreferrer noopener" aria-label={t('원본 열기')}>
                   <ExternalLink size={14} />
                 </a>
               )}
-              <button type="button" aria-label="이미지 삭제" onClick={() => deleteNode()}>
+              <button type="button" aria-label={t('이미지 삭제')} onClick={() => deleteNode()}>
                 <Trash2 size={14} />
               </button>
             </div>
@@ -178,7 +179,7 @@ function ImageView({ node, updateAttributes, deleteNode, selected, editor }: Rea
         <input
           className="doc-image-caption"
           value={captionDraft ?? caption}
-          placeholder="캡션을 입력하세요"
+          placeholder={t('캡션을 입력하세요')}
           readOnly={!editable}
           maxLength={200}
           autoFocus={editable && captionOpen && !caption && captionDraft === null}
