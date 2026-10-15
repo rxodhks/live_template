@@ -3,6 +3,7 @@ import { Awareness, applyAwarenessUpdate, encodeAwarenessUpdate, removeAwareness
 import { useConnection } from '../store/connection';
 import type { AckResult, RoomConnection, RoomStatus } from './room';
 import { fromB64, toB64 } from './crypto';
+import { t } from '../i18n';
 
 /*
  * 템플릿 문서(Y.Doc)를 어디와 동기화할지
@@ -245,7 +246,7 @@ export class RoomProvider implements DocProvider {
     if (res.status === 403) {
       this.readOnly = true;
       this.notify();
-      return c.setSaveError('읽기 전용 권한이라 저장되지 않았습니다.');
+      return c.setSaveError(t('읽기 전용 권한이라 저장되지 않았습니다.'));
     }
     if (res.status === 413) {
       // 다시 보내도 같은 이유로 거절되므로 반복 전송하지 않는다. 화면이 편집을 막고 되돌리는 방법을 안내한다 (Workspace)
@@ -254,9 +255,9 @@ export class RoomProvider implements DocProvider {
       this.tooLarge = true;
       this.notify();
       c.setSaveBlocked(true);
-      return c.setSaveError(res.error ?? '문서가 너무 커서 더 이상 저장할 수 없습니다.');
+      return c.setSaveError(res.error ?? t('문서가 너무 커서 더 이상 저장할 수 없습니다.'));
     }
-    c.setSaveError(res.error ?? '저장 확인이 지연되고 있습니다.');
+    c.setSaveError(res.error ?? t('저장 확인이 지연되고 있습니다.'));
     // 다시 접속하면 상태 벡터 비교로 빠진 부분이 자동으로 다시 전송된다
     if (this.room.online) void this.sync();
   };

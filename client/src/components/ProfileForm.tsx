@@ -3,6 +3,7 @@ import { USER_AVATARS, USER_COLORS } from '@shared/colors';
 import type { PublicUser } from '@shared/types';
 import { Avatar, Field } from './ui';
 import { cx } from '../lib/util';
+import { t } from '../i18n';
 
 export interface ProfileDraft {
   name: string;
@@ -23,30 +24,30 @@ export function ProfileForm({ draft, onChange, onSubmit }: { draft: ProfileDraft
   return (
     <div className="profile-form">
       <div className="profile-preview">
-        <Avatar user={{ id: 'preview', ...draft, name: draft.name || '나' }} size={64} tooltip={false} />
+        <Avatar user={{ id: 'preview', ...draft, name: draft.name || t('나') }} size={64} tooltip={false} />
         <div className="profile-preview-cursor" style={{ ['--user-color' as string]: draft.color }}>
           <svg width="18" height="20" viewBox="0 0 18 20" aria-hidden>
             <path d="M1.5 1.5 L1.5 16 L5.6 12.3 L8.4 18.4 L11 17.2 L8.3 11.2 L14 11.2 Z" fill={draft.color} stroke="white" strokeWidth="1.4" />
           </svg>
           <span className="remote-cursor-name">
-            {draft.avatar} {draft.name || '이름'}
+            {draft.avatar} {draft.name || t('이름')}
           </span>
-          <span className="remote-cursor-action static">✏️ 입력 중</span>
+          <span className="remote-cursor-action static">{t('✏️ 입력 중')}</span>
         </div>
       </div>
-      <Field label="표시 이름" hint="다른 사용자의 화면에서 커서 옆에 표시됩니다.">
+      <Field label={t('표시 이름')} hint={t('다른 사용자의 화면에서 커서 옆에 표시됩니다.')}>
         <input
           className="input"
           value={draft.name}
           maxLength={24}
-          placeholder="예) 김민수"
+          placeholder={t('예) 김민수')}
           data-autofocus
           autoFocus
           onChange={(e) => onChange({ ...draft, name: e.target.value })}
           onKeyDown={(e) => e.key === 'Enter' && onSubmit?.()}
         />
       </Field>
-      <Field label="커서 색상">
+      <Field label={t('커서 색상')}>
         <div className="swatches">
           {USER_COLORS.map((c) => (
             <button
@@ -54,13 +55,13 @@ export function ProfileForm({ draft, onChange, onSubmit }: { draft: ProfileDraft
               type="button"
               className={cx('swatch', draft.color === c && 'is-selected')}
               style={{ background: c }}
-              aria-label={`색상 ${c}`}
+              aria-label={t('색상 {c}', { c })}
               onClick={() => onChange({ ...draft, color: c })}
             />
           ))}
         </div>
       </Field>
-      <Field label="아바타">
+      <Field label={t('아바타')}>
         <div className="avatar-picker">
           {USER_AVATARS.map((a) => (
             <button

@@ -6,6 +6,7 @@ import {
   CloudOff,
   HardDrive,
   Keyboard,
+  Languages,
   LayoutGrid,
   LogOut,
   MessageSquareHeart,
@@ -38,10 +39,12 @@ import { MODULE_NAMES } from '../workspace/viewLabel';
 import { itemsMap } from '../workspace/items';
 import { useYField } from '../hooks/useY';
 import { DEMO_PRESETS, demoPath, isDemoId } from '../lib/demo';
+import { LANGS, lang, lazyText, setLanguage, t } from '../i18n';
+import { LanguageSwitch } from './LanguageSwitch';
 
 const THEME_ICON: Record<ThemePref, typeof Sun> = { light: Sun, dark: Moon, system: Monitor };
 const THEME_NEXT: Record<ThemePref, ThemePref> = { system: 'light', light: 'dark', dark: 'system' };
-const THEME_LABEL: Record<ThemePref, string> = { system: '시스템 테마', light: '라이트 테마', dark: '다크 테마' };
+const THEME_LABEL: Record<ThemePref, string> = lazyText(() => ({ system: t('시스템 테마'), light: t('라이트 테마'), dark: t('다크 테마') }));
 const PROVIDER_LABEL = { google: 'Google', github: 'GitHub' } as const;
 
 export function TopBar() {
@@ -63,20 +66,20 @@ export function TopBar() {
   // 둘러보기 중에는 템플릿 대신 다른 예시로 바꿔 본다
   const demoItems = () => [
     ...DEMO_PRESETS.map((p) => ({
-      label: p.name,
+      label: t(p.name),
       icon: <span>{p.emoji}</span>,
       checked: demoPath(p.id) === `/t/${ws?.template.id}`,
       hint: p.features.map((f) => FEATURE_INFO[f].emoji).join(''),
       onSelect: () => navigate(demoPath(p.id)),
     })),
     { divider: true, label: '' },
-    { label: '모든 예시 보기', icon: <LayoutGrid size={15} />, onSelect: () => navigate('/explore') },
+    { label: t('모든 예시 보기'), icon: <LayoutGrid size={15} />, onSelect: () => navigate('/explore') },
   ];
 
   return (
     <header className="topbar">
       <div className={ws ? 'topbar-left has-crumbs' : 'topbar-left'}>
-        <Link to={guest ? '/explore' : '/'} className="brand" aria-label={`${BRAND} 홈`}>
+        <Link to={guest ? '/explore' : '/'} className="brand" aria-label={t('{BRAND} 홈', { BRAND })}>
           <span className="brand-mark">
             <BrandMark size={22} />
           </span>
@@ -85,23 +88,23 @@ export function TopBar() {
 
         {ws && (
           <>
-            <IconButton className="panel-toggle" label={ws.panelOpen ? '탐색 패널 닫기' : '탐색 패널 열기'} onClick={() => ws.setPanelOpen(!ws.panelOpen)} active={ws.panelOpen}>
+            <IconButton className="panel-toggle" label={ws.panelOpen ? t('탐색 패널 닫기') : t('탐색 패널 열기')} onClick={() => ws.setPanelOpen(!ws.panelOpen)} active={ws.panelOpen}>
               <PanelLeft size={17} />
             </IconButton>
             <span className="crumb-sep">/</span>
             <Menu
               width={280}
-              header={demo ? '예시 전환' : '템플릿 전환'}
+              header={demo ? t('예시 전환') : t('템플릿 전환')}
               items={() => (demo ? demoItems() : [
-                ...sortedTemplates.map((t) => ({
-                  label: t.name,
-                  icon: <span>{t.emoji}</span>,
-                  checked: t.id === ws.template.id,
-                  hint: `${isPrivate(t) ? '개인' : '협업'} ${t.features.map((f) => FEATURE_INFO[f].emoji).join('')}`,
-                  onSelect: () => navigate(`/t/${t.id}`),
+                ...sortedTemplates.map((tpl) => ({
+                  label: tpl.name,
+                  icon: <span>{tpl.emoji}</span>,
+                  checked: tpl.id === ws.template.id,
+                  hint: `${isPrivate(tpl) ? t('개인') : t('협업')} ${tpl.features.map((f) => FEATURE_INFO[f].emoji).join('')}`,
+                  onSelect: () => navigate(`/t/${tpl.id}`),
                 })),
                 { divider: true, label: '' },
-                { label: '모든 템플릿 보기', icon: <LayoutGrid size={15} />, onSelect: () => navigate('/') },
+                { label: t('모든 템플릿 보기'), icon: <LayoutGrid size={15} />, onSelect: () => navigate('/') },
               ])}
               trigger={({ toggle, ref, open }) => (
                 <button ref={ref} className="crumb-template" onClick={toggle} aria-expanded={open}>
@@ -119,42 +122,43 @@ export function TopBar() {
 
       <button className="search-trigger" onClick={() => ui.setPaletteOpen(true)}>
         <Search size={15} />
-        <span>{ws ? '파일·문서·보드 검색, 명령 실행' : '템플릿 검색, 명령 실행'}</span>
+        <span>{ws ? t('파일·문서·보드 검색, 명령 실행') : t('템플릿 검색, 명령 실행')}</span>
         <Kbd>{modKey} K</Kbd>
       </button>
 
       <div className="topbar-right">
         {ws && !demo && <SaveIndicator synced={ws.synced} mode={ws.mode} />}
         {!ws && (remoteError || offline) && (
-          <span className="conn-dot is-offline" data-tip={`협업 서버에 연결할 수 없습니다 · 개인 공간은 계속 사용할 수 있습니다`}>
+          <span className="conn-dot is-offline" data-tip={t('협업 서버에 연결할 수 없습니다 · 개인 공간은 계속 사용할 수 있습니다')}>
             <CloudOff size={15} />
           </span>
         )}
         {ws && !ws.isPrivate && <PresenceBar />}
         {ws && ws.canEdit && (
           <span className="badge-anchor">
-            <button className="btn btn-primary btn-sm" onClick={() => ui.setShareOpen(true)} data-tip={ws.isPrivate ? '초대하면 협업 공간으로 전환됩니다' : '초대 링크 만들기 · 관리'}>
+            <button className="btn btn-primary btn-sm" onClick={() => ui.setShareOpen(true)} data-tip={ws.isPrivate ? t('초대하면 협업 공간으로 전환됩니다') : t('초대 링크 만들기 · 관리')}>
               <UserPlus size={14} />
-              <span>초대</span>
+              <span>{t('초대')}</span>
             </button>
             {ws.requests.length > 0 && <span className="badge-count">{ws.requests.length}</span>}
           </span>
         )}
         {ws && !ws.isPrivate && (
           <span className="badge-anchor">
-            <IconButton label="채팅" active={ws.chatOpen} onClick={() => ws.setChatOpen(!ws.chatOpen)}>
+            <IconButton label={t('채팅')} active={ws.chatOpen} onClick={() => ws.setChatOpen(!ws.chatOpen)}>
               <MessageSquare size={17} />
             </IconButton>
             {ws.unread > 0 && <span className="badge-count">{ws.unread > 99 ? '99+' : ws.unread}</span>}
           </span>
         )}
         {user && !guest && <NoticeBell />}
-        <IconButton className="theme-toggle" label={`${THEME_LABEL[theme]} (클릭하여 전환)`} onClick={() => setTheme(THEME_NEXT[theme])}>
+        <IconButton className="theme-toggle" label={t('{theme} (클릭하여 전환)', { theme: THEME_LABEL[theme] })} onClick={() => setTheme(THEME_NEXT[theme])}>
           <ThemeIcon size={17} />
         </IconButton>
+        {guest && <LanguageSwitch className="lang-switch topbar-lang" />}
         {guest && (
           <Link className="btn btn-primary btn-sm" to="/login">
-            로그인 · 가입
+            {t('로그인 · 가입')}
           </Link>
         )}
         {user && !guest && (
@@ -166,26 +170,28 @@ export function TopBar() {
                 <Avatar user={user} size={32} tooltip={false} />
                 <div>
                   <b>{user.name}</b>
-                  <span className="muted menu-profile-email">{account?.email ?? (account?.providers[0] ? `${PROVIDER_LABEL[account.providers[0]]} 계정으로 로그인` : '로그인됨')}</span>
+                  <span className="muted menu-profile-email">{account?.email ?? (account?.providers[0] ? t('{provider} 계정으로 로그인', { provider: PROVIDER_LABEL[account.providers[0]] }) : t('로그인됨'))}</span>
                 </div>
               </div>
             }
             items={[
-              { label: '프로필 수정', icon: <UserRound size={15} />, onSelect: () => ui.setProfileOpen(true) },
-              ...(['system', 'light', 'dark'] as ThemePref[]).map((t) => {
-                const Icon = THEME_ICON[t];
-                return { label: THEME_LABEL[t], icon: <Icon size={15} />, checked: theme === t, hint: theme === t ? <Check size={14} /> : undefined, onSelect: () => setTheme(t) };
+              { label: t('프로필 수정'), icon: <UserRound size={15} />, onSelect: () => ui.setProfileOpen(true) },
+              ...(['system', 'light', 'dark'] as ThemePref[]).map((option) => {
+                const Icon = THEME_ICON[option];
+                return { label: THEME_LABEL[option], icon: <Icon size={15} />, checked: theme === option, hint: theme === option ? <Check size={14} /> : undefined, onSelect: () => setTheme(option) };
               }),
               { divider: true, label: '' },
-              { label: '피드백 보내기', icon: <MessageSquareHeart size={15} />, onSelect: () => ui.setFeedbackOpen(true) },
-              { label: '키보드 단축키', icon: <Keyboard size={15} />, onSelect: () => ui.setShortcutsOpen(true) },
-              { label: '이용약관', icon: <ScrollText size={15} />, onSelect: () => navigate('/terms') },
-              { label: '개인정보처리방침', icon: <ShieldCheck size={15} />, onSelect: () => navigate('/privacy') },
+              ...LANGS.map((option) => ({ label: option.label, icon: <Languages size={15} />, checked: lang === option.id, hint: lang === option.id ? <Check size={14} /> : undefined, onSelect: () => setLanguage(option.id) })),
               { divider: true, label: '' },
-              { label: '로그아웃', icon: <LogOut size={15} />, onSelect: () => void logout() },
+              { label: t('피드백 보내기'), icon: <MessageSquareHeart size={15} />, onSelect: () => ui.setFeedbackOpen(true) },
+              { label: t('키보드 단축키'), icon: <Keyboard size={15} />, onSelect: () => ui.setShortcutsOpen(true) },
+              { label: t('이용약관'), icon: <ScrollText size={15} />, onSelect: () => navigate('/terms') },
+              { label: t('개인정보처리방침'), icon: <ShieldCheck size={15} />, onSelect: () => navigate('/privacy') },
+              { divider: true, label: '' },
+              { label: t('로그아웃'), icon: <LogOut size={15} />, onSelect: () => void logout() },
             ]}
             trigger={({ toggle, ref }) => (
-              <button ref={ref} className="profile-trigger" onClick={toggle} aria-label="내 프로필">
+              <button ref={ref} className="profile-trigger" onClick={toggle} aria-label={t('내 프로필')}>
                 <Avatar user={user} size={30} tooltip={false} />
               </button>
             )}
@@ -203,8 +209,8 @@ function SpaceBadge() {
   const status = useConnection((s) => s.status);
   if (isDemoId(ws.template.id)) {
     return (
-      <span className="space-chip is-personal" data-tip="가입하지 않아도 고쳐 볼 수 있는 예시입니다 · 바뀐 내용은 저장되지 않고, 새로고침하면 처음으로 돌아갑니다">
-        <Eye size={12} /> 체험 중 · 저장 안 됨
+      <span className="space-chip is-personal" data-tip={t('가입하지 않아도 고쳐 볼 수 있는 예시입니다 · 바뀐 내용은 저장되지 않고, 새로고침하면 처음으로 돌아갑니다')}>
+        <Eye size={12} /> {t('체험 중 · 저장 안 됨')}
       </span>
     );
   }
@@ -214,19 +220,19 @@ function SpaceBadge() {
         className="space-chip is-personal as-button"
         data-tip={
           ws.mode === 'personal'
-            ? '나만 볼 수 있는 개인 공간 · 아직 이 기기에만 있어 인터넷에 연결되면 자동으로 백업됩니다. 초대하면 협업 공간으로 전환됩니다.'
-            : '나만 볼 수 있는 개인 공간 · 클라우드에 자동 백업됩니다. 초대하면 협업 공간으로 전환됩니다.'
+            ? t('나만 볼 수 있는 개인 공간 · 아직 이 기기에만 있어 인터넷에 연결되면 자동으로 백업됩니다. 초대하면 협업 공간으로 전환됩니다.')
+            : t('나만 볼 수 있는 개인 공간 · 클라우드에 자동 백업됩니다. 초대하면 협업 공간으로 전환됩니다.')
         }
         onClick={() => ws.canEdit && ui.setShareOpen(true)}
       >
-        <HardDrive size={12} /> 개인 공간
+        <HardDrive size={12} /> {t('개인 공간')}
       </button>
     );
   }
   const offline = status !== 'online';
   return (
-    <span className={`space-chip is-shared${offline ? ' is-offline' : ''}`} data-tip={offline ? '연결이 끊겼습니다 · 편집은 이 기기에 보관되고 다시 연결되면 합쳐집니다' : '클라우드에 저장되는 협업 공간입니다'}>
-      {offline ? <CloudOff size={12} /> : <Cloud size={12} />} 협업 공간
+    <span className={`space-chip is-shared${offline ? ' is-offline' : ''}`} data-tip={offline ? t('연결이 끊겼습니다 · 편집은 이 기기에 보관되고 다시 연결되면 합쳐집니다') : t('클라우드에 저장되는 협업 공간입니다')}>
+      {offline ? <CloudOff size={12} /> : <Cloud size={12} />} {t('협업 공간')}
     </span>
   );
 }

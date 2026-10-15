@@ -16,6 +16,7 @@ import { BootScreen } from './pages/BootScreen';
 import { ServerDownScreen } from './pages/OutageScreen';
 import { Dashboard } from './pages/Dashboard';
 import { GlobalTimeline } from './pages/GlobalTimeline';
+import { isEn, ready, t, tr } from './i18n';
 
 // 처음 화면에 필요 없는 페이지는 들어갈 때 불러온다
 const PrivacyPage = lazy(() => import('./pages/Legal').then((m) => ({ default: m.PrivacyPage })));
@@ -31,11 +32,14 @@ const SignupPage = lazyWithPreload(() => import('./pages/Auth').then((m) => m.Si
 const ExplorePage = lazyWithPreload(() => import('./pages/Explore').then((m) => m.ExplorePage), BootScreen);
 const DemoWorkspace = lazyWithPreload(() => import('./workspace/Workspace').then((m) => m.DemoWorkspace), BootScreen);
 
+// 미리 받는 화면 코드는 받자마자 실행되므로, 영어 화면이면 영어 사전이 온 뒤에 받는다 (한국어 화면은 바로)
+const early = (load: () => unknown) => (isEn ? void ready.then(load) : load());
+
 // 이 기기에 로그인 정보가 없으면 로그인 화면으로 갈 가능성이 높다 — 로그인 확인(/api/me)을 기다리는 동안 함께 받는다
-if (!hasCachedAccount()) LoginPage.preload();
+if (!hasCachedAccount()) early(LoginPage.preload);
 
 // 템플릿 주소로 바로 들어왔다면(새로고침 · 링크) 로그인 확인과 함께 템플릿 화면도 받기 시작한다
-if (window.location.pathname.startsWith('/t/')) Workspace.preload();
+if (window.location.pathname.startsWith('/t/')) early(Workspace.preload);
 // 주소가 가리키는 에디터도 함께 받는다 — 템플릿 화면 파일을 받은 뒤에야 받기 시작하면 그만큼 늦게 열린다
 const EDITORS: Record<string, () => Promise<unknown>> = {
   docs: () => import('./modules/docs/DocsModule'),
@@ -44,7 +48,7 @@ const EDITORS: Record<string, () => Promise<unknown>> = {
   notes: () => import('./modules/notes/NotesModule'),
 };
 const editor = /^\/t\/[^/]+\/([^/]+)/.exec(window.location.pathname)?.[1];
-if (editor && Object.hasOwn(EDITORS, editor)) void EDITORS[editor]().catch(() => {});
+if (editor && Object.hasOwn(EDITORS, editor)) early(() => void EDITORS[editor]().catch(() => {}));
 
 /** 협업 템플릿 목록을 다시 확인하는 간격 */
 const REFRESH_MS = 60_000;
@@ -113,7 +117,7 @@ export function App() {
       <NarrowScreenNotice />
       {IS_STAGING && (
         <div className="staging-badge" role="note">
-          테스트 사이트 · 실제 사이트와 계정 · 데이터가 분리되어 있습니다
+          {t('테스트 사이트 · 실제 사이트와 계정 · 데이터가 분리되어 있습니다')}
         </div>
       )}
     </BrowserRouter>
@@ -125,7 +129,7 @@ const IS_STAGING = window.location.hostname.startsWith('staging.');
 
 async function backupAndNotify() {
   const n = await backupPending();
-  if (n > 0) toast.success('개인 템플릿을 클라우드에 백업했습니다', `${n}개 · 이제 다른 기기에서도 이어서 작업할 수 있습니다.`);
+  if (n > 0) toast.success(t('개인 템플릿을 클라우드에 백업했습니다'), t('{n}개 · 이제 다른 기기에서도 이어서 작업할 수 있습니다.', { n }));
 }
 
 /** 로그인하지 않았으면 로그인 화면으로 (로그인 후 원래 가려던 곳으로 돌아온다) */
@@ -176,7 +180,7 @@ function useGlobalShortcuts() {
         ui.setPaletteOpen(!ui.paletteOpen);
       } else if (mod && e.key.toLowerCase() === 's') {
         e.preventDefault();
-        toast.show({ id: 'autosave', kind: 'success', title: '자동 저장 중입니다', message: '모든 변경 사항은 입력 즉시 저장되니 따로 저장하지 않아도 됩니다.', duration: 2500 });
+        toast.show({ id: 'autosave', kind: 'success', title: t('자동 저장 중입니다'), message: t('모든 변경 사항은 입력 즉시 저장되니 따로 저장하지 않아도 됩니다.'), duration: 2500 });
       } else if (e.key === '?' && !isTypingTarget(e.target)) {
         useUI.getState().setShortcutsOpen(true);
       }
@@ -206,11 +210,11 @@ function NarrowScreenNotice() {
     <div className="narrow-notice" role="status">
       <Monitor size={16} />
       <span>
-        Madang은 <b>데스크톱 화면</b>에 맞춰져 있습니다. 창을 넓히면 모든 기능을 편하게 쓸 수 있어요. 모바일은 전용 앱으로 준비 중입니다.
+        {tr('Madang은 {desktop}에 맞춰져 있습니다. 창을 넓히면 모든 기능을 편하게 쓸 수 있어요. 모바일은 전용 앱으로 준비 중입니다.', { desktop: <b>{t('데스크톱 화면')}</b> })}
       </span>
       <button
         className="icon-btn"
-        aria-label="안내 닫기"
+        aria-label={t('안내 닫기')}
         onClick={() => {
           setDismissed(true);
           try {

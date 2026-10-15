@@ -1,17 +1,18 @@
+import { t } from '../../../i18n';
 /*
  * 문서 글자 색 · 배경 색 (노션과 같은 9가지)
  * 색 값 대신 CSS 변수로 저장해 밝은 · 어두운 화면에서 각각 알맞은 색으로 보인다 (내보낸 HTML에도 변수를 함께 넣는다)
  */
 export const DOC_COLORS = [
-  { key: 'gray', name: '회색' },
-  { key: 'brown', name: '갈색' },
-  { key: 'orange', name: '주황' },
-  { key: 'yellow', name: '노랑' },
-  { key: 'green', name: '초록' },
-  { key: 'blue', name: '파랑' },
-  { key: 'purple', name: '보라' },
-  { key: 'pink', name: '분홍' },
-  { key: 'red', name: '빨강' },
+  { key: 'gray', name: t('회색') },
+  { key: 'brown', name: t('갈색') },
+  { key: 'orange', name: t('주황') },
+  { key: 'yellow', name: t('노랑') },
+  { key: 'green', name: t('초록') },
+  { key: 'blue', name: t('파랑') },
+  { key: 'purple', name: t('보라') },
+  { key: 'pink', name: t('분홍') },
+  { key: 'red', name: t('빨강') },
 ] as const;
 
 export type DocColorKey = (typeof DOC_COLORS)[number]['key'];

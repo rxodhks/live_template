@@ -15,8 +15,8 @@ const LIBS = import.meta.glob('../../../../../node_modules/typescript/lib/lib.{e
 }) as Record<string, string>;
 const libByName = new Map(Object.entries(LIBS).map(([p, text]) => [p.slice(p.lastIndexOf('/') + 1), text]));
 
-// 한국어 오류 메시지
-try {
+// 한국어 오류 메시지 (영어 화면은 TypeScript 기본 영어 메시지 — 워커 이름 끝이 ':en', assist.ts)
+if (!self.name.endsWith(':en')) try {
   (ts as unknown as { setLocalizedDiagnosticMessages(m: unknown): void }).setLocalizedDiagnosticMessages(ko);
 } catch {
   /* 영어로 */

@@ -3,6 +3,7 @@ import { Node, mergeAttributes } from '@tiptap/core';
 import { NodeViewContent, NodeViewWrapper, ReactNodeViewRenderer, type ReactNodeViewProps } from '@tiptap/react';
 import { cx } from '../../../../lib/util';
 import { DOC_COLORS } from '../colors';
+import { t } from '../../../../i18n';
 
 declare module '@tiptap/core' {
   interface Commands<ReturnType> {
@@ -78,15 +79,15 @@ function CalloutView({ node, updateAttributes, editor }: ReactNodeViewProps) {
           type="button"
           className="callout-emoji"
           disabled={!editable}
-          aria-label="콜아웃 아이콘 · 색 바꾸기"
+          aria-label={t('콜아웃 아이콘 · 색 바꾸기')}
           onMouseDown={(e) => e.preventDefault()}
           onClick={() => setOpen((o) => !o)}
         >
           {node.attrs.emoji}
         </button>
         {open && (
-          <div className="callout-picker" role="dialog" aria-label="콜아웃 꾸미기">
-            <div className="callout-picker-label">아이콘</div>
+          <div className="callout-picker" role="dialog" aria-label={t('콜아웃 꾸미기')}>
+            <div className="callout-picker-label">{t('아이콘')}</div>
             <div className="callout-emojis">
               {CALLOUT_EMOJIS.map((e) => (
                 <button
@@ -102,7 +103,7 @@ function CalloutView({ node, updateAttributes, editor }: ReactNodeViewProps) {
                 </button>
               ))}
             </div>
-            <div className="callout-picker-label">배경</div>
+            <div className="callout-picker-label">{t('배경')}</div>
             <div className="callout-colors">
               {DOC_COLORS.map((c) => (
                 <button

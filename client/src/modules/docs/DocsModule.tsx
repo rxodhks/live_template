@@ -18,6 +18,7 @@ import { useDocEnv } from './blocks/useDocEnv';
 import { pageSetupDialog } from './page/PageSetupDialog';
 import { describePage } from './page/pageSizes';
 import type { Zoom } from './page/usePagedLayout';
+import { locale, t } from '../../i18n';
 
 const DOC_EMOJIS = ['📄', '📝', '📘', '🧭', '🗓️', '📊', '💡', '✅', '🚀', '📌', '🔍', '🎯'];
 
@@ -43,16 +44,16 @@ export function DocsModule() {
     return (
       <EmptyState
         icon={<FileText size={34} />}
-        title={docs.length ? '문서를 여는 중…' : '아직 문서가 없습니다'}
+        title={docs.length ? t('문서를 여는 중…') : t('아직 문서가 없습니다')}
         action={
           ws.canEdit && !docs.length ? (
             <Button variant="primary" icon={<FilePlus2 size={15} />} onClick={() => createDocument(ws, me)}>
-              새 문서 만들기
+              {t('새 문서 만들기')}
             </Button>
           ) : undefined
         }
       >
-        여러 사람이 동시에 같은 문서를 편집할 수 있습니다.
+        {t('여러 사람이 동시에 같은 문서를 편집할 수 있습니다.')}
       </EmptyState>
     );
   }
@@ -96,18 +97,18 @@ function DocView({ item }: { item: YItem }) {
     if (!r) return;
     if (r.page) item.set('page', r.page);
     else item.delete('page');
-    ws.action(`페이지 설정 · ${describePage(r.page)}`);
-    toast.success('페이지 설정을 바꿨습니다', describePage(r.page));
+    ws.action(t('페이지 설정 · {x}', { x: describePage(r.page) }));
+    toast.success(t('페이지 설정을 바꿨습니다'), describePage(r.page));
   };
 
   const commitTitle = () => {
     if (titleDraft === null) return;
-    const next = titleDraft.trim() || '제목 없는 문서';
+    const next = titleDraft.trim() || t('제목 없는 문서');
     setTitleDraft(null);
     if (next !== title) {
       item.set('title', next);
       ws.report({ type: 'docs.rename', targetId: id, targetName: next, detail: `${title} → ${next}` });
-      ws.action(`제목 변경 · ${next}`);
+      ws.action(t('제목 변경 · {next}', { next }));
     }
   };
 
@@ -122,7 +123,7 @@ function DocView({ item }: { item: YItem }) {
         {viewers.length > 0 && (
           <span className="toolbar-viewers">
             {viewers.map((v) => (
-              <Avatar key={v.socketId} user={v.user} size={22} status={v.idle ? 'idle' : 'online'} tooltip={`${v.user.name} 님이 이 문서를 보는 중`} />
+              <Avatar key={v.socketId} user={v.user} size={22} status={v.idle ? 'idle' : 'online'} tooltip={t('{name} 님이 이 문서를 보는 중', { name: v.user.name })} />
             ))}
           </span>
         )}
@@ -132,15 +133,15 @@ function DocView({ item }: { item: YItem }) {
           className={cx('page-chip', page && 'is-paged')}
           onClick={() => void editPage()}
           disabled={!ws.canEdit}
-          data-tip={ws.canEdit ? '페이지 설정 (크기 · 방향 · 여백)' : '페이지 크기'}
+          data-tip={ws.canEdit ? t('페이지 설정 (크기 · 방향 · 여백)') : t('페이지 크기')}
         >
           {page ? <FileText size={13} /> : <InfinityIcon size={13} />}
-          <span>{page ? describePage(page).split(' · ')[0] : '자유 형식'}</span>
-          {page && pages > 0 && <span className="page-chip-count">{pages}쪽</span>}
+          <span>{page ? describePage(page).split(' · ')[0] : t('자유 형식')}</span>
+          {page && pages > 0 && <span className="page-chip-count">{t('{n}쪽#count', { n: pages })}</span>}
         </button>
         {page && (
-          <select className="zoom-select" value={String(zoom)} onChange={(e) => changeZoom(e.target.value === 'fit' ? 'fit' : Number(e.target.value))} aria-label="화면 배율" data-tip="화면 배율">
-            <option value="fit">맞춤</option>
+          <select className="zoom-select" value={String(zoom)} onChange={(e) => changeZoom(e.target.value === 'fit' ? 'fit' : Number(e.target.value))} aria-label={t('화면 배율')} data-tip={t('화면 배율')}>
+            <option value="fit">{t('맞춤')}</option>
             {[50, 75, 100, 125, 150, 200].map((z) => (
               <option key={z} value={z}>
                 {z}%
@@ -148,27 +149,27 @@ function DocView({ item }: { item: YItem }) {
             ))}
           </select>
         )}
-        {!ws.canEdit && <span className="status-readonly">읽기 전용</span>}
+        {!ws.canEdit && <span className="status-readonly">{t('읽기 전용')}</span>}
         <DocStats editor={editor} />
         <Menu
           align="end"
           width={220}
           items={[
-            { label: 'Markdown으로 내보내기', icon: <Download size={14} />, onSelect: exportMd },
-            { label: 'HTML로 내보내기', icon: <Download size={14} />, onSelect: () => void exportHtml() },
+            { label: t('Markdown으로 내보내기'), icon: <Download size={14} />, onSelect: exportMd },
+            { label: t('HTML로 내보내기'), icon: <Download size={14} />, onSelect: () => void exportHtml() },
             {
-              label: 'Markdown 복사',
+              label: t('Markdown 복사'),
               icon: <Copy size={14} />,
-              onSelect: async () => editor && (await copyText(toMarkdown(editor.getJSON(), title))) && toast.success('Markdown을 복사했습니다'),
+              onSelect: async () => editor && (await copyText(toMarkdown(editor.getJSON(), title))) && toast.success(t('Markdown을 복사했습니다')),
             },
-            { label: '페이지 설정…', icon: <Ruler size={14} />, disabled: !ws.canEdit, hint: page ? describePage(page).split(' · ')[0] : '자유 형식', onSelect: () => void editPage() },
-            { label: page ? `인쇄 / PDF 저장 (${describePage(page).split(' · ')[0]})` : '인쇄 / PDF 저장', icon: <Printer size={14} />, onSelect: () => window.print() },
+            { label: t('페이지 설정…'), icon: <Ruler size={14} />, disabled: !ws.canEdit, hint: page ? describePage(page).split(' · ')[0] : t('자유 형식'), onSelect: () => void editPage() },
+            { label: page ? t('인쇄 / PDF 저장 ({x})', { x: describePage(page).split(' · ')[0] }) : t('인쇄 / PDF 저장'), icon: <Printer size={14} />, onSelect: () => window.print() },
             { divider: true, label: '' },
-            { label: '문서 복제', icon: <Copy size={14} />, disabled: !ws.canEdit, onSelect: () => duplicateItem(ws, 'docs', id, me) },
-            { label: '문서 삭제', icon: <Trash2 size={14} />, danger: true, disabled: !ws.canEdit, onSelect: () => void deleteItem(ws, 'docs', id) },
+            { label: t('문서 복제'), icon: <Copy size={14} />, disabled: !ws.canEdit, onSelect: () => duplicateItem(ws, 'docs', id, me) },
+            { label: t('문서 삭제'), icon: <Trash2 size={14} />, danger: true, disabled: !ws.canEdit, onSelect: () => void deleteItem(ws, 'docs', id) },
           ]}
           trigger={({ toggle, ref }) => (
-            <IconButton ref={ref} label="내보내기 · 더 보기" onClick={toggle}>
+            <IconButton ref={ref} label={t('내보내기 · 더 보기')} onClick={toggle}>
               <MoreHorizontal size={16} />
             </IconButton>
           )}
@@ -186,18 +187,18 @@ function DocView({ item }: { item: YItem }) {
         onPages={setPages}
         onEditor={setEditor}
         onLocalEdit={() => {
-          ws.action('✏️ 문서 작성 중');
+          ws.action(t('✏️ 문서 작성 중'));
           ws.report({ type: 'docs.edit', targetId: id, targetName: title });
         }}
-        onSelectText={() => ws.action('🔍 텍스트 선택 중')}
+        onSelectText={() => ws.action(t('🔍 텍스트 선택 중'))}
         header={
           <div className="doc-title-row">
             <Menu
               width={236}
-              header="문서 아이콘"
+              header={t('문서 아이콘')}
               items={DOC_EMOJIS.map((e) => ({ label: e, onSelect: () => ws.canEdit && item.set('emoji', e) }))}
               trigger={({ toggle, ref }) => (
-                <button ref={ref} className="doc-emoji" onClick={toggle} disabled={!ws.canEdit} aria-label="아이콘 변경">
+                <button ref={ref} className="doc-emoji" onClick={toggle} disabled={!ws.canEdit} aria-label={t('아이콘 변경')}>
                   {emoji}
                 </button>
               )}
@@ -205,7 +206,7 @@ function DocView({ item }: { item: YItem }) {
             <input
               className="doc-title"
               value={titleDraft ?? title}
-              placeholder="제목 없는 문서"
+              placeholder={t('제목 없는 문서')}
               disabled={!ws.canEdit}
               maxLength={80}
               onChange={(e) => setTitleDraft(e.target.value)}
@@ -260,8 +261,8 @@ function DocStatsInner({ editor }: { editor: Editor }) {
   }, [editor]);
   const minutes = Math.max(1, Math.round(stats.chars / 500));
   return (
-    <span className="doc-stats" data-tip="공백 포함 글자 수 · 읽는 데 걸리는 대략적인 시간">
-      {stats.chars.toLocaleString()}자 · {stats.words.toLocaleString()}단어 · 약 {minutes}분
+    <span className="doc-stats" data-tip={t('공백 포함 글자 수 · 읽는 데 걸리는 대략적인 시간')}>
+      {t('{chars}자 · {words}단어 · 약 {minutes}분', { chars: stats.chars.toLocaleString(locale), words: stats.words.toLocaleString(locale), minutes })}
     </span>
   );
 }

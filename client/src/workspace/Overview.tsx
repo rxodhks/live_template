@@ -18,40 +18,41 @@ import { relativeTime } from '../lib/time';
 import { isDemoId } from '../lib/demo';
 import { CursorPage } from '../components/Cursors';
 import { Avatar, AvatarStack, Button, Spinner } from '../components/ui';
+import { activityText, t, tr } from '../i18n';
 
 export function Overview() {
   const ws = useWorkspace();
-  const t = ws.template;
+  const tpl = ws.template;
   const setShareOpen = useUI((s) => s.setShareOpen);
   return (
     <CursorPage wide className="overview">
       <header className="overview-hero">
-        <span className="overview-emoji">{t.emoji}</span>
+        <span className="overview-emoji">{tpl.emoji}</span>
         <div className="overview-titles">
-          <h1>{t.name}</h1>
-          {t.description && <p className="muted">{t.description}</p>}
+          <h1>{tpl.name}</h1>
+          {tpl.description && <p className="muted">{tpl.description}</p>}
           <div className="template-features">
-            {t.features.map((f) => (
+            {tpl.features.map((f) => (
               <span key={f} className={`feature-pill feature-${f}`}>
-                {FEATURE_INFO[f].emoji} {FEATURE_INFO[f].name}
+                {FEATURE_INFO[f].emoji} {t(FEATURE_INFO[f].name)}
               </span>
             ))}
           </div>
         </div>
         <div className="overview-members">
-          <AvatarStack users={t.members.map((m) => m.user)} max={6} size={30} />
+          <AvatarStack users={tpl.members.map((m) => m.user)} max={6} size={30} />
           {ws.canEdit && (
             <Button icon={<Share2 size={14} />} onClick={() => setShareOpen(true)}>
-              초대
+              {t('초대')}
             </Button>
           )}
         </div>
       </header>
 
-      {isDemoId(t.id) ? null : ws.isPrivate ? <PersonalBanner /> : <Collaborators />}
+      {isDemoId(tpl.id) ? null : ws.isPrivate ? <PersonalBanner /> : <Collaborators />}
 
       <div className="overview-grid">
-        {t.features.map((f) => (
+        {tpl.features.map((f) => (
           <FeatureCard key={f} feature={f} />
         ))}
         <NotesCard />
@@ -72,28 +73,30 @@ function PersonalBanner() {
         <HardDrive size={22} />
       </div>
       <div className="personal-banner-text">
-        <b>개인 공간</b>
+        <b>{t('개인 공간')}</b>
         <span>
-          나만 볼 수 있는 템플릿입니다. 클라우드에 자동으로 백업되어 브라우저 데이터를 지우거나 다른 기기에서 로그인해도 그대로 이어서 작업할 수
-          있습니다. 팀원을 초대하면 <b>협업 공간</b>으로 전환되고 아래 기능이 켜집니다.
+          {tr(
+            '나만 볼 수 있는 템플릿입니다. 클라우드에 자동으로 백업되어 브라우저 데이터를 지우거나 다른 기기에서 로그인해도 그대로 이어서 작업할 수 있습니다. 팀원을 초대하면 {shared}으로 전환되고 아래 기능이 켜집니다.',
+            { shared: <b>{t('협업 공간')}</b> },
+          )}
         </span>
         <ul className="personal-banner-list">
           <li>
-            <MousePointer2 size={14} /> 실시간 커서 · 행동 표시
+            <MousePointer2 size={14} /> {t('실시간 커서 · 행동 표시')}
           </li>
           <li>
-            <MessageSquare size={14} /> 채팅
+            <MessageSquare size={14} /> {t('채팅')}
           </li>
           <li>
-            <Users size={14} /> 멤버 · 권한 관리
+            <Users size={14} /> {t('멤버 · 권한 관리')}
           </li>
           <li>
-            <Cloud size={14} /> 멤버와 실시간 동기화
+            <Cloud size={14} /> {t('멤버와 실시간 동기화')}
           </li>
         </ul>
       </div>
       <Button variant="primary" icon={<Share2 size={15} />} onClick={() => setShareOpen(true)}>
-        팀원 초대하고 협업 시작
+        {t('팀원 초대하고 협업 시작')}
       </Button>
     </section>
   );
@@ -110,14 +113,14 @@ function Collaborators() {
   return (
     <section className="overview-section">
       <h2>
-        <span className="live-dot" /> 지금 함께 작업 중
+        <span className="live-dot" /> {t('지금 함께 작업 중')}
       </h2>
       {people.length === 0 ? (
         <div className="collab-empty">
-          <span>지금은 혼자 작업 중입니다. 팀원을 초대하면 서로의 커서와 행동이 실시간으로 보입니다.</span>
+          <span>{t('지금은 혼자 작업 중입니다. 팀원을 초대하면 서로의 커서와 행동이 실시간으로 보입니다.')}</span>
           {ws.canEdit && (
             <Button size="sm" icon={<Share2 size={14} />} onClick={() => setShareOpen(true)}>
-              초대 링크
+              {t('초대 링크')}
             </Button>
           )}
         </div>
@@ -132,7 +135,7 @@ function Collaborators() {
                 <div className="collab-text">
                   <b>{p.user.name}</b>
                   <span className="muted small">
-                    {p.idle ? '자리 비움 · ' : ''}
+                    {p.idle ? t('자리 비움 · ') : ''}
                     {MODULE_NAMES[p.view.module]}
                     {where ? ` › ${where}` : ''}
                   </span>
@@ -140,10 +143,10 @@ function Collaborators() {
                 </div>
                 <div className="collab-actions">
                   <Button size="sm" variant="ghost" onClick={() => navigate(viewPath(ws.template.id, p.view.module, p.view.itemId))}>
-                    이동
+                    {t('이동')}
                   </Button>
                   <Button size="sm" icon={<Eye size={14} />} onClick={() => ws.setFollow(p.user.id)}>
-                    따라가기
+                    {t('따라가기')}
                   </Button>
                 </div>
               </div>
@@ -170,14 +173,14 @@ function FeatureCard({ feature }: { feature: Feature }) {
       <header>
         <span className="module-card-emoji">{info.emoji}</span>
         <div>
-          <h3>{info.name}</h3>
+          <h3>{t(info.name)}</h3>
           <span className="muted small">
-            {items.length}개 {module === 'code' ? '파일' : module === 'docs' ? '문서' : '보드'}
+            {module === 'code' ? t('파일 {n}개', { n: items.length }) : module === 'docs' ? t('문서 {n}개', { n: items.length }) : t('보드 {n}개', { n: items.length })}
           </span>
         </div>
         {ws.canEdit && (
           <Button size="sm" variant="ghost" icon={<Plus size={14} />} onClick={add}>
-            새로 만들기
+            {t('새로 만들기')}
           </Button>
         )}
       </header>
@@ -199,7 +202,7 @@ function FeatureCard({ feature }: { feature: Feature }) {
             </li>
           );
         })}
-        {items.length === 0 && <li className="muted small pad-sm">아직 비어 있습니다</li>}
+        {items.length === 0 && <li className="muted small pad-sm">{t('아직 비어 있습니다')}</li>}
       </ul>
     </section>
   );
@@ -225,18 +228,18 @@ function AddAreaCard() {
           <Plus size={20} />
         </span>
         <div>
-          <h3>영역 추가</h3>
-          <span className="muted small">필요한 작업 공간을 이 템플릿에 바로 더합니다</span>
+          <h3>{t('영역 추가')}</h3>
+          <span className="muted small">{t('필요한 작업 공간을 이 템플릿에 바로 더합니다')}</span>
         </div>
       </header>
       <ul>
         {missing.map((f) => (
           <li key={f}>
-            <button onClick={() => void add(f)} disabled={busy !== null} aria-label={`${FEATURE_INFO[f].name} 영역 추가`}>
+            <button onClick={() => void add(f)} disabled={busy !== null} aria-label={t('{name} 영역 추가', { name: t(FEATURE_INFO[f].name) })}>
               <span>{FEATURE_INFO[f].emoji}</span>
               <span className="add-area-text">
-                <b>{FEATURE_INFO[f].name}</b>
-                <span className="muted small">{FEATURE_INFO[f].description}</span>
+                <b>{t(FEATURE_INFO[f].name)}</b>
+                <span className="muted small">{t(FEATURE_INFO[f].description)}</span>
               </span>
               {busy === f ? <Spinner size={14} /> : <Plus size={14} className="hover-arrow" />}
             </button>
@@ -255,8 +258,8 @@ function NotesCard() {
       <header>
         <span className="module-card-emoji">🔒</span>
         <div>
-          <h3>비밀 노트</h3>
-          <span className="muted small">{ws.notes.length}개 · 비밀번호로 보호</span>
+          <h3>{t('비밀 노트')}</h3>
+          <span className="muted small">{t('{n}개 · 비밀번호로 보호', { n: ws.notes.length })}</span>
         </div>
         {ws.canEdit && (
           <Button
@@ -268,7 +271,7 @@ function NotesCard() {
               setNewNoteOpen(true);
             }}
           >
-            새로 만들기
+            {t('새로 만들기')}
           </Button>
         )}
       </header>
@@ -283,7 +286,7 @@ function NotesCard() {
             </button>
           </li>
         ))}
-        {ws.notes.length === 0 && <li className="muted small pad-sm">템플릿 멤버만, 비밀번호를 아는 사람만 열 수 있습니다</li>}
+        {ws.notes.length === 0 && <li className="muted small pad-sm">{t('템플릿 멤버만, 비밀번호를 아는 사람만 열 수 있습니다')}</li>}
       </ul>
     </section>
   );
@@ -316,18 +319,18 @@ function RecentTemplateActivity() {
     <section className="overview-section">
       <div className="section-head">
         <h2>
-          <History size={16} /> 최근 활동
+          <History size={16} /> {t('최근 활동')}
         </h2>
         <button className="link small" onClick={() => ws.go('timeline')}>
-          타임라인 전체 보기 <ArrowRight size={13} />
+          {t('타임라인 전체 보기')} <ArrowRight size={13} />
         </button>
       </div>
       <ul className="mini-timeline">
         {failed && (
           <li className="muted small">
-            활동을 불러오지 못했습니다.{' '}
+            {t('활동을 불러오지 못했습니다.')}{' '}
             <button className="link small" onClick={() => setAttempt((n) => n + 1)}>
-              다시 시도
+              {t('다시 시도')}
             </button>
           </li>
         )}
@@ -341,14 +344,14 @@ function RecentTemplateActivity() {
             <Avatar user={e.user} size={24} />
             <div>
               <span>
-                <b>{e.user.name}</b> {e.text}
+                <b>{e.user.name}</b> {activityText(e)}
                 {e.count > 1 && <span className="count-chip">×{e.count}</span>}
               </span>
               <span className="muted small">{relativeTime(e.at)}</span>
             </div>
           </li>
         ))}
-        {events?.length === 0 && <li className="muted small">아직 활동이 없습니다.</li>}
+        {events?.length === 0 && <li className="muted small">{t('아직 활동이 없습니다.')}</li>}
       </ul>
     </section>
   );

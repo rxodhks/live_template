@@ -6,6 +6,7 @@
  */
 
 import { reloadIfNewVersion } from '../../lib/staleBuild';
+import { t } from '../../i18n';
 
 export type RuntimeId = 'python' | 'sql' | 'lua' | 'ruby' | 'php' | 'react';
 
@@ -66,22 +67,22 @@ async function download(url: string, size: number, onBytes: (n: number) => void)
   if (res.status === 404) {
     // 배포 전에 열어 둔 탭이 예전 실행 환경 폴더를 찾은 경우 — 새 버전이면 새로고침된다
     void reloadIfNewVersion();
-    throw new Error('실행 환경 파일을 찾지 못했습니다. 새 버전이 나왔다면 곧 자동으로 새로고침됩니다.');
+    throw new Error(t('실행 환경 파일을 찾지 못했습니다. 새 버전이 나왔다면 곧 자동으로 새로고침됩니다.'));
   }
-  if (!res.ok || !res.body) throw new Error(`실행 환경 파일을 받지 못했습니다 (${res.status})`);
+  if (!res.ok || !res.body) throw new Error(t('실행 환경 파일을 받지 못했습니다 ({status})', { status: res.status }));
   const reader = res.body.getReader();
   const out = new Uint8Array(size);
   let at = 0;
   for (;;) {
     const { done, value } = await reader.read();
     if (done) break;
-    if (at + value.length > size) throw new Error('실행 환경 파일이 예상과 다릅니다. 새로고침 후 다시 시도해 주세요.');
+    if (at + value.length > size) throw new Error(t('실행 환경 파일이 예상과 다릅니다. 새로고침 후 다시 시도해 주세요.'));
     out.set(value, at);
     at += value.length;
     onBytes(value.length);
   }
   // 받은 크기가 빌드 때 기록한 크기와 같은지 확인한다
-  if (at !== size) throw new Error('실행 환경 파일이 예상과 다릅니다. 새로고침 후 다시 시도해 주세요.');
+  if (at !== size) throw new Error(t('실행 환경 파일이 예상과 다릅니다. 새로고침 후 다시 시도해 주세요.'));
   return out.buffer;
 }
 

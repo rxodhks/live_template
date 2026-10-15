@@ -5,6 +5,7 @@ import { CommandPalette } from './CommandPalette';
 import { FeedbackDialog, ProfileDialog, ShortcutsDialog } from './Dialogs';
 import { InviteDialog } from './InviteDialog';
 import { cx } from '../lib/util';
+import { t } from '../i18n';
 
 interface Props {
   panel?: ReactNode;
@@ -75,7 +76,7 @@ export function AppShell({ panel, panelOpen = true, drawer, children }: Props) {
                 className="panel-resizer"
                 role="separator"
                 aria-orientation="vertical"
-                aria-label="탐색 패널 너비 조절"
+                aria-label={t('탐색 패널 너비 조절')}
                 onPointerDown={startResize}
                 onDoubleClick={() => setWidth(260)}
               />

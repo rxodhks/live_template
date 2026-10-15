@@ -3,6 +3,7 @@ import type { JoinStatus, MyJoinRequest, TemplateSummary } from '@shared/types';
 import { useTemplates } from '../store/templates';
 import { toast } from '../store/toasts';
 import { api, ApiError } from './api';
+import { t } from '../i18n';
 
 /*
  * 승인이 필요한 초대 링크로 보낸 참여 요청.
@@ -42,8 +43,8 @@ export async function refreshPending(): Promise<void> {
     else if (seenPending.delete(r.templateId)) {
       if (r.status === 'approved') {
         approved = true;
-        toast.success('참여가 승인되었습니다', `${r.emoji} ${r.name}`);
-      } else if (r.status === 'denied') toast.warning('참여 요청이 거절되었습니다', `${r.emoji} ${r.name}`);
+        toast.success(t('참여가 승인되었습니다'), `${r.emoji} ${r.name}`);
+      } else if (r.status === 'denied') toast.warning(t('참여 요청이 거절되었습니다'), `${r.emoji} ${r.name}`);
     }
   }
   set(requests.filter((r) => r.status === 'pending'));

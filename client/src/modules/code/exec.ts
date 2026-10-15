@@ -10,6 +10,7 @@ import sqlWorker from './sandbox/sql.js?raw';
 import luaWorker from './sandbox/lua.js?raw';
 import rubyWorker from './sandbox/ruby.js?raw';
 import phpWorker from './sandbox/php.js?raw';
+import { t } from '../../i18n';
 
 /*
  * 언어별 실행 방법 (모두 브라우저 안에서 — 서버 비용 없음)
@@ -31,39 +32,39 @@ export interface ExecInfo {
 }
 
 const RUNNERS: Record<string, ExecInfo & { worker?: string }> = {
-  javascript: { mode: 'run', label: '실행', worker: jsWorker, timeoutMs: 5000 },
-  typescript: { mode: 'run', label: '실행', worker: jsWorker, timeoutMs: 5000 },
-  python: { mode: 'run', label: '실행', runtime: 'python', worker: pythonWorker, stdin: true, timeoutMs: 15000 },
-  sql: { mode: 'run', label: '실행', runtime: 'sql', worker: sqlWorker, timeoutMs: 10000 },
-  lua: { mode: 'run', label: '실행', runtime: 'lua', worker: luaWorker, stdin: true, timeoutMs: 10000 },
-  ruby: { mode: 'run', label: '실행', runtime: 'ruby', worker: rubyWorker, stdin: true, timeoutMs: 15000 },
-  php: { mode: 'run', label: '실행', runtime: 'php', worker: phpWorker, stdin: true, timeoutMs: 15000 },
-  jsx: { mode: 'preview', label: '미리보기', runtime: 'react' },
-  tsx: { mode: 'preview', label: '미리보기', runtime: 'react' },
-  html: { mode: 'preview', label: '미리보기' },
-  css: { mode: 'preview', label: '미리보기' },
-  markdown: { mode: 'preview', label: '미리보기' },
-  json: { mode: 'check', label: '검사' },
-  yaml: { mode: 'check', label: '검사' },
-  scss: { mode: 'convert', label: 'CSS로 변환' },
+  javascript: { mode: 'run', label: t('실행'), worker: jsWorker, timeoutMs: 5000 },
+  typescript: { mode: 'run', label: t('실행'), worker: jsWorker, timeoutMs: 5000 },
+  python: { mode: 'run', label: t('실행'), runtime: 'python', worker: pythonWorker, stdin: true, timeoutMs: 15000 },
+  sql: { mode: 'run', label: t('실행'), runtime: 'sql', worker: sqlWorker, timeoutMs: 10000 },
+  lua: { mode: 'run', label: t('실행'), runtime: 'lua', worker: luaWorker, stdin: true, timeoutMs: 10000 },
+  ruby: { mode: 'run', label: t('실행'), runtime: 'ruby', worker: rubyWorker, stdin: true, timeoutMs: 15000 },
+  php: { mode: 'run', label: t('실행'), runtime: 'php', worker: phpWorker, stdin: true, timeoutMs: 15000 },
+  jsx: { mode: 'preview', label: t('미리보기'), runtime: 'react' },
+  tsx: { mode: 'preview', label: t('미리보기'), runtime: 'react' },
+  html: { mode: 'preview', label: t('미리보기') },
+  css: { mode: 'preview', label: t('미리보기') },
+  markdown: { mode: 'preview', label: t('미리보기') },
+  json: { mode: 'check', label: t('검사') },
+  yaml: { mode: 'check', label: t('검사') },
+  scss: { mode: 'convert', label: t('CSS로 변환') },
 };
 
 export function execInfo(langId: string): ExecInfo {
   const r = RUNNERS[langId];
-  return r ? { mode: r.mode, label: r.label, runtime: r.runtime, stdin: r.stdin, timeoutMs: r.timeoutMs } : { mode: 'none', label: '실행' };
+  return r ? { mode: r.mode, label: r.label, runtime: r.runtime, stdin: r.stdin, timeoutMs: r.timeoutMs } : { mode: 'none', label: t('실행') };
 }
 
 /** 실행할 수 없는 언어 안내 */
 export function unsupportedMessage(langName: string, langId?: string): OutputLine[] {
   if (langId === 'plaintext')
     return [
-      line('system', '일반 텍스트 파일은 실행할 수 없습니다.'),
-      line('info', '상단의 언어 선택에서 언어를 고르거나 파일 이름에 확장자(.py, .js 등)를 붙이면 그 언어로 실행할 수 있습니다.'),
+      line('system', t('일반 텍스트 파일은 실행할 수 없습니다.')),
+      line('info', t('상단의 언어 선택에서 언어를 고르거나 파일 이름에 확장자(.py, .js 등)를 붙이면 그 언어로 실행할 수 있습니다.')),
     ];
   return [
-    line('system', `${langName}은(는) 아직 사이트 안에서 실행할 수 없습니다.`),
-    line('info', 'C · C++ · Java · Go · Rust · Kotlin · Swift · C# · Shell은 서버 실행 환경이 필요해 준비 중입니다. 코드를 내려받아 로컬에서 실행해 보세요.'),
-    line('info', '사이트 안에서 바로 실행: JavaScript · TypeScript · Python · SQL · Lua · Ruby · PHP / 미리보기: HTML · JSX · TSX · Markdown / 검사 · 변환: JSON · YAML · SCSS'),
+    line('system', t('{langName}은(는) 아직 사이트 안에서 실행할 수 없습니다.', { langName })),
+    line('info', t('C · C++ · Java · Go · Rust · Kotlin · Swift · C# · Shell은 서버 실행 환경이 필요해 준비 중입니다. 코드를 내려받아 로컬에서 실행해 보세요.')),
+    line('info', t('사이트 안에서 바로 실행: JavaScript · TypeScript · Python · SQL · Lua · Ruby · PHP / 미리보기: HTML · JSX · TSX · Markdown / 검사 · 변환: JSON · YAML · SCSS')),
   ];
 }
 
@@ -147,7 +148,7 @@ export async function executeFile(doc: Y.Doc, file: YItem, stdin: string, cb: Ex
       payload = { entry: name, files: same([lang.id]), stdin };
   }
   if (r.runtime && !(await isRuntimeCached(r.runtime))) {
-    cb.onLine(line('info', `${lang.name} 실행 환경을 처음 한 번 내려받습니다 (약 ${runtimeSizeMB(r.runtime)}MB). 이후에는 바로 실행됩니다.`));
+    cb.onLine(line('info', t('{name} 실행 환경을 처음 한 번 내려받습니다 (약 {x}MB). 이후에는 바로 실행됩니다.', { name: lang.name, x: runtimeSizeMB(r.runtime) })));
   }
   return runInSandbox({
     worker: r.worker,
@@ -176,6 +177,7 @@ export async function buildReactPreview(doc: Y.Doc, entry: string): Promise<stri
     .filter((f) => f.lang === 'css')
     .map((f) => `<style data-file="${f.name.replace(/"/g, '')}">\n${f.content.replace(/<\/style/gi, '<\\/style')}\n</style>`)
     .join('\n');
+  // i18n-ignore (미리보기 iframe 안에서 도는 코드 — 안내 문구는 위에서 t()로 넣는다)
   const boot = `
 (function () {
   var modules = ${JSON.stringify(modules).replace(/<\/script/gi, '<\\/script')};
@@ -193,9 +195,9 @@ export async function buildReactPreview(doc: Y.Doc, entry: string): Promise<stri
   function req(spec) {
     if (builtin[spec]) return builtin[spec];
     if (/\\.css$/.test(spec)) return {};
-    if (spec.charAt(0) !== '.' && spec.charAt(0) !== '/') throw new Error("외부 패키지 '" + spec + "'는 미리보기에서 불러올 수 없습니다 (react · react-dom만 기본 제공)");
+    if (spec.charAt(0) !== '.' && spec.charAt(0) !== '/') throw new Error(${JSON.stringify(t("외부 패키지 '{spec}'는 미리보기에서 불러올 수 없습니다 (react · react-dom만 기본 제공)"))}.replace('{spec}', spec));
     var name = resolve(spec);
-    if (!name) throw new Error("'" + spec + "' 파일을 찾을 수 없습니다");
+    if (!name) throw new Error(${JSON.stringify(t("'{spec}' 파일을 찾을 수 없습니다"))}.replace('{spec}', spec));
     if (cache[name]) return cache[name].exports;
     var mod = { exports: {} };
     cache[name] = mod;
@@ -222,7 +224,7 @@ export async function buildReactPreview(doc: Y.Doc, entry: string): Promise<stri
           },
         }).render(React.createElement(Comp));
     } else if (!root.hasChildNodes() && !document.body.dataset.rendered) {
-      root.innerHTML = '<p style="font:14px system-ui;color:#888;padding:16px">export default 로 내보낸 컴포넌트(또는 App)가 없습니다. 예) export default function App() { return &lt;h1&gt;안녕하세요&lt;/h1&gt; }</p>';
+      root.innerHTML = '<p style="font:14px system-ui;color:#888;padding:16px">' + ${JSON.stringify(t('export default 로 내보낸 컴포넌트(또는 App)가 없습니다. 예) export default function App() { return &lt;h1&gt;안녕하세요&lt;/h1&gt; }'))} + '</p>';
     }
   } catch (e) {
     console.error(e && e.message ? e.message : e);
@@ -258,38 +260,38 @@ export interface CheckResult {
 
 export async function checkFile(langId: string, name: string, text: string): Promise<CheckResult> {
   if (langId === 'json') {
-    if (!text.trim()) return { lines: [line('warn', '내용이 비어 있습니다.')] };
+    if (!text.trim()) return { lines: [line('warn', t('내용이 비어 있습니다.'))] };
     try {
       const v = JSON.parse(text);
-      const kind = Array.isArray(v) ? `배열 · ${v.length}개 항목` : v && typeof v === 'object' ? `객체 · 키 ${Object.keys(v).length}개` : typeof v;
-      return { lines: [line('system', `✓ 올바른 JSON입니다 (${kind})`)], formatted: { title: '정리된 JSON', text: JSON.stringify(v, null, 2) } };
+      const kind = Array.isArray(v) ? t('배열 · {n}개 항목', { n: v.length }) : v && typeof v === 'object' ? t('객체 · 키 {n}개', { n: Object.keys(v).length }) : typeof v;
+      return { lines: [line('system', t('✓ 올바른 JSON입니다 ({kind})', { kind }))], formatted: { title: t('정리된 JSON'), text: JSON.stringify(v, null, 2) } };
     } catch (err) {
       const msg = (err as Error).message;
       const pos = /position (\d+)/.exec(msg);
       let where = '';
       if (pos) {
         const before = text.slice(0, Number(pos[1]));
-        where = ` (${before.split('\n').length}번째 줄, ${before.length - before.lastIndexOf('\n')}번째 글자)`;
+        where = t(' ({n}번째 줄, {x}번째 글자)', { n: before.split('\n').length, x: before.length - before.lastIndexOf('\n') });
       }
-      return { lines: [line('error', `JSON 형식 오류${where}: ${msg}`)] };
+      return { lines: [line('error', t('JSON 형식 오류{where}: {msg}', { where, msg }))] };
     }
   }
   if (langId === 'yaml') {
     const { parseAllDocuments } = await import('yaml');
     const docs = parseAllDocuments(text, { prettyErrors: true });
     const errors = docs.flatMap((d) => d.errors);
-    if (errors.length) return { lines: errors.map((e) => line('error', `YAML 형식 오류: ${e.message}`)) };
+    if (errors.length) return { lines: errors.map((e) => line('error', t('YAML 형식 오류: {message}', { message: e.message }))) };
     const values = docs.map((d) => d.toJS({ maxAliasCount: 100 }));
     const v = values.length === 1 ? values[0] : values;
     return {
-      lines: [line('system', `✓ 올바른 YAML입니다${docs.length > 1 ? ` (문서 ${docs.length}개)` : ''}`)],
-      formatted: { title: 'JSON으로 본 내용', text: JSON.stringify(v, null, 2) ?? 'null' },
+      lines: [line('system', docs.length > 1 ? t('✓ 올바른 YAML입니다 (문서 {n}개)', { n: docs.length }) : t('✓ 올바른 YAML입니다'))],
+      formatted: { title: t('JSON으로 본 내용'), text: JSON.stringify(v, null, 2) ?? 'null' },
     };
   }
   if (langId === 'scss') {
     const css = await compileScss(text, name);
     return css.ok
-      ? { lines: [line('system', `✓ CSS로 변환했습니다 (${css.text.split('\n').length}줄)`)], formatted: { title: '변환된 CSS', text: css.text } }
+      ? { lines: [line('system', t('✓ CSS로 변환했습니다 ({n}줄)', { n: css.text.split('\n').length }))], formatted: { title: t('변환된 CSS'), text: css.text } }
       : { lines: [line('error', css.text)] };
   }
   return { lines: [] };
@@ -309,14 +311,14 @@ export function compileScss(text: string, name: string): Promise<{ ok: boolean; 
       sassWorker = null;
       worker.removeEventListener('message', onMsg);
       worker.removeEventListener('error', onError);
-      resolve({ ok: false, text: 'SCSS 변환이 10초 안에 끝나지 않아 중단했습니다 (무한 반복을 확인해 보세요).' });
+      resolve({ ok: false, text: t('SCSS 변환이 10초 안에 끝나지 않아 중단했습니다 (무한 반복을 확인해 보세요).') });
     }, 10_000);
     const onMsg = (e: MessageEvent) => {
       if (e.data?.id !== id) return;
       clearTimeout(timer);
       worker.removeEventListener('message', onMsg);
       worker.removeEventListener('error', onError);
-      resolve({ ok: e.data.ok, text: e.data.text });
+      resolve({ ok: e.data.ok, text: e.data.ok ? e.data.text : t('SCSS 오류: {msg}', { msg: e.data.text }) });
     };
     // 워커 파일을 못 받은 경우 (배포 전에 열어 둔 탭이면 새 버전으로 새로고침된다)
     const onError = () => {
@@ -325,7 +327,7 @@ export function compileScss(text: string, name: string): Promise<{ ok: boolean; 
       worker.removeEventListener('error', onError);
       if (sassWorker === worker) sassWorker = null;
       void reloadIfNewVersion();
-      resolve({ ok: false, text: 'SCSS 변환기를 불러오지 못했습니다. 새로고침한 뒤 다시 시도해 주세요.' });
+      resolve({ ok: false, text: t('SCSS 변환기를 불러오지 못했습니다. 새로고침한 뒤 다시 시도해 주세요.') });
     };
     worker.addEventListener('message', onMsg);
     worker.addEventListener('error', onError);

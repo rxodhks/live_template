@@ -5,6 +5,7 @@
  *  - 그 밖의 정렬: Prettier (JS · TS · CSS · SCSS · HTML · JSON · YAML · Markdown)
  */
 import type { AssistDiagnostic, CheckRequest, CompleteRequest, CompleteResult, DetailRequest } from './protocol';
+import { lang as uiLang, t } from '../../../i18n';
 
 export type { AssistDiagnostic } from './protocol';
 
@@ -47,7 +48,7 @@ class WorkerClient {
       // 워커 파일을 못 불러오면 (배포 직후 옛 화면 등) 기다리던 요청을 모두 실패로 끝내고 다음에 새로 만든다
       w.onerror = (e) => {
         e.preventDefault();
-        for (const p of this.pending.values()) p.reject(new Error('코드 검사 도구를 불러오지 못했습니다'));
+        for (const p of this.pending.values()) p.reject(new Error(t('코드 검사 도구를 불러오지 못했습니다')));
         this.pending.clear();
         w.terminate();
         if (this.worker === w) this.worker = null;
@@ -62,8 +63,8 @@ class WorkerClient {
   }
 }
 
-const tsWorker = new WorkerClient(() => new Worker(new URL('./ts.worker.ts', import.meta.url), { type: 'module', name: 'ts-check' }));
-const pyWorker = new WorkerClient(() => new Worker(new URL('./py.worker.ts', import.meta.url), { type: 'module', name: 'py-check' }));
+const tsWorker = new WorkerClient(() => new Worker(new URL('./ts.worker.ts', import.meta.url), { type: 'module', name: `ts-check:${uiLang}` }));
+const pyWorker = new WorkerClient(() => new Worker(new URL('./py.worker.ts', import.meta.url), { type: 'module', name: `py-check:${uiLang}` }));
 
 /** 파일 하나 검사 */
 export async function checkCode(lang: string, req: CheckRequest): Promise<AssistDiagnostic[]> {
@@ -104,7 +105,7 @@ async function prettierFor(lang: string) {
     yaml: () => [import('prettier/plugins/yaml')],
     markdown: () => [import('prettier/plugins/markdown'), babel(), import('prettier/plugins/postcss')],
   }[lang];
-  if (!load) throw new Error('이 언어는 자동 정렬을 지원하지 않습니다');
+  if (!load) throw new Error(t('이 언어는 자동 정렬을 지원하지 않습니다'));
   const parser = { javascript: 'babel', jsx: 'babel', json: 'json', typescript: 'typescript', tsx: 'typescript', css: 'css', scss: 'scss', html: 'html', yaml: 'yaml', markdown: 'markdown' }[lang]!;
   const plugins = (await Promise.all(load())).map((m) => ('default' in m ? m.default : m));
   return { format, plugins: [estree.default ?? estree, ...plugins], parser };

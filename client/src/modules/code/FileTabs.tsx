@@ -14,6 +14,7 @@ import { useYItems } from '../../hooks/useY';
 import { useSession } from '../../store/session';
 import { cx } from '../../lib/util';
 import { InlineEdit } from '../../components/ui';
+import { t } from '../../i18n';
 
 // ── 템플릿별 열린 탭 (이 기기) ──
 const storeKey = (templateId: string) => `lt.code.tabs.${templateId}`;
@@ -105,7 +106,7 @@ export function FileTabs({ activeId }: { activeId: string }) {
   };
 
   return (
-    <div className="file-tabs" ref={stripRef} role="tablist" aria-label="열린 파일">
+    <div className="file-tabs" ref={stripRef} role="tablist" aria-label={t('열린 파일')}>
       {(tabs.includes(activeId) ? tabs : [...tabs, activeId]).map((id) => {
         const f = byId.get(id);
         if (!f) return null;
@@ -119,7 +120,7 @@ export function FileTabs({ activeId }: { activeId: string }) {
             aria-selected={active}
             tabIndex={active ? 0 : -1}
             className={cx('file-tab', active && 'is-active', dragId === id && 'is-dragging')}
-            title={active && ws.canEdit ? `${name} · 더블클릭하여 이름 변경` : name}
+            title={active && ws.canEdit ? t('{name} · 더블클릭하여 이름 변경', { name }) : name}
             draggable={!renaming}
             onClick={() => open(id)}
             onKeyDown={(e) => {
@@ -161,8 +162,8 @@ export function FileTabs({ activeId }: { activeId: string }) {
               <button
                 type="button"
                 className="file-tab-close"
-                aria-label={`${name} 탭 닫기`}
-                data-tip="탭 닫기 (가운데 클릭)"
+                aria-label={t('{name} 탭 닫기', { name })}
+                data-tip={t('탭 닫기 (가운데 클릭)')}
                 onClick={(e) => {
                   e.stopPropagation();
                   close(id);
@@ -175,7 +176,7 @@ export function FileTabs({ activeId }: { activeId: string }) {
         );
       })}
       {ws.canEdit && (
-        <button type="button" className="file-tab-new" aria-label="새 파일" data-tip="새 파일" onClick={() => void createCodeFile(ws, me)}>
+        <button type="button" className="file-tab-new" aria-label={t('새 파일')} data-tip={t('새 파일')} onClick={() => void createCodeFile(ws, me)}>
           <Plus size={14} />
         </button>
       )}

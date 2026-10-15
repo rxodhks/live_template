@@ -2,6 +2,7 @@ import type { JSONContent } from '@tiptap/core';
 import type { PageSetup } from '@shared/schema';
 import { DOC_COLORS, DOC_COLOR_CSS } from '../modules/docs/blocks/colors';
 import { pageCss, toPx } from '../modules/docs/page/pageSizes';
+import { lang, t } from '../i18n';
 
 /* TipTap JSON → Markdown (내보내기용) */
 
@@ -83,12 +84,12 @@ function block(node: JSONContent, indent = ''): string {
     case 'columns':
       return c.map((col) => blocks(col.content)).join('\n\n');
     case 'image': {
-      const alt = String(node.attrs?.caption || node.attrs?.alt || '이미지').replace(/[[\]]/g, '');
+      const alt = String(node.attrs?.caption || node.attrs?.alt || t('이미지')).replace(/[[\]]/g, '');
       const img = `![${alt}](${node.attrs?.src ?? ''})`;
       return node.attrs?.caption ? `${img}\n*${node.attrs.caption}*` : img;
     }
     case 'embed':
-      return `[${node.attrs?.provider ?? '임베드'}: ${node.attrs?.url || node.attrs?.src}](${node.attrs?.url || node.attrs?.src})`;
+      return `[${node.attrs?.provider ?? t('임베드')}: ${node.attrs?.url || node.attrs?.src}](${node.attrs?.url || node.attrs?.src})`;
     case 'pageBreak':
       return '<div style="page-break-after: always"></div>';
     case 'blockMath':
@@ -162,7 +163,7 @@ async function finishHtml(bodyHtml: string): Promise<string> {
   headings.forEach((h, i) => (h.id = `h-${i + 1}`));
   dom.querySelectorAll('nav[data-toc]').forEach((nav) => {
     const min = Math.min(...headings.map((h) => Number(h.tagName[1])));
-    nav.innerHTML = `<strong>목차</strong><ol>${headings
+    nav.innerHTML = `<strong>${t('목차')}</strong><ol>${headings
       .map((h) => `<li style="margin-left:${(Number(h.tagName[1]) - min) * 16}px"><a href="#${h.id}">${h.textContent?.replace(/</g, '&lt;') ?? ''}</a></li>`)
       .join('')}</ol>`;
   });
@@ -183,7 +184,7 @@ export async function toHtmlDocument(title: string, bodyHtml: string, page?: Pag
     ? `body { max-width: ${Math.round(toPx(page.width - 2 * page.margin, page.unit))}px; font-size: ${page.fontSize}px; }\n${pageCss(page)}\n.doc-content > *, body > * { break-inside: avoid; }`
     : '';
   return `<!doctype html>
-<html lang="ko">
+<html lang="${lang}">
 <head>
 <meta charset="utf-8" />
 <title>${title.replace(/</g, '&lt;')}</title>

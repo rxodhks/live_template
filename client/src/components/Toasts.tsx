@@ -4,6 +4,7 @@ import { AlertTriangle, CheckCircle2, Info, X, XCircle } from 'lucide-react';
 import { type Toast, TOAST_FADE_MS, useToasts } from '../store/toasts';
 import { Avatar } from './ui';
 import { cx } from '../lib/util';
+import { t } from '../i18n';
 
 const ICONS = {
   info: Info,
@@ -20,7 +21,7 @@ const ICONS = {
 export function ToastViewport() {
   const toasts = useToasts((s) => s.toasts);
   return createPortal(
-    <div className="toast-viewport" role="region" aria-label="알림" aria-live="polite">
+    <div className="toast-viewport" role="region" aria-label={t('알림')} aria-live="polite">
       {toasts.map((t) => (
         <ToastItem key={t.id} toast={t} />
       ))}
@@ -81,7 +82,7 @@ function ToastItem({ toast }: { toast: Toast }) {
           {toast.action.label}
         </button>
       )}
-      <button className="toast-close" aria-label="알림 닫기" onClick={() => dismiss(toast.id)}>
+      <button className="toast-close" aria-label={t('알림 닫기')} onClick={() => dismiss(toast.id)}>
         <X size={14} />
       </button>
       <span className={cx('toast-progress', paused && 'is-paused')} />

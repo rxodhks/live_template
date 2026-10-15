@@ -4,6 +4,7 @@ import type * as Y from 'yjs';
 import { getBoards, getDocs, getFiles } from '@shared/schema';
 import { useWorkspace, viewPath } from '../../../workspace/context';
 import type { DocEnv, MentionPage } from './env';
+import { t } from '../../../i18n';
 
 /** 작업 공간의 멤버 · 페이지를 문서 편집기에 넘긴다 (멘션 · 페이지 링크) */
 export function useDocEnv(opts: { uploads: boolean }): DocEnv {
@@ -40,8 +41,8 @@ export function useDocEnv(opts: { uploads: boolean }): DocEnv {
 
 function pagesOf(doc: Y.Doc): MentionPage[] {
   const out: MentionPage[] = [];
-  getDocs(doc).forEach((d, id) => out.push({ module: 'docs', id, title: String(d.get('title') ?? '제목 없는 문서'), emoji: String(d.get('emoji') ?? '📄') }));
-  getFiles(doc).forEach((f, id) => out.push({ module: 'code', id, title: String(f.get('name') ?? '파일'), emoji: '💻' }));
-  getBoards(doc).forEach((b, id) => out.push({ module: 'design', id, title: String(b.get('name') ?? '보드'), emoji: '🎨' }));
+  getDocs(doc).forEach((d, id) => out.push({ module: 'docs', id, title: String(d.get('title') ?? t('제목 없는 문서')), emoji: String(d.get('emoji') ?? '📄') }));
+  getFiles(doc).forEach((f, id) => out.push({ module: 'code', id, title: String(f.get('name') ?? t('파일')), emoji: '💻' }));
+  getBoards(doc).forEach((b, id) => out.push({ module: 'design', id, title: String(b.get('name') ?? t('보드')), emoji: '🎨' }));
   return out;
 }

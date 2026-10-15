@@ -3,6 +3,7 @@ import { Node, mergeAttributes, type Editor } from '@tiptap/core';
 import { NodeViewWrapper, ReactNodeViewRenderer, type ReactNodeViewProps } from '@tiptap/react';
 import { ListTree } from 'lucide-react';
 import { cx } from '../../../../lib/util';
+import { t } from '../../../../i18n';
 
 declare module '@tiptap/core' {
   interface Commands<ReturnType> {
@@ -75,16 +76,16 @@ function TocView({ editor, selected }: ReactNodeViewProps) {
   return (
     <NodeViewWrapper className={cx('doc-toc', selected && 'is-selected')} contentEditable={false}>
       <div className="doc-toc-head" data-drag-handle>
-        <ListTree size={14} /> 목차
+        <ListTree size={14} /> {t('목차')}
       </div>
       {items.length === 0 ? (
-        <p className="doc-toc-empty">제목(H1~H3)을 추가하면 여기에 목차가 만들어집니다.</p>
+        <p className="doc-toc-empty">{t('제목(H1~H3)을 추가하면 여기에 목차가 만들어집니다.')}</p>
       ) : (
         <ol>
           {items.map((h, i) => (
             <li key={i} style={{ paddingLeft: (h.level - minLevel) * 16 }}>
               <button type="button" className={`toc-level-${h.level}`} onMouseDown={(e) => e.preventDefault()} onClick={() => jump(i)}>
-                {h.text || '(빈 제목)'}
+                {h.text || t('(빈 제목)')}
               </button>
             </li>
           ))}

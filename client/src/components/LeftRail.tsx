@@ -17,6 +17,8 @@ import { useOptionalWorkspace, viewPath } from '../workspace/context';
 import { usePresence } from '../store/presence';
 import { useUI } from '../store/ui';
 import { cx } from '../lib/util';
+import { lazyText, t } from '../i18n';
+import { MODULE_NAMES } from '../workspace/viewLabel';
 
 const MODULE_ICON: Partial<Record<ViewModule, typeof Home>> = {
   overview: LayoutDashboard,
@@ -29,16 +31,16 @@ const MODULE_ICON: Partial<Record<ViewModule, typeof Home>> = {
   settings: Settings,
 };
 
-const MODULE_TIP: Partial<Record<ViewModule, string>> = {
-  overview: '개요',
-  design: '디자인',
-  code: '코딩',
-  docs: '문서',
-  notes: '비밀 노트',
-  timeline: '템플릿 타임라인',
-  members: '멤버',
-  settings: '템플릿 설정',
-};
+const MODULE_TIP: Partial<Record<ViewModule, string>> = lazyText(() => ({
+  overview: t('개요'),
+  design: t('디자인'),
+  code: t('코딩'),
+  docs: t('문서'),
+  notes: t('비밀 노트'),
+  timeline: t('템플릿 타임라인'),
+  members: t('멤버'),
+  settings: t('템플릿 설정'),
+}));
 
 /**
  * 왼쪽 아이콘 레일
@@ -59,15 +61,15 @@ export function LeftRail() {
     : [];
 
   return (
-    <nav className="rail" aria-label="주 메뉴">
+    <nav className="rail" aria-label={t('주 메뉴')}>
       <div className="rail-group">
-        <NavLink to="/" end className={({ isActive }) => cx('rail-item', isActive && 'is-active')} data-tip="대시보드" data-tip-side="right">
+        <NavLink to="/" end className={({ isActive }) => cx('rail-item', isActive && 'is-active')} data-tip={t('대시보드')} data-tip-side="right">
           <Home size={19} />
-          <span className="rail-label">홈</span>
+          <span className="rail-label">{t('홈')}</span>
         </NavLink>
-        <NavLink to="/timeline" className={({ isActive }) => cx('rail-item', isActive && 'is-active')} data-tip="전체 타임라인" data-tip-side="right">
+        <NavLink to="/timeline" className={({ isActive }) => cx('rail-item', isActive && 'is-active')} data-tip={t('전체 타임라인')} data-tip-side="right">
           <History size={19} />
-          <span className="rail-label">기록</span>
+          <span className="rail-label">{t('기록')}</span>
         </NavLink>
       </div>
 
@@ -94,7 +96,7 @@ export function LeftRail() {
                 }}
               >
                 <Icon size={19} />
-                <span className="rail-label">{MODULE_TIP[m]!.replace('템플릿 ', '')}</span>
+                <span className="rail-label">{MODULE_NAMES[m]}</span>
                 {m === 'members' && ws.requests.length > 0 && <span className="badge-count rail-badge">{ws.requests.length}</span>}
                 {viewers.length > 0 && (
                   <span className="rail-viewers">
@@ -110,10 +112,10 @@ export function LeftRail() {
       )}
 
       <div className="rail-group rail-bottom">
-        <button className="rail-item" data-tip="피드백 보내기" data-tip-side="right" aria-label="피드백 보내기" onClick={() => useUI.getState().setFeedbackOpen(true)}>
+        <button className="rail-item" data-tip={t('피드백 보내기')} data-tip-side="right" aria-label={t('피드백 보내기')} onClick={() => useUI.getState().setFeedbackOpen(true)}>
           <MessageSquareHeart size={19} />
         </button>
-        <button className="rail-item" data-tip="키보드 단축키 (?)" data-tip-side="right" aria-label="키보드 단축키" onClick={() => setShortcutsOpen(true)}>
+        <button className="rail-item" data-tip={t('키보드 단축키 (?)')} data-tip-side="right" aria-label={t('키보드 단축키')} onClick={() => setShortcutsOpen(true)}>
           <Keyboard size={19} />
         </button>
       </div>

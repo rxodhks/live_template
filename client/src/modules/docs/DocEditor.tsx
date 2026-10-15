@@ -46,6 +46,7 @@ import { type DocEnv, EMPTY_ENV } from './blocks/env';
 import type { PageSetup } from '@shared/schema';
 import { type PageBreakMark, type Zoom, usePagedLayout } from './page/usePagedLayout';
 import { pageCss } from './page/pageSizes';
+import { t } from '../../i18n';
 
 interface Props {
   fragment: Y.XmlFragment;
@@ -95,7 +96,7 @@ export function DocEditor({ fragment, awareness, user, readOnly, placeholder, do
   const editor = useEditor(
     {
       editable: !readOnly,
-      editorProps: { attributes: { role: 'textbox', 'aria-label': '문서 본문', 'aria-multiline': 'true' } },
+      editorProps: { attributes: { role: 'textbox', 'aria-label': t('문서 본문'), 'aria-multiline': 'true' } },
       extensions: [
         // trailingNode는 문서를 열기만 해도 빈 문단을 추가해 동시 편집 시 문단이 늘어나므로 끈다
         // 코드 블록은 문법 색이 들어간 것으로 바꿔 쓴다 (같은 이름 · 속성)
@@ -115,10 +116,10 @@ export function DocEditor({ fragment, awareness, user, readOnly, placeholder, do
           includeChildren: true,
           placeholder: ({ node }) =>
             node.type.name === 'heading'
-              ? `제목 ${node.attrs.level}`
+              ? t('제목 {level}', { level: node.attrs.level })
               : node.type.name === 'detailsSummary'
-                ? '토글 제목'
-                : (placeholder ?? "'/'를 입력해 블록 추가 · '@'로 사람 · 페이지 멘션"),
+                ? t('토글 제목')
+                : (placeholder ?? t('\'/\'를 입력해 블록 추가 · \'@\'로 사람 · 페이지 멘션')),
         }),
         ...blockExtensions(stableEnv),
       ],
@@ -203,7 +204,7 @@ function PageGuides({ breaks }: { breaks: PageBreakMark[] }) {
     <div className="page-guides" aria-hidden>
       {breaks.map((b, i) => (
         <div key={i} className={cx('page-guide', b.manual && 'is-manual')} style={{ top: b.y }}>
-          <span>{i + 2}쪽</span>
+          <span>{t('{n}쪽', { n: i + 2 })}</span>
         </div>
       ))}
     </div>
@@ -251,10 +252,10 @@ const EMPTY_STATE = {
 };
 
 const BLOCK_TYPES = [
-  { label: '본문', level: 0 },
-  { label: '제목 1', level: 1 },
-  { label: '제목 2', level: 2 },
-  { label: '제목 3', level: 3 },
+  { label: t('본문'), level: 0 },
+  { label: t('제목 1'), level: 1 },
+  { label: t('제목 2'), level: 2 },
+  { label: t('제목 3'), level: 3 },
 ] as const;
 
 function DocToolbar({ editor }: { editor: Editor }) {
@@ -284,18 +285,18 @@ function DocToolbar({ editor }: { editor: Editor }) {
 
   const setLink = async () => {
     const prev = editor.getAttributes('link').href as string | undefined;
-    const url = await promptDialog({ title: '링크', label: 'URL (비우면 링크 제거)', initial: prev ?? 'https://', confirmText: '적용' });
+    const url = await promptDialog({ title: t('링크'), label: t('URL (비우면 링크 제거)'), initial: prev ?? 'https://', confirmText: t('적용') });
     if (url === null) return;
     if (!url || url === 'https://') chain().extendMarkRange('link').unsetLink().run();
     else chain().extendMarkRange('link').setLink({ href: url }).run();
   };
 
   return (
-    <div className="doc-toolbar" role="toolbar" aria-label="서식">
-      <T label="실행 취소 (내 변경만)" onClick={() => chain().undo().run()} disabled={!s.canUndo}>
+    <div className="doc-toolbar" role="toolbar" aria-label={t('서식')}>
+      <T label={t('실행 취소 (내 변경만)')} onClick={() => chain().undo().run()} disabled={!s.canUndo}>
         <Undo2 size={15} />
       </T>
-      <T label="다시 실행" onClick={() => chain().redo().run()} disabled={!s.canRedo}>
+      <T label={t('다시 실행')} onClick={() => chain().redo().run()} disabled={!s.canRedo}>
         <Redo2 size={15} />
       </T>
       <span className="tb-sep" />
@@ -312,15 +313,15 @@ function DocToolbar({ editor }: { editor: Editor }) {
             editor.chain().focus().insertContentAt(after, { type: 'paragraph' }).setTextSelection(after + 1).insertContent('/').run();
           }
         }}
-        data-tip="블록 추가 (또는 빈 줄에서 / 입력)"
+        data-tip={t('블록 추가 (또는 빈 줄에서 / 입력)')}
       >
-        <Plus size={14} /> 블록
+        <Plus size={14} /> {t('블록')}
       </button>
       <span className="tb-sep" />
       <select
         className="tb-select"
         value={s.level}
-        aria-label="문단 형식"
+        aria-label={t('문단 형식')}
         onChange={(e) => {
           const level = Number(e.target.value) as 0 | 1 | 2 | 3;
           if (level === 0) chain().setParagraph().run();
@@ -334,74 +335,74 @@ function DocToolbar({ editor }: { editor: Editor }) {
         ))}
       </select>
       <span className="tb-sep" />
-      <T label="굵게 (Ctrl+B)" active={s.bold} onClick={() => chain().toggleBold().run()}>
+      <T label={t('굵게 (Ctrl+B)')} active={s.bold} onClick={() => chain().toggleBold().run()}>
         <Bold size={15} />
       </T>
-      <T label="기울임 (Ctrl+I)" active={s.italic} onClick={() => chain().toggleItalic().run()}>
+      <T label={t('기울임 (Ctrl+I)')} active={s.italic} onClick={() => chain().toggleItalic().run()}>
         <Italic size={15} />
       </T>
-      <T label="밑줄 (Ctrl+U)" active={s.underline} onClick={() => chain().toggleUnderline().run()}>
+      <T label={t('밑줄 (Ctrl+U)')} active={s.underline} onClick={() => chain().toggleUnderline().run()}>
         <Underline size={15} />
       </T>
-      <T label="취소선" active={s.strike} onClick={() => chain().toggleStrike().run()}>
+      <T label={t('취소선')} active={s.strike} onClick={() => chain().toggleStrike().run()}>
         <Strikethrough size={15} />
       </T>
-      <T label="인라인 코드" active={s.code} onClick={() => chain().toggleCode().run()}>
+      <T label={t('인라인 코드')} active={s.code} onClick={() => chain().toggleCode().run()}>
         <Code size={15} />
       </T>
-      <T label="형광펜" active={s.highlight} onClick={() => chain().toggleHighlight().run()}>
+      <T label={t('형광펜')} active={s.highlight} onClick={() => chain().toggleHighlight().run()}>
         <Highlighter size={15} />
       </T>
-      <T label="링크" active={s.link} onClick={setLink}>
+      <T label={t('링크')} active={s.link} onClick={setLink}>
         <Link2 size={15} />
       </T>
       <span className="tb-sep" />
-      <T label="글머리 목록" active={s.bullet} onClick={() => chain().toggleBulletList().run()}>
+      <T label={t('글머리 목록')} active={s.bullet} onClick={() => chain().toggleBulletList().run()}>
         <List size={15} />
       </T>
-      <T label="번호 목록" active={s.ordered} onClick={() => chain().toggleOrderedList().run()}>
+      <T label={t('번호 목록')} active={s.ordered} onClick={() => chain().toggleOrderedList().run()}>
         <ListOrdered size={15} />
       </T>
-      <T label="체크리스트" active={s.task} onClick={() => chain().toggleTaskList().run()}>
+      <T label={t('체크리스트')} active={s.task} onClick={() => chain().toggleTaskList().run()}>
         <ListChecks size={15} />
       </T>
-      <T label="인용" active={s.quote} onClick={() => chain().toggleBlockquote().run()}>
+      <T label={t('인용')} active={s.quote} onClick={() => chain().toggleBlockquote().run()}>
         <Quote size={15} />
       </T>
-      <T label="코드 블록" active={s.codeBlock} onClick={() => chain().toggleCodeBlock().run()}>
+      <T label={t('코드 블록')} active={s.codeBlock} onClick={() => chain().toggleCodeBlock().run()}>
         <Code2 size={15} />
       </T>
-      <T label="구분선" onClick={() => chain().setHorizontalRule().run()}>
+      <T label={t('구분선')} onClick={() => chain().setHorizontalRule().run()}>
         <Minus size={15} />
       </T>
       <span className="tb-sep" />
-      <T label="왼쪽 정렬" active={s.align === 'left'} onClick={() => chain().setTextAlign('left').run()}>
+      <T label={t('왼쪽 정렬')} active={s.align === 'left'} onClick={() => chain().setTextAlign('left').run()}>
         <AlignLeft size={15} />
       </T>
-      <T label="가운데 정렬" active={s.align === 'center'} onClick={() => chain().setTextAlign('center').run()}>
+      <T label={t('가운데 정렬')} active={s.align === 'center'} onClick={() => chain().setTextAlign('center').run()}>
         <AlignCenter size={15} />
       </T>
-      <T label="오른쪽 정렬" active={s.align === 'right'} onClick={() => chain().setTextAlign('right').run()}>
+      <T label={t('오른쪽 정렬')} active={s.align === 'right'} onClick={() => chain().setTextAlign('right').run()}>
         <AlignRight size={15} />
       </T>
       <span className="tb-sep" />
-      <T label="표 삽입 (3×3)" onClick={() => chain().insertTable({ rows: 3, cols: 3, withHeaderRow: true }).run()}>
+      <T label={t('표 삽입 (3×3)')} onClick={() => chain().insertTable({ rows: 3, cols: 3, withHeaderRow: true }).run()}>
         <Table size={15} />
       </T>
       <span className={cx('tb-table', s.table && 'is-visible')}>
-        <T label="아래에 행 추가" onClick={() => chain().addRowAfter().run()} disabled={!s.table}>
+        <T label={t('아래에 행 추가')} onClick={() => chain().addRowAfter().run()} disabled={!s.table}>
           <Rows3 size={15} />
         </T>
-        <T label="오른쪽에 열 추가" onClick={() => chain().addColumnAfter().run()} disabled={!s.table}>
+        <T label={t('오른쪽에 열 추가')} onClick={() => chain().addColumnAfter().run()} disabled={!s.table}>
           <Columns3 size={15} />
         </T>
-        <T label="행 삭제" onClick={() => chain().deleteRow().run()} disabled={!s.table}>
+        <T label={t('행 삭제')} onClick={() => chain().deleteRow().run()} disabled={!s.table}>
           <Rows3 size={15} className="icon-strike" />
         </T>
-        <T label="열 삭제" onClick={() => chain().deleteColumn().run()} disabled={!s.table}>
+        <T label={t('열 삭제')} onClick={() => chain().deleteColumn().run()} disabled={!s.table}>
           <Columns3 size={15} className="icon-strike" />
         </T>
-        <T label="표 삭제" onClick={() => chain().deleteTable().run()} disabled={!s.table}>
+        <T label={t('표 삭제')} onClick={() => chain().deleteTable().run()} disabled={!s.table}>
           <Trash2 size={15} />
         </T>
       </span>

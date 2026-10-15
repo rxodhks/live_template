@@ -11,6 +11,7 @@ import { addPending, checkPending, usePendingJoins } from '../lib/pending';
 import { useSession } from '../store/session';
 import { useTemplates } from '../store/templates';
 import { toast } from '../store/toasts';
+import { t, tr } from '../i18n';
 
 type Preview = InvitePreview & { alreadyMember: boolean };
 
@@ -63,17 +64,17 @@ function JoinCard() {
     const tick = async () => {
       const s = await checkPending(p);
       if (s === 'approved') {
-        toast.success('참여가 승인되었습니다', `${p.emoji} ${p.name}`);
+        toast.success(t('참여가 승인되었습니다'), `${p.emoji} ${p.name}`);
         navigate(`/t/${p.templateId}`, { replace: true });
       } else if (s === 'denied' || s === 'gone') setDenied(true);
     };
-    const t = setInterval(tick, 4000);
-    return () => clearInterval(t);
+    const timer = setInterval(tick, 4000);
+    return () => clearInterval(timer);
   }, [pending, preview, navigate]);
 
-  const open = (t: TemplateSummary) => {
-    useTemplates.getState().upsertShared(t);
-    navigate(`/t/${t.id}`, { replace: true });
+  const open = (tpl: TemplateSummary) => {
+    useTemplates.getState().upsertShared(tpl);
+    navigate(`/t/${tpl.id}`, { replace: true });
   };
 
   const join = async () => {
@@ -92,11 +93,11 @@ function JoinCard() {
         addPending({ templateId: res.templateId, name: preview.template.name, emoji: preview.template.emoji, requestedAt: Date.now() });
         setPending({ templateId: res.templateId });
       } else if (res.template) {
-        toast.success(res.status === 'member' ? '이미 참여한 템플릿입니다' : '템플릿에 참여했습니다', `${res.template.emoji} ${res.template.name}`);
+        toast.success(res.status === 'member' ? t('이미 참여한 템플릿입니다') : t('템플릿에 참여했습니다'), `${res.template.emoji} ${res.template.name}`);
         open(res.template);
       }
     } catch (err) {
-      toast.error('참여하지 못했습니다', errorMessage(err));
+      toast.error(t('참여하지 못했습니다'), errorMessage(err));
     } finally {
       setJoining(false);
     }
@@ -115,7 +116,7 @@ function JoinCard() {
   if (error) {
     return (
       <div className="center-fill">
-        <EmptyState icon={<XCircle size={34} />} title="초대 링크를 확인할 수 없습니다" action={<Button onClick={() => navigate('/')}>내 공간으로</Button>}>
+        <EmptyState icon={<XCircle size={34} />} title={t('초대 링크를 확인할 수 없습니다')} action={<Button onClick={() => navigate('/')}>{t('내 공간으로')}</Button>}>
           {error}
         </EmptyState>
       </div>
@@ -131,45 +132,44 @@ function JoinCard() {
   if (!preview.valid || !preview.template) {
     return (
       <div className="center-fill">
-        <EmptyState icon={<XCircle size={34} />} title="사용할 수 없는 초대 링크입니다" action={<Button onClick={() => navigate('/')}>내 공간으로</Button>}>
-          {preview.reason ?? '초대한 사람에게 새 링크를 요청해 주세요.'}
+        <EmptyState icon={<XCircle size={34} />} title={t('사용할 수 없는 초대 링크입니다')} action={<Button onClick={() => navigate('/')}>{t('내 공간으로')}</Button>}>
+          {preview.reason ?? t('초대한 사람에게 새 링크를 요청해 주세요.')}
         </EmptyState>
       </div>
     );
   }
 
-  const t = preview.template;
-  const roleLabel = preview.role === 'viewer' ? '뷰어 (읽기 전용)' : '편집자';
+  const invited = preview.template;
 
   return (
     <div className="center-fill">
       <div className="join-card">
-        <span className="join-emoji">{t.emoji}</span>
+        <span className="join-emoji">{invited.emoji}</span>
         {preview.inviter && (
           <p className="muted">
-            <Avatar user={preview.inviter} size={20} /> <b>{preview.inviter.name}</b> 님이 초대했습니다
+            <Avatar user={preview.inviter} size={20} /> {tr('{name} 님이 초대했습니다', { name: <b>{preview.inviter.name}</b> })}
           </p>
         )}
-        <h1>{t.name}</h1>
-        {t.description && <p>{t.description}</p>}
+        <h1>{invited.name}</h1>
+        {invited.description && <p>{invited.description}</p>}
         <div className="template-features center">
-          {t.features.map((f) => (
+          {invited.features.map((f) => (
             <span key={f} className={`feature-pill feature-${f}`}>
-              {FEATURE_INFO[f].emoji} {FEATURE_INFO[f].name}
+              {FEATURE_INFO[f].emoji} {t(FEATURE_INFO[f].name)}
             </span>
           ))}
         </div>
         {onPhone() && (
           <p className="join-pc-hint" role="note">
-            Madang은 PC 화면용입니다. 휴대폰에서는 화면이 잘려 보일 수 있으니 이 링크를 <b>PC 브라우저</b>에서 열어 주세요.
+            {tr('Madang은 PC 화면용입니다. 휴대폰에서는 화면이 잘려 보일 수 있으니 이 링크를 {pc}에서 열어 주세요.', { pc: <b>{t('PC 브라우저')}</b> })}
           </p>
         )}
         <div className="join-facts">
           <span>
-            <Users size={13} /> 멤버 {t.memberCount}명
+            <Users size={13} /> {t('멤버 {n}명', { n: invited.memberCount })}
           </span>
           <span>
-            <ShieldCheck size={13} /> {roleLabel}로 참여
+            <ShieldCheck size={13} /> {preview.role === 'viewer' ? t('뷰어 (읽기 전용)로 참여') : t('편집자로 참여')}
           </span>
           {preview.expiresAt && (
             <span>
@@ -180,27 +180,27 @@ function JoinCard() {
 
         {denied ? (
           <div className="join-status is-denied">
-            <XCircle size={18} /> 참여 요청이 거절되었거나 템플릿이 삭제되었습니다.
+            <XCircle size={18} /> {t('참여 요청이 거절되었거나 템플릿이 삭제되었습니다.')}
           </div>
         ) : pending ? (
           <div className="join-status">
             <Hourglass size={18} className="pulse" />
             <div>
-              <b>승인을 기다리는 중입니다</b>
-              <span className="muted small">템플릿 멤버가 승인하면 자동으로 열립니다. 이 창을 닫아도 내 공간에서 계속 확인합니다.</span>
+              <b>{t('승인을 기다리는 중입니다')}</b>
+              <span className="muted small">{t('템플릿 멤버가 승인하면 자동으로 열립니다. 이 창을 닫아도 내 공간에서 계속 확인합니다.')}</span>
             </div>
           </div>
         ) : preview.alreadyMember ? (
-          <Button variant="primary" size="lg" onClick={() => navigate(`/t/${t.id}`)}>
-            이미 멤버입니다 · 열기
+          <Button variant="primary" size="lg" onClick={() => navigate(`/t/${invited.id}`)}>
+            {t('이미 멤버입니다 · 열기')}
           </Button>
         ) : (
           <>
-            {!user && <p className="muted join-login-hint">로그인하면 이 템플릿에 참여할 수 있습니다. 처음이라면 인증 후 이름만 정하면 가입이 끝납니다.</p>}
+            {!user && <p className="muted join-login-hint">{t('로그인하면 이 템플릿에 참여할 수 있습니다. 처음이라면 인증 후 이름만 정하면 가입이 끝납니다.')}</p>}
             <Button variant="primary" size="lg" onClick={join} loading={joining} icon={user ? undefined : <LogIn size={16} />}>
-              {!user ? '로그인하고 참여하기' : preview.requireApproval ? '참여 요청 보내기' : '참여하기'}
+              {!user ? t('로그인하고 참여하기') : preview.requireApproval ? t('참여 요청 보내기') : t('참여하기')}
             </Button>
-            {preview.requireApproval && <p className="muted small">이 링크는 멤버의 승인이 필요합니다.</p>}
+            {preview.requireApproval && <p className="muted small">{t('이 링크는 멤버의 승인이 필요합니다.')}</p>}
           </>
         )}
       </div>

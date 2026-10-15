@@ -1,17 +1,18 @@
 import type * as Y from 'yjs';
 import type { PresenceView, SecretNoteMeta, TemplateSummary, ViewModule } from '@shared/types';
 import { getBoards, getDocs, getFiles } from '@shared/schema';
+import { lazyText, t } from '../i18n';
 
-export const MODULE_NAMES: Record<ViewModule, string> = {
-  overview: '개요',
-  design: '디자인',
-  code: '코딩',
-  docs: '문서',
-  notes: '비밀 노트',
-  timeline: '타임라인',
-  members: '멤버',
-  settings: '설정',
-};
+export const MODULE_NAMES: Record<ViewModule, string> = lazyText(() => ({
+  overview: t('개요'),
+  design: t('디자인'),
+  code: t('코딩'),
+  docs: t('문서'),
+  notes: t('비밀 노트'),
+  timeline: t('타임라인'),
+  members: t('멤버'),
+  settings: t('설정'),
+}));
 
 export function itemName(doc: Y.Doc, notes: SecretNoteMeta[], module: ViewModule, itemId?: string | null): string | null {
   if (!itemId) return null;
@@ -31,7 +32,7 @@ export function itemName(doc: Y.Doc, notes: SecretNoteMeta[], module: ViewModule
 
 /** "코딩 › main.js" 같은 현재 위치 라벨 */
 export function viewLabel(ws: { template: TemplateSummary; view: PresenceView; doc: Y.Doc; notes: SecretNoteMeta[] }): string {
-  const base = MODULE_NAMES[ws.view.module] ?? '개요';
+  const base = MODULE_NAMES[ws.view.module] ?? t('개요');
   const name = itemName(ws.doc, ws.notes, ws.view.module, ws.view.itemId);
   return name ? `${base} › ${name}` : base;
 }

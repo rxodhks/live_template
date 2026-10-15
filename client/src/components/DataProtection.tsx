@@ -8,6 +8,7 @@ import { formatDate, formatTime, relativeTime } from '../lib/time';
 import { isPrivate } from '../store/templates';
 import { toast } from '../store/toasts';
 import { Button, EmptyState, Modal, Spinner, confirmDialog } from './ui';
+import { t, tr } from '../i18n';
 
 /*
  * 데이터 보호 화면
@@ -16,25 +17,25 @@ import { Button, EmptyState, Modal, Spinner, confirmDialog } from './ui';
  */
 
 /** 삭제 확인 — 휴지통으로 이동한다는 것을 알려 준다 */
-export function confirmTrash(t: TemplateEntry): Promise<boolean> {
+export function confirmTrash(tpl: TemplateEntry): Promise<boolean> {
   return confirmDialog({
-    title: '템플릿을 휴지통으로 옮길까요?',
-    message: isPrivate(t)
-      ? '휴지통에서 30일 동안 그대로 복원할 수 있고, 그 뒤 영구 삭제됩니다.'
-      : '접속 중인 멤버도 모두 나가게 되고, 휴지통에 있는 동안은 아무도 열 수 없습니다. 30일 안에 그대로 복원할 수 있고, 그 뒤 영구 삭제됩니다.',
-    confirmText: '휴지통으로 이동',
+    title: t('템플릿을 휴지통으로 옮길까요?'),
+    message: isPrivate(tpl)
+      ? t('휴지통에서 30일 동안 그대로 복원할 수 있고, 그 뒤 영구 삭제됩니다.')
+      : t('접속 중인 멤버도 모두 나가게 되고, 휴지통에 있는 동안은 아무도 열 수 없습니다. 30일 안에 그대로 복원할 수 있고, 그 뒤 영구 삭제됩니다.'),
+    confirmText: t('휴지통으로 이동'),
     danger: true,
   });
 }
 
-export async function trashTemplate(t: TemplateEntry): Promise<boolean> {
+export async function trashTemplate(tpl: TemplateEntry): Promise<boolean> {
   try {
-    await deleteTemplate(t);
+    await deleteTemplate(tpl);
     // 요청한 일이 잘 된 것이므로 위험(빨강) 대신 일반 알림으로 — 안내 문구가 길어 조금 더 오래 띄운다
-    toast.show({ kind: 'info', duration: 5500, title: '휴지통으로 옮겼습니다', message: `${t.emoji} ${t.name} · 30일 안에 대시보드의 휴지통에서 복원할 수 있습니다.` });
+    toast.show({ kind: 'info', duration: 5500, title: t('휴지통으로 옮겼습니다'), message: t('{emoji} {name} · 30일 안에 대시보드의 휴지통에서 복원할 수 있습니다.', { emoji: tpl.emoji, name: tpl.name }) });
     return true;
   } catch (err) {
-    toast.error('삭제하지 못했습니다', errorMessage(err));
+    toast.error(t('삭제하지 못했습니다'), errorMessage(err));
     return false;
   }
 }
@@ -42,7 +43,7 @@ export async function trashTemplate(t: TemplateEntry): Promise<boolean> {
 const DAY = 86_400_000;
 
 /** 복원하면 대시보드에 그대로 머문다 — onRestored로 복원된 카드를 보여 줄 수 있다 */
-export function TrashDialog({ onClose, onRestored }: { onClose: () => void; onRestored?: (t: TemplateEntry) => void }) {
+export function TrashDialog({ onClose, onRestored }: { onClose: () => void; onRestored?: (tpl: TemplateEntry) => void }) {
   const [items, setItems] = useState<TrashEntry[] | null>(null);
   const [ttl, setTtl] = useState(30);
   const [busy, setBusy] = useState<string | null>(null);
@@ -55,7 +56,7 @@ export function TrashDialog({ onClose, onRestored }: { onClose: () => void; onRe
       })
       .catch((err) => {
         setItems([]);
-        toast.error('휴지통을 불러오지 못했습니다', errorMessage(err));
+        toast.error(t('휴지통을 불러오지 못했습니다'), errorMessage(err));
       });
   }, []);
   useEffect(load, [load]);
@@ -63,13 +64,13 @@ export function TrashDialog({ onClose, onRestored }: { onClose: () => void; onRe
   const restore = async (e: TrashEntry) => {
     setBusy(e.template.id);
     try {
-      const t = await restoreFromTrash(e.template.id);
-      toast.success('템플릿을 복원했습니다', `${t.emoji} ${t.name} · 내용과 멤버가 그대로 돌아왔습니다.`);
+      const tpl = await restoreFromTrash(e.template.id);
+      toast.success(t('템플릿을 복원했습니다'), t('{emoji} {name} · 내용과 멤버가 그대로 돌아왔습니다.', { emoji: tpl.emoji, name: tpl.name }));
       setItems((list) => list?.filter((x) => x.template.id !== e.template.id) ?? null);
       onClose();
-      onRestored?.(t);
+      onRestored?.(tpl);
     } catch (err) {
-      toast.error('복원하지 못했습니다', errorMessage(err));
+      toast.error(t('복원하지 못했습니다'), errorMessage(err));
     } finally {
       setBusy(null);
     }
@@ -77,9 +78,9 @@ export function TrashDialog({ onClose, onRestored }: { onClose: () => void; onRe
 
   const purge = async (e: TrashEntry) => {
     const ok = await confirmDialog({
-      title: '영구 삭제할까요?',
-      message: '디자인 · 코드 · 문서 · 비밀 노트 · 채팅 · 타임라인 · 버전 기록이 모두 지워지며 되돌릴 수 없습니다.',
-      confirmText: '영구 삭제',
+      title: t('영구 삭제할까요?'),
+      message: t('디자인 · 코드 · 문서 · 비밀 노트 · 채팅 · 타임라인 · 버전 기록이 모두 지워지며 되돌릴 수 없습니다.'),
+      confirmText: t('영구 삭제'),
       danger: true,
       requireText: e.template.name,
     });
@@ -87,10 +88,10 @@ export function TrashDialog({ onClose, onRestored }: { onClose: () => void; onRe
     setBusy(e.template.id);
     try {
       await purgeFromTrash(e.template.id);
-      toast.show({ kind: 'danger', title: '영구 삭제했습니다', message: e.template.name });
+      toast.show({ kind: 'danger', title: t('영구 삭제했습니다'), message: e.template.name });
       setItems((list) => list?.filter((x) => x.template.id !== e.template.id) ?? null);
     } catch (err) {
-      toast.error('삭제하지 못했습니다', errorMessage(err));
+      toast.error(t('삭제하지 못했습니다'), errorMessage(err));
     } finally {
       setBusy(null);
     }
@@ -98,9 +99,9 @@ export function TrashDialog({ onClose, onRestored }: { onClose: () => void; onRe
 
   return (
     <Modal
-      title="휴지통"
+      title={t('휴지통')}
       icon={<Trash2 size={18} />}
-      description={`삭제한 템플릿은 ${ttl}일 동안 보관됩니다. 내가 소유한 템플릿만 보이며, 복원하면 내용 · 멤버 · 기록이 그대로 돌아옵니다.`}
+      description={t('삭제한 템플릿은 {ttl}일 동안 보관됩니다. 내가 소유한 템플릿만 보이며, 복원하면 내용 · 멤버 · 기록이 그대로 돌아옵니다.', { ttl })}
       onClose={onClose}
       width={560}
     >
@@ -109,8 +110,8 @@ export function TrashDialog({ onClose, onRestored }: { onClose: () => void; onRe
           <Spinner size={22} />
         </div>
       ) : items.length === 0 ? (
-        <EmptyState icon={<Trash2 size={28} />} title="휴지통이 비어 있습니다">
-          삭제한 템플릿이 여기에 {ttl}일 동안 보관됩니다.
+        <EmptyState icon={<Trash2 size={28} />} title={t('휴지통이 비어 있습니다')}>
+          {t('삭제한 템플릿이 여기에 {ttl}일 동안 보관됩니다.', { ttl })}
         </EmptyState>
       ) : (
         <ul className="trash-list">
@@ -122,14 +123,15 @@ export function TrashDialog({ onClose, onRestored }: { onClose: () => void; onRe
                 <div className="trash-info">
                   <b>{e.template.name}</b>
                   <span className="muted small">
-                    {relativeTime(e.deletedAt)} 삭제{e.deletedBy ? ` · ${e.deletedBy.name}` : ''} · <b className="trash-days">{days}일 뒤 영구 삭제</b>
+                    {t('{when} 삭제', { when: relativeTime(e.deletedAt) })}
+                    {e.deletedBy ? ` · ${e.deletedBy.name}` : ''} · <b className="trash-days">{t('{days}일 뒤 영구 삭제', { days })}</b>
                   </span>
                 </div>
                 <Button size="sm" variant="primary" icon={<ArchiveRestore size={14} />} loading={busy === e.template.id} onClick={() => void restore(e)}>
-                  복원
+                  {t('복원')}
                 </Button>
                 <Button size="sm" variant="ghost" disabled={busy === e.template.id} onClick={() => void purge(e)}>
-                  영구 삭제
+                  {t('영구 삭제')}
                 </Button>
               </li>
             );
@@ -142,11 +144,11 @@ export function TrashDialog({ onClose, onRestored }: { onClose: () => void; onRe
 
 const versionLabel = (at: number) => {
   const d = new Date(at);
-  return `${d.getMonth() + 1}월 ${d.getDate()}일 ${String(d.getHours()).padStart(2, '0')}:${String(d.getMinutes()).padStart(2, '0')}`;
+  return t('{month}월 {day}일 {time}', { month: d.getMonth() + 1, day: d.getDate(), time: `${String(d.getHours()).padStart(2, '0')}:${String(d.getMinutes()).padStart(2, '0')}` });
 };
 
 /** 템플릿 설정의 버전 기록 */
-export function VersionHistory({ template: t }: { template: TemplateEntry }) {
+export function VersionHistory({ template: tpl }: { template: TemplateEntry }) {
   const navigate = useNavigate();
   const [versions, setVersions] = useState<VersionInfo[] | null>(null);
   const [error, setError] = useState<string | null>(null);
@@ -154,20 +156,20 @@ export function VersionHistory({ template: t }: { template: TemplateEntry }) {
   const [busy, setBusy] = useState<number | null>(null);
 
   useEffect(() => {
-    listVersions(t.id)
+    listVersions(tpl.id)
       .then((r) => setVersions(r.versions))
       .catch((err) => setError(errorMessage(err)));
-  }, [t.id]);
+  }, [tpl.id]);
 
   const copy = async (v: VersionInfo) => {
     setBusy(v.id);
     try {
       const label = versionLabel(v.at);
-      const created = await copyVersion(t, v, label);
-      toast.success('이전 버전으로 사본을 만들었습니다', `${created.name} · 원래 템플릿은 그대로입니다.`);
+      const created = await copyVersion(tpl, v, label);
+      toast.success(t('이전 버전으로 사본을 만들었습니다'), t('{name} · 원래 템플릿은 그대로입니다.', { name: created.name }));
       navigate(`/t/${created.id}`);
     } catch (err) {
-      toast.error('사본을 만들지 못했습니다', errorMessage(err));
+      toast.error(t('사본을 만들지 못했습니다'), errorMessage(err));
     } finally {
       setBusy(null);
     }
@@ -178,18 +180,20 @@ export function VersionHistory({ template: t }: { template: TemplateEntry }) {
   return (
     <section className="settings-card">
       <h2>
-        <History size={16} /> 버전 기록
+        <History size={16} /> {t('버전 기록')}
       </h2>
       <p className="muted small">
-        디자인 · 코드 · 문서 전체가 변경이 있을 때 1시간마다 자동으로 저장됩니다. 최근 48시간은 모두, 그 전은 하루에 하나씩 30일까지 보관합니다.
-        되돌릴 때는 지금 템플릿을 덮어쓰지 않고, 그 버전으로 <b>나만 보는 사본</b>을 만듭니다. (비밀 노트는 버전 기록에 포함되지 않습니다)
+        {tr(
+          '디자인 · 코드 · 문서 전체가 변경이 있을 때 1시간마다 자동으로 저장됩니다. 최근 48시간은 모두, 그 전은 하루에 하나씩 30일까지 보관합니다. 되돌릴 때는 지금 템플릿을 덮어쓰지 않고, 그 버전으로 {copy}을 만듭니다. (비밀 노트는 버전 기록에 포함되지 않습니다)',
+          { copy: <b>{t('나만 보는 사본')}</b> },
+        )}
       </p>
       {error ? (
         <p className="muted small">{error}</p>
       ) : !shown ? (
         <Spinner size={18} />
       ) : shown.length === 0 ? (
-        <p className="muted small">아직 저장된 버전이 없습니다. 내용을 고치면 곧 첫 버전이 저장됩니다.</p>
+        <p className="muted small">{t('아직 저장된 버전이 없습니다. 내용을 고치면 곧 첫 버전이 저장됩니다.')}</p>
       ) : (
         <ul className="version-list">
           {shown.map((v, i) => (
@@ -199,12 +203,12 @@ export function VersionHistory({ template: t }: { template: TemplateEntry }) {
                   {formatDate(v.at)} {formatTime(v.at)}
                 </b>
                 <span className="muted small">
-                  {i === 0 && versions![0].id === v.id ? '가장 최근 · ' : ''}
+                  {i === 0 && versions![0].id === v.id ? t('가장 최근 · ') : ''}
                   {relativeTime(v.at)} · {(v.size / 1024).toFixed(v.size < 10_240 ? 1 : 0)}KB
                 </span>
               </div>
               <Button size="sm" icon={<Copy size={13} />} loading={busy === v.id} disabled={busy !== null} onClick={() => void copy(v)}>
-                이 버전으로 사본 만들기
+                {t('이 버전으로 사본 만들기')}
               </Button>
             </li>
           ))}
@@ -212,7 +216,7 @@ export function VersionHistory({ template: t }: { template: TemplateEntry }) {
       )}
       {versions && versions.length > 8 && !showAll && (
         <button type="button" className="link small" onClick={() => setShowAll(true)}>
-          전체 {versions.length}개 보기
+          {t('전체 {n}개 보기', { n: versions.length })}
         </button>
       )}
     </section>

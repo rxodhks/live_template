@@ -21,6 +21,7 @@ import { syntaxTree } from '@codemirror/language';
 import { EditorState, Prec, type Extension } from '@codemirror/state';
 import { canComplete, completeCode, completionDetail } from './assist';
 import type { CheckRequest } from './protocol';
+import { lang as uiLang, t } from '../../../i18n';
 
 /** 지금 파일과 함께 넘길 파일들 (import 를 따라가기 위해) */
 export type FilesFor = (state: EditorState) => CheckRequest;
@@ -31,48 +32,48 @@ type Snip = [label: string, template: string, note: string];
 const snip = ([label, template]: Snip): Completion => snippetCompletion(template, { label, type: 'snippet', boost: -1 });
 
 const JS: Snip[] = [
-  ['log', 'console.log(${})', '콘솔에 출력'],
-  ['for', 'for (let ${i} = 0; ${i} < ${n}; ${i}++) {\n\t${}\n}', '정해진 횟수만큼 반복'],
-  ['forof', 'for (const ${item} of ${list}) {\n\t${}\n}', '배열의 값마다 반복'],
-  ['forin', 'for (const ${key} in ${obj}) {\n\t${}\n}', '객체의 키마다 반복'],
-  ['foreach', '${list}.forEach((${item}) => {\n\t${}\n});', '배열의 값마다 함수 실행'],
-  ['if', 'if (${condition}) {\n\t${}\n}', '조건문'],
-  ['ifelse', 'if (${condition}) {\n\t${}\n} else {\n\t\n}', '조건문 (아니면)'],
-  ['while', 'while (${condition}) {\n\t${}\n}', '조건이 참인 동안 반복'],
-  ['switch', 'switch (${value}) {\n\tcase ${1}:\n\t\t${}\n\t\tbreak;\n\tdefault:\n\t\tbreak;\n}', '값에 따라 나누기'],
-  ['fn', 'function ${name}(${params}) {\n\t${}\n}', '함수'],
-  ['afn', 'async function ${name}(${params}) {\n\t${}\n}', '비동기 함수'],
-  ['arrow', 'const ${name} = (${params}) => {\n\t${}\n};', '화살표 함수'],
-  ['try', 'try {\n\t${}\n} catch (err) {\n\tconsole.error(err);\n}', '오류 잡기'],
-  ['class', 'class ${Name} {\n\tconstructor(${params}) {\n\t\t${}\n\t}\n}', '클래스'],
-  ['import', "import { ${names} } from '${./module}';", '다른 파일에서 가져오기'],
-  ['timeout', 'setTimeout(() => {\n\t${}\n}, ${1000});', '잠시 뒤에 실행'],
-  ['fetch', "const res = await fetch('${url}');\nconst data = await res.json();\n${}", '주소에서 JSON 받기'],
+  ['log', 'console.log(${})', t('콘솔에 출력')],
+  ['for', 'for (let ${i} = 0; ${i} < ${n}; ${i}++) {\n\t${}\n}', t('정해진 횟수만큼 반복')],
+  ['forof', 'for (const ${item} of ${list}) {\n\t${}\n}', t('배열의 값마다 반복')],
+  ['forin', 'for (const ${key} in ${obj}) {\n\t${}\n}', t('객체의 키마다 반복')],
+  ['foreach', '${list}.forEach((${item}) => {\n\t${}\n});', t('배열의 값마다 함수 실행')],
+  ['if', 'if (${condition}) {\n\t${}\n}', t('조건문')],
+  ['ifelse', 'if (${condition}) {\n\t${}\n} else {\n\t\n}', t('조건문 (아니면)')],
+  ['while', 'while (${condition}) {\n\t${}\n}', t('조건이 참인 동안 반복')],
+  ['switch', 'switch (${value}) {\n\tcase ${1}:\n\t\t${}\n\t\tbreak;\n\tdefault:\n\t\tbreak;\n}', t('값에 따라 나누기')],
+  ['fn', 'function ${name}(${params}) {\n\t${}\n}', t('함수')],
+  ['afn', 'async function ${name}(${params}) {\n\t${}\n}', t('비동기 함수')],
+  ['arrow', 'const ${name} = (${params}) => {\n\t${}\n};', t('화살표 함수')],
+  ['try', 'try {\n\t${}\n} catch (err) {\n\tconsole.error(err);\n}', t('오류 잡기')],
+  ['class', 'class ${Name} {\n\tconstructor(${params}) {\n\t\t${}\n\t}\n}', t('클래스')],
+  ['import', "import { ${names} } from '${./module}';", t('다른 파일에서 가져오기')],
+  ['timeout', 'setTimeout(() => {\n\t${}\n}, ${1000});', t('잠시 뒤에 실행')],
+  ['fetch', "const res = await fetch('${url}');\nconst data = await res.json();\n${}", t('주소에서 JSON 받기')],
 ];
 const TS_EXTRA: Snip[] = [
-  ['interface', 'interface ${Name} {\n\t${key}: ${string};\n}', '객체 모양 선언'],
-  ['type', 'type ${Name} = ${};', '타입 별칭'],
+  ['interface', 'interface ${Name} {\n\t${key}: ${string};\n}', t('객체 모양 선언')],
+  ['type', 'type ${Name} = ${};', t('타입 별칭')],
 ];
 const JSX_EXTRA: Snip[] = [
-  ['comp', 'export default function ${App}() {\n\treturn (\n\t\t<div>\n\t\t\t${}\n\t\t</div>\n\t);\n}', 'React 컴포넌트'],
-  ['useState', 'const [${value}, ${setValue}] = useState(${});', '상태 만들기'],
-  ['useEffect', 'useEffect(() => {\n\t${}\n}, []);', '화면에 나타날 때 실행'],
+  ['comp', 'export default function ${App}() {\n\treturn (\n\t\t<div>\n\t\t\t${}\n\t\t</div>\n\t);\n}', t('React 컴포넌트')],
+  ['useState', 'const [${value}, ${setValue}] = useState(${});', t('상태 만들기')],
+  ['useEffect', 'useEffect(() => {\n\t${}\n}, []);', t('화면에 나타날 때 실행')],
 ];
 const PY: Snip[] = [
-  ['print', 'print(${})', '출력'],
-  ['def', 'def ${name}(${params}):\n\t${pass}', '함수'],
-  ['for', 'for ${i} in range(${10}):\n\t${pass}', '정해진 횟수만큼 반복'],
-  ['forin', 'for ${item} in ${items}:\n\t${pass}', '목록의 값마다 반복'],
-  ['if', 'if ${condition}:\n\t${pass}', '조건문'],
-  ['ifelse', 'if ${condition}:\n\t${pass}\nelse:\n\t', '조건문 (아니면)'],
-  ['while', 'while ${condition}:\n\t${pass}', '조건이 참인 동안 반복'],
-  ['class', 'class ${Name}:\n\tdef __init__(self${, params}):\n\t\t${pass}', '클래스'],
-  ['try', 'try:\n\t${pass}\nexcept Exception as e:\n\tprint(e)', '오류 잡기'],
-  ['with', "with open('${file.txt}', encoding='utf-8') as f:\n\t${text = f.read()}", '파일 열기'],
-  ['main', "if __name__ == '__main__':\n\t${main()}", '시작 코드'],
-  ['input', '${n} = int(input())', '숫자 한 줄 입력받기'],
-  ['inputs', '${a}, ${b} = map(int, input().split())', '숫자 여러 개 입력받기'],
-  ['lc', '[${x} for ${x} in ${items}]', '리스트 컴프리헨션'],
+  ['print', 'print(${})', t('출력')],
+  ['def', 'def ${name}(${params}):\n\t${pass}', t('함수')],
+  ['for', 'for ${i} in range(${10}):\n\t${pass}', t('정해진 횟수만큼 반복')],
+  ['forin', 'for ${item} in ${items}:\n\t${pass}', t('목록의 값마다 반복')],
+  ['if', 'if ${condition}:\n\t${pass}', t('조건문')],
+  ['ifelse', 'if ${condition}:\n\t${pass}\nelse:\n\t', t('조건문 (아니면)')],
+  ['while', 'while ${condition}:\n\t${pass}', t('조건이 참인 동안 반복')],
+  ['class', 'class ${Name}:\n\tdef __init__(self${, params}):\n\t\t${pass}', t('클래스')],
+  ['try', 'try:\n\t${pass}\nexcept Exception as e:\n\tprint(e)', t('오류 잡기')],
+  ['with', "with open('${file.txt}', encoding='utf-8') as f:\n\t${text = f.read()}", t('파일 열기')],
+  ['main', "if __name__ == '__main__':\n\t${main()}", t('시작 코드')],
+  ['input', '${n} = int(input())', t('숫자 한 줄 입력받기')],
+  ['inputs', '${a}, ${b} = map(int, input().split())', t('숫자 여러 개 입력받기')],
+  ['lc', '[${x} for ${x} in ${items}]', t('리스트 컴프리헨션')],
 ];
 const PY_WORDS =
   'False None True and as assert async await break class continue def del elif else except finally for from global if import in is lambda nonlocal not or pass raise return try while with yield'.split(' ');
@@ -80,122 +81,122 @@ const PY_BUILTINS =
   'abs all any bin bool chr dict dir divmod enumerate filter float format hex id input int isinstance len list map max min next oct open ord pow print range repr reversed round set sorted str sum tuple type zip'.split(' ');
 
 const SQL: Snip[] = [
-  ['select', 'SELECT ${*}\nFROM ${table}\nWHERE ${condition};', '데이터 조회'],
-  ['insert', 'INSERT INTO ${table} (${columns})\nVALUES (${values});', '데이터 넣기'],
-  ['update', 'UPDATE ${table}\nSET ${column} = ${value}\nWHERE ${condition};', '데이터 고치기'],
-  ['delete', 'DELETE FROM ${table}\nWHERE ${condition};', '데이터 지우기'],
-  ['create', 'CREATE TABLE ${table} (\n\tid INTEGER PRIMARY KEY,\n\t${name} TEXT\n);', '표 만들기'],
-  ['join', 'SELECT ${*}\nFROM ${a}\nJOIN ${b} ON ${a}.${id} = ${b}.${a_id};', '두 표 합쳐 조회'],
-  ['group', 'SELECT ${column}, COUNT(*)\nFROM ${table}\nGROUP BY ${column};', '묶어서 세기'],
+  ['select', 'SELECT ${*}\nFROM ${table}\nWHERE ${condition};', t('데이터 조회')],
+  ['insert', 'INSERT INTO ${table} (${columns})\nVALUES (${values});', t('데이터 넣기')],
+  ['update', 'UPDATE ${table}\nSET ${column} = ${value}\nWHERE ${condition};', t('데이터 고치기')],
+  ['delete', 'DELETE FROM ${table}\nWHERE ${condition};', t('데이터 지우기')],
+  ['create', 'CREATE TABLE ${table} (\n\tid INTEGER PRIMARY KEY,\n\t${name} TEXT\n);', t('표 만들기')],
+  ['join', 'SELECT ${*}\nFROM ${a}\nJOIN ${b} ON ${a}.${id} = ${b}.${a_id};', t('두 표 합쳐 조회')],
+  ['group', 'SELECT ${column}, COUNT(*)\nFROM ${table}\nGROUP BY ${column};', t('묶어서 세기')],
 ];
 
 /** 그 밖의 언어: [코드 조각, 키워드] */
 const OTHERS: Record<string, [Snip[], string]> = {
   java: [
     [
-      ['main', 'public class Main {\n\tpublic static void main(String[] args) {\n\t\t${}\n\t}\n}', '시작 코드'],
-      ['sout', 'System.out.println(${});', '출력'],
-      ['for', 'for (int ${i} = 0; ${i} < ${n}; ${i}++) {\n\t${}\n}', '반복'],
-      ['if', 'if (${condition}) {\n\t${}\n}', '조건문'],
+      ['main', 'public class Main {\n\tpublic static void main(String[] args) {\n\t\t${}\n\t}\n}', t('시작 코드')],
+      ['sout', 'System.out.println(${});', t('출력')],
+      ['for', 'for (int ${i} = 0; ${i} < ${n}; ${i}++) {\n\t${}\n}', t('반복')],
+      ['if', 'if (${condition}) {\n\t${}\n}', t('조건문')],
     ],
     'abstract boolean break byte case catch char class continue default do double else enum extends final finally float for if implements import instanceof int interface long new null package private protected public return short static String super switch this throw throws try void while',
   ],
   c: [
     [
-      ['main', '#include <stdio.h>\n\nint main(void) {\n\t${}\n\treturn 0;\n}', '시작 코드'],
-      ['printf', 'printf("${%d}\\n", ${value});', '출력'],
-      ['for', 'for (int ${i} = 0; ${i} < ${n}; ${i}++) {\n\t${}\n}', '반복'],
-      ['if', 'if (${condition}) {\n\t${}\n}', '조건문'],
+      ['main', '#include <stdio.h>\n\nint main(void) {\n\t${}\n\treturn 0;\n}', t('시작 코드')],
+      ['printf', 'printf("${%d}\\n", ${value});', t('출력')],
+      ['for', 'for (int ${i} = 0; ${i} < ${n}; ${i}++) {\n\t${}\n}', t('반복')],
+      ['if', 'if (${condition}) {\n\t${}\n}', t('조건문')],
     ],
     'break case char const continue default do double else enum extern float for if int long return short signed sizeof static struct switch typedef unsigned void while include define printf scanf',
   ],
   cpp: [
     [
-      ['main', '#include <iostream>\nusing namespace std;\n\nint main() {\n\t${}\n\treturn 0;\n}', '시작 코드'],
-      ['cout', 'cout << ${} << endl;', '출력'],
-      ['for', 'for (int ${i} = 0; ${i} < ${n}; ${i}++) {\n\t${}\n}', '반복'],
-      ['if', 'if (${condition}) {\n\t${}\n}', '조건문'],
+      ['main', '#include <iostream>\nusing namespace std;\n\nint main() {\n\t${}\n\treturn 0;\n}', t('시작 코드')],
+      ['cout', 'cout << ${} << endl;', t('출력')],
+      ['for', 'for (int ${i} = 0; ${i} < ${n}; ${i}++) {\n\t${}\n}', t('반복')],
+      ['if', 'if (${condition}) {\n\t${}\n}', t('조건문')],
     ],
     'auto bool break case catch char class const continue default delete do double else enum false float for if include int long namespace new nullptr private protected public return short static string struct switch template this throw true try typedef using vector void while cout cin endl',
   ],
   csharp: [
     [
-      ['cw', 'Console.WriteLine(${});', '출력'],
-      ['for', 'for (int ${i} = 0; ${i} < ${n}; ${i}++)\n{\n\t${}\n}', '반복'],
-      ['if', 'if (${condition})\n{\n\t${}\n}', '조건문'],
+      ['cw', 'Console.WriteLine(${});', t('출력')],
+      ['for', 'for (int ${i} = 0; ${i} < ${n}; ${i}++)\n{\n\t${}\n}', t('반복')],
+      ['if', 'if (${condition})\n{\n\t${}\n}', t('조건문')],
     ],
     'abstract bool break case catch class const continue default do double else enum false float for foreach if int interface namespace new null private protected public return static string struct switch this throw true try using var void while',
   ],
   go: [
     [
-      ['main', 'package main\n\nimport "fmt"\n\nfunc main() {\n\t${}\n}', '시작 코드'],
-      ['pl', 'fmt.Println(${})', '출력'],
-      ['for', 'for ${i} := 0; ${i} < ${n}; ${i}++ {\n\t${}\n}', '반복'],
-      ['if', 'if ${condition} {\n\t${}\n}', '조건문'],
-      ['func', 'func ${name}(${params}) ${} {\n\t\n}', '함수'],
+      ['main', 'package main\n\nimport "fmt"\n\nfunc main() {\n\t${}\n}', t('시작 코드')],
+      ['pl', 'fmt.Println(${})', t('출력')],
+      ['for', 'for ${i} := 0; ${i} < ${n}; ${i}++ {\n\t${}\n}', t('반복')],
+      ['if', 'if ${condition} {\n\t${}\n}', t('조건문')],
+      ['func', 'func ${name}(${params}) ${} {\n\t\n}', t('함수')],
     ],
     'break case chan const continue default defer else fallthrough for func go goto if import interface map package range return select struct switch type var nil true false',
   ],
   rust: [
     [
-      ['main', 'fn main() {\n\t${}\n}', '시작 코드'],
-      ['pl', 'println!("{}", ${});', '출력'],
-      ['for', 'for ${i} in 0..${n} {\n\t${}\n}', '반복'],
-      ['fn', 'fn ${name}(${params}) {\n\t${}\n}', '함수'],
+      ['main', 'fn main() {\n\t${}\n}', t('시작 코드')],
+      ['pl', 'println!("{}", ${});', t('출력')],
+      ['for', 'for ${i} in 0..${n} {\n\t${}\n}', t('반복')],
+      ['fn', 'fn ${name}(${params}) {\n\t${}\n}', t('함수')],
     ],
     'as break const continue crate else enum extern false fn for if impl in let loop match mod move mut pub ref return self Self static struct super trait true type unsafe use where while String Vec Option Some None Result Ok Err',
   ],
   kotlin: [
     [
-      ['main', 'fun main() {\n\t${}\n}', '시작 코드'],
-      ['pl', 'println(${})', '출력'],
-      ['for', 'for (${i} in 0 until ${n}) {\n\t${}\n}', '반복'],
-      ['fun', 'fun ${name}(${params}) {\n\t${}\n}', '함수'],
+      ['main', 'fun main() {\n\t${}\n}', t('시작 코드')],
+      ['pl', 'println(${})', t('출력')],
+      ['for', 'for (${i} in 0 until ${n}) {\n\t${}\n}', t('반복')],
+      ['fun', 'fun ${name}(${params}) {\n\t${}\n}', t('함수')],
     ],
     'as break class continue do else false for fun if in interface is null object package return super this throw true try typealias val var when while',
   ],
   swift: [
     [
-      ['print', 'print(${})', '출력'],
-      ['for', 'for ${i} in 0..<${n} {\n\t${}\n}', '반복'],
-      ['func', 'func ${name}(${params}) {\n\t${}\n}', '함수'],
+      ['print', 'print(${})', t('출력')],
+      ['for', 'for ${i} in 0..<${n} {\n\t${}\n}', t('반복')],
+      ['func', 'func ${name}(${params}) {\n\t${}\n}', t('함수')],
     ],
     'break case class continue default defer do else enum extension false for func guard if import in init let nil protocol return self struct switch true var while',
   ],
   php: [
     [
-      ['echo', 'echo ${};', '출력'],
-      ['foreach', 'foreach (${$items} as ${$item}) {\n\t${}\n}', '배열 반복'],
-      ['for', 'for ($i = 0; $i < ${n}; $i++) {\n\t${}\n}', '반복'],
-      ['function', 'function ${name}(${params}) {\n\t${}\n}', '함수'],
+      ['echo', 'echo ${};', t('출력')],
+      ['foreach', 'foreach (${$items} as ${$item}) {\n\t${}\n}', t('배열 반복')],
+      ['for', 'for ($i = 0; $i < ${n}; $i++) {\n\t${}\n}', t('반복')],
+      ['function', 'function ${name}(${params}) {\n\t${}\n}', t('함수')],
     ],
     'array as break case class const continue default do echo else elseif empty foreach for function global if include isset new null private protected public require return static switch this true false while count strlen explode implode',
   ],
   ruby: [
     [
-      ['puts', 'puts ${}', '출력'],
-      ['each', '${items}.each do |${item}|\n\t${}\nend', '배열 반복'],
-      ['times', '${3}.times do |${i}|\n\t${}\nend', '정해진 횟수만큼 반복'],
-      ['def', 'def ${name}(${params})\n\t${}\nend', '함수'],
-      ['if', 'if ${condition}\n\t${}\nend', '조건문'],
+      ['puts', 'puts ${}', t('출력')],
+      ['each', '${items}.each do |${item}|\n\t${}\nend', t('배열 반복')],
+      ['times', '${3}.times do |${i}|\n\t${}\nend', t('정해진 횟수만큼 반복')],
+      ['def', 'def ${name}(${params})\n\t${}\nend', t('함수')],
+      ['if', 'if ${condition}\n\t${}\nend', t('조건문')],
     ],
     'begin break case class def do else elsif end ensure false for if in module next nil not or redo rescue retry return self super then true unless until when while yield puts gets require attr_accessor',
   ],
   lua: [
     [
-      ['print', 'print(${})', '출력'],
-      ['for', 'for ${i} = 1, ${10} do\n\t${}\nend', '정해진 횟수만큼 반복'],
-      ['forin', 'for ${k}, ${v} in ipairs(${t}) do\n\t${}\nend', '목록 반복'],
-      ['function', 'function ${name}(${params})\n\t${}\nend', '함수'],
-      ['if', 'if ${condition} then\n\t${}\nend', '조건문'],
+      ['print', 'print(${})', t('출력')],
+      ['for', 'for ${i} = 1, ${10} do\n\t${}\nend', t('정해진 횟수만큼 반복')],
+      ['forin', 'for ${k}, ${v} in ipairs(${t}) do\n\t${}\nend', t('목록 반복')],
+      ['function', 'function ${name}(${params})\n\t${}\nend', t('함수')],
+      ['if', 'if ${condition} then\n\t${}\nend', t('조건문')],
     ],
     'and break do else elseif end false for function goto if in local nil not or repeat return then true until while ipairs pairs tostring tonumber table string math',
   ],
   shell: [
     [
-      ['echo', 'echo "${}"', '출력'],
-      ['for', 'for ${i} in ${items}; do\n\t${}\ndone', '반복'],
-      ['if', 'if [ ${condition} ]; then\n\t${}\nfi', '조건문'],
+      ['echo', 'echo "${}"', t('출력')],
+      ['for', 'for ${i} in ${items}; do\n\t${}\ndone', t('반복')],
+      ['if', 'if [ ${condition} ]; then\n\t${}\nfi', t('조건문')],
     ],
     'if then else elif fi for in do done while case esac function return export local echo read',
   ],
@@ -303,7 +304,7 @@ const htmlBang: CompletionSource = (ctx) => {
     from: m.from,
     options: [
       snippetCompletion(
-        '<!DOCTYPE html>\n<html lang="ko">\n<head>\n\t<meta charset="UTF-8">\n\t<meta name="viewport" content="width=device-width, initial-scale=1.0">\n\t<title>${Document}</title>\n</head>\n<body>\n\t${}\n</body>\n</html>',
+        '<!DOCTYPE html>\n<html lang="' + uiLang + '">\n<head>\n\t<meta charset="UTF-8">\n\t<meta name="viewport" content="width=device-width, initial-scale=1.0">\n\t<title>${Document}</title>\n</head>\n<body>\n\t${}\n</body>\n</html>',
         { label: '!', type: 'snippet', boost: 99 },
       ),
     ],

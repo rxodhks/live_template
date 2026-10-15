@@ -1,6 +1,7 @@
 import prelude from './sandbox/prelude.js?raw';
 import { line, type OutputLine } from './runner';
 import { loadRuntime, type RuntimeId } from './runtimes';
+import { t } from '../../i18n';
 
 /*
  * 격리된 샌드박스에서 코드 실행
@@ -89,7 +90,7 @@ export function runInSandbox(run: SandboxRun): () => void {
     if (!d?.__ltRun) return;
     if (d.error) {
       run.onLine(line('error', d.error.message));
-      finish(false, '■ 실행 중 오류로 종료되었습니다');
+      finish(false, t('■ 실행 중 오류로 종료되었습니다'));
       return;
     }
     const m = d.data;
@@ -108,11 +109,11 @@ export function runInSandbox(run: SandboxRun): () => void {
         // 실행 환경 준비가 끝났다 — 여기서부터 사용자 코드의 제한 시간
         clearTimeout(setupTimer);
         run.onStatus?.(null);
-        execTimer = setTimeout(() => finish(false, `⏱ ${Math.round(run.timeoutMs / 1000)}초가 지나 실행을 중단했습니다 (무한 반복을 확인해 보세요)`, 'warn'), run.timeoutMs);
+        execTimer = setTimeout(() => finish(false, t('⏱ {x}초가 지나 실행을 중단했습니다 (무한 반복을 확인해 보세요)', { x: Math.round(run.timeoutMs / 1000) }), 'warn'), run.timeoutMs);
         break;
       case 'done': {
         const ms = typeof m.ms === 'number' ? m.ms : Math.round(performance.now() - started);
-        finish(Boolean(m.ok), m.ok ? `✓ 실행 완료 · ${ms}ms` : '■ 오류로 종료되었습니다');
+        finish(Boolean(m.ok), m.ok ? t('✓ 실행 완료 · {ms}ms', { ms }) : t('■ 오류로 종료되었습니다'));
         break;
       }
     }
@@ -121,17 +122,17 @@ export function runInSandbox(run: SandboxRun): () => void {
   const start = async () => {
     let files: Record<string, ArrayBuffer> = {};
     if (run.runtime) {
-      run.onStatus?.('실행 환경 확인 중…');
+      run.onStatus?.(t('실행 환경 확인 중…'));
       try {
         files = await loadRuntime(run.runtime, (loaded, total) => {
-          if (!finished) run.onStatus?.(`실행 환경 내려받는 중… ${Math.floor((loaded / total) * 100)}% (${(total / 1024 / 1024).toFixed(1)}MB · 처음 한 번만)`);
+          if (!finished) run.onStatus?.(t('실행 환경 내려받는 중… {x}% ({x2}MB · 처음 한 번만)', { x: Math.floor((loaded / total) * 100), x2: (total / 1024 / 1024).toFixed(1) }));
         });
       } catch (err) {
-        finish(false, `실행 환경을 불러오지 못했습니다: ${err instanceof Error ? err.message : String(err)}`, 'error');
+        finish(false, t('실행 환경을 불러오지 못했습니다: {x}', { x: err instanceof Error ? err.message : String(err) }), 'error');
         return;
       }
       if (finished) return;
-      run.onStatus?.('실행 환경 준비 중…');
+      run.onStatus?.(t('실행 환경 준비 중…'));
     }
     iframe = document.createElement('iframe');
     iframe.setAttribute('sandbox', 'allow-scripts');
@@ -148,10 +149,10 @@ export function runInSandbox(run: SandboxRun): () => void {
     window.addEventListener('message', onReady);
     window.addEventListener('message', onMessage);
     // 실행 환경 준비(파이썬 초기화 등)가 너무 오래 걸리면 중단
-    setupTimer = setTimeout(() => finish(false, '실행 환경 준비가 너무 오래 걸려 중단했습니다. 다시 시도해 주세요.', 'error'), 90_000);
+    setupTimer = setTimeout(() => finish(false, t('실행 환경 준비가 너무 오래 걸려 중단했습니다. 다시 시도해 주세요.'), 'error'), 90_000);
     document.body.appendChild(iframe);
   };
   void start();
 
-  return () => finish(false, '■ 실행을 중지했습니다', 'warn');
+  return () => finish(false, t('■ 실행을 중지했습니다'), 'warn');
 }

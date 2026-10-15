@@ -19,6 +19,7 @@ import { CodeBlock } from './nodes/CodeBlock';
 import { DocMention } from './nodes/MentionChip';
 import { ToggleCommands } from './nodes/Toggle';
 import { PageBreak } from './nodes/PageBreak';
+import { t } from '../../../i18n';
 
 /* ───────────── '/' 블록 메뉴 ───────────── */
 
@@ -41,7 +42,7 @@ const SlashCommand = Extension.create<{ env: DocEnv }>({
           if (props.insert) void props.insert(editor, env);
           else props.turnInto?.(editor.chain().focus()).run();
         },
-        render: popupRenderer<BlockDef>('일치하는 블록이 없습니다'),
+        render: popupRenderer<BlockDef>(t('일치하는 블록이 없습니다')),
       }),
     ];
   },
@@ -61,7 +62,7 @@ function mentionItems(env: DocEnv, query: string): MentionItem[] {
     .map((u) => ({
       key: `u:${u.id}`,
       label: u.name,
-      group: '사람',
+      group: t('사람'),
       icon: (
         <span className="suggest-avatar" style={{ background: u.color }}>
           {u.avatar}
@@ -73,13 +74,13 @@ function mentionItems(env: DocEnv, query: string): MentionItem[] {
     .pages()
     .filter((p) => matches(query, p.title, PAGE_MODULE_NAME[p.module]))
     .slice(0, 8)
-    .map((p) => ({ key: `p:${p.module}:${p.id}`, label: p.title, hint: PAGE_MODULE_NAME[p.module], group: '페이지', icon: <span>{p.emoji}</span>, attrs: { id: `p:${p.module}:${p.id}`, label: p.title } }));
+    .map((p) => ({ key: `p:${p.module}:${p.id}`, label: p.title, hint: PAGE_MODULE_NAME[p.module], group: t('페이지'), icon: <span>{p.emoji}</span>, attrs: { id: `p:${p.module}:${p.id}`, label: p.title } }));
   const now = new Date();
   const day = (n: number) => isoDate(new Date(now.getFullYear(), now.getMonth(), now.getDate() + n));
   const dates: [string, string, string[]][] = [
-    [day(0), '오늘', ['today', 'date', '날짜']],
-    [day(1), '내일', ['tomorrow', 'date', '날짜']],
-    [day(-1), '어제', ['yesterday', 'date', '날짜']],
+    [day(0), t('오늘'), ['today', 'date', t('날짜')]],
+    [day(1), t('내일'), ['tomorrow', 'date', t('날짜')]],
+    [day(-1), t('어제'), ['yesterday', 'date', t('날짜')]],
   ];
   // 2026-10-01 · 10/1 · 10월 1일처럼 입력한 날짜
   const typed = /^(\d{4})[-./](\d{1,2})[-./](\d{1,2})$/.exec(query) ?? /^()(\d{1,2})[/.월](\d{1,2})일?$/.exec(query);
@@ -90,7 +91,7 @@ function mentionItems(env: DocEnv, query: string): MentionItem[] {
   }
   const dateItems: MentionItem[] = dates
     .filter(([, name, words]) => matches(query, name, ...words))
-    .map(([iso]) => ({ key: `d:${iso}`, label: dateLabel(iso), group: '날짜', icon: <span>📅</span>, attrs: { id: `d:${iso}`, label: dateLabel(iso) } }));
+    .map(([iso]) => ({ key: `d:${iso}`, label: dateLabel(iso), group: t('날짜'), icon: <span>📅</span>, attrs: { id: `d:${iso}`, label: dateLabel(iso) } }));
   return [...users, ...pages, ...dateItems];
 }
 
@@ -177,7 +178,7 @@ export function blockExtensions(env: DocEnv): AnyExtension[] {
             ])
             .run();
         },
-        render: popupRenderer<MentionItem>('일치하는 사람 · 페이지가 없습니다') as never,
+        render: popupRenderer<MentionItem>(t('일치하는 사람 · 페이지가 없습니다')) as never,
       },
     }),
     SlashCommand.configure({ env }),
@@ -186,11 +187,11 @@ export function blockExtensions(env: DocEnv): AnyExtension[] {
       onPaste: (editor, files, html) => {
         // 웹 페이지에서 복사한 내용(HTML)은 그대로 붙여 넣는다 — 이미지 주소가 함께 들어온다
         if (html) return;
-        if (!env.uploads) return void toast.warning('여기에는 이미지 파일을 넣을 수 없습니다', '비밀 노트는 암호화 크기 제한이 있어 이미지 주소로만 넣을 수 있습니다.');
+        if (!env.uploads) return void toast.warning(t('여기에는 이미지 파일을 넣을 수 없습니다'), t('비밀 노트는 암호화 크기 제한이 있어 이미지 주소로만 넣을 수 있습니다.'));
         void insertImageFiles(editor, files);
       },
       onDrop: (editor, files, pos) => {
-        if (!env.uploads) return void toast.warning('여기에는 이미지 파일을 넣을 수 없습니다', '비밀 노트는 암호화 크기 제한이 있어 이미지 주소로만 넣을 수 있습니다.');
+        if (!env.uploads) return void toast.warning(t('여기에는 이미지 파일을 넣을 수 없습니다'), t('비밀 노트는 암호화 크기 제한이 있어 이미지 주소로만 넣을 수 있습니다.'));
         void insertImageFiles(editor, files, pos);
       },
     }),
@@ -202,10 +203,10 @@ export function blockExtensions(env: DocEnv): AnyExtension[] {
 async function editMath(editor: Editor | null, kind: 'block' | 'inline', latex: string, pos: number) {
   if (!editor?.isEditable) return;
   const next = await promptDialog({
-    title: kind === 'block' ? '수식 고치기' : '인라인 수식 고치기',
+    title: kind === 'block' ? t('수식 고치기') : t('인라인 수식 고치기'),
     label: 'LaTeX',
     initial: latex,
-    confirmText: '적용',
+    confirmText: t('적용'),
     multiline: kind === 'block',
     mono: true,
   });

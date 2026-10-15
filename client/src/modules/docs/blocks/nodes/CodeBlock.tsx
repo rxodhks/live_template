@@ -1,11 +1,12 @@
 import { CodeBlockLowlight } from '@tiptap/extension-code-block-lowlight';
 import { NodeViewContent, NodeViewWrapper, ReactNodeViewRenderer, type ReactNodeViewProps } from '@tiptap/react';
 import { lowlight, trackEditor, untrackEditor } from './lowlight';
+import { t } from '../../../../i18n';
 
 /** 코드 블록 언어 (표시 이름) — lowlight 기본 언어 중 자주 쓰는 것 */
 export const CODE_BLOCK_LANGUAGES: [id: string, name: string][] = [
-  ['', '자동 감지'],
-  ['plaintext', '일반 텍스트'],
+  ['', t('자동 감지')],
+  ['plaintext', t('일반 텍스트')],
   ['javascript', 'JavaScript'],
   ['typescript', 'TypeScript'],
   ['python', 'Python'],
@@ -56,7 +57,7 @@ function CodeBlockView({ node, updateAttributes, editor }: ReactNodeViewProps) {
         contentEditable={false}
         value={known ? language : ''}
         disabled={!editor.isEditable}
-        aria-label="코드 언어"
+        aria-label={t('코드 언어')}
         onChange={(e) => updateAttributes({ language: e.target.value || null })}
       >
         {CODE_BLOCK_LANGUAGES.map(([id, name]) => (

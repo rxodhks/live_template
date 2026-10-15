@@ -53,6 +53,7 @@ import { IconButton, InlineEdit, Menu, confirmDialog, type MenuItem } from '../c
 import { cx, downloadText } from '../lib/util';
 import { DocOutline } from '../modules/docs/DocOutline';
 import { DesignLayers } from '../modules/design/DesignLayers';
+import { ko, t } from '../i18n';
 
 const COLLAPSE_KEY = 'lt.explorer.collapsed';
 const PAGE_MIME = 'application/x-madang-page';
@@ -68,7 +69,8 @@ function readCollapsed(): Record<string, boolean> {
   }
 }
 
-const PAGE_NOUN: Record<ItemModule, string> = { docs: '문서', design: '디자인 보드', code: '코드 파일' };
+const PAGE_NOUN: Record<ItemModule, string> = { docs: t('문서#page'), design: t('디자인 보드#page'), code: t('코드 파일#page') };
+const NEW_PAGE: Record<ItemModule, string> = { docs: t('새 문서'), design: t('새 디자인 보드'), code: t('새 코드 파일') };
 /** 폴더의 + 메뉴 순서: 기본 폴더면 그 종류를 맨 위에 */
 const pageKinds = (first: ItemModule | null): ItemModule[] => (first ? [first, ...(['docs', 'design', 'code'] as ItemModule[]).filter((m) => m !== first)] : ['docs', 'design', 'code']);
 
@@ -176,37 +178,51 @@ export function Explorer() {
 
   const remove = async (s: SectionView) => {
     if (layout.all.length <= 1) {
-      toast.warning('폴더는 하나 이상 있어야 합니다', '페이지를 넣을 폴더가 하나는 필요합니다.');
+      toast.warning(t('폴더는 하나 이상 있어야 합니다'), t('페이지를 넣을 폴더가 하나는 필요합니다.'));
       return;
     }
     const parent = s.parent ? layout.byId.get(s.parent) : undefined;
-    const inside = [s.pages.length ? `페이지 ${s.pages.length}개` : '', s.children.length ? `하위 폴더 ${s.children.length}개` : ''].filter(Boolean).join('와 ');
+    const inside = [s.pages.length ? t('페이지 {n}개', { n: s.pages.length }) : '', s.children.length ? t('하위 폴더 {n}개', { n: s.children.length }) : ''].filter(Boolean).join(t('와 '));
     const ok = await confirmDialog({
-      title: `‘${s.name}’ 폴더를 삭제할까요?`,
+      title: t('‘{name}’ 폴더를 삭제할까요?', { name: s.name }),
       message: !inside
-        ? '빈 폴더입니다. 페이지는 영향을 받지 않습니다.'
+        ? t('빈 폴더입니다. 페이지는 영향을 받지 않습니다.')
         : parent
-          ? `안에 있는 ${inside}는 지워지지 않고 상위 폴더 ‘${parent.name}’로 옮겨집니다.`
-          : `안에 있는 ${inside}는 지워지지 않습니다. 페이지는 각 종류의 기본 폴더(없으면 맨 위 폴더)로, 하위 폴더는 한 단계 위로 옮겨집니다.`,
-      confirmText: '폴더 삭제',
+          ? t('안에 있는 {inside}는 지워지지 않고 상위 폴더 ‘{name}’로 옮겨집니다.', { inside, name: parent.name })
+          : t('안에 있는 {inside}는 지워지지 않습니다. 페이지는 각 종류의 기본 폴더(없으면 맨 위 폴더)로, 하위 폴더는 한 단계 위로 옮겨집니다.', { inside }),
+      confirmText: t('폴더 삭제'),
       danger: true,
     });
     if (!ok) return;
     const r = deleteSection(ws.doc, features, s.id);
     if (!r) return;
-    ws.report({ type: 'section.delete', targetId: s.id, targetName: s.name, detail: inside ? `${inside}를 옮김` : '' });
-    toast.show({ kind: 'info', title: '폴더를 삭제했습니다', message: inside ? `${s.name} · ${inside}를 ${r.movedTo ? `‘${r.movedTo}’로` : '다른 폴더로'} 옮겼습니다.` : s.name });
+    // 기록(타임라인)에는 한국어로 남기고 보는 화면이 옮긴다
+    ws.report({
+      type: 'section.delete',
+      targetId: s.id,
+      targetName: s.name,
+      detail: inside ? ko('페이지 {pages}개 · 하위 폴더 {folders}개를 옮김', { pages: s.pages.length, folders: s.children.length }) : '',
+    });
+    toast.show({
+      kind: 'info',
+      title: t('폴더를 삭제했습니다'),
+      message: !inside
+        ? s.name
+        : r.movedTo
+          ? t('{name} · {inside}를 ‘{folder}’로 옮겼습니다.', { name: s.name, inside, folder: r.movedTo })
+          : t('{name} · {inside}를 다른 폴더로 옮겼습니다.', { name: s.name, inside }),
+    });
   };
 
   const onReset = async () => {
     const ok = await confirmDialog({
-      title: '폴더 구성을 처음 상태로 되돌릴까요?',
-      message: '직접 만든 폴더(하위 폴더 포함)와 이름 · 순서가 지워지고, 페이지가 종류별 기본 폴더(디자인 · 코딩 · 문서)로 돌아갑니다. 페이지 내용은 그대로입니다.',
-      confirmText: '되돌리기',
+      title: t('폴더 구성을 처음 상태로 되돌릴까요?'),
+      message: t('직접 만든 폴더(하위 폴더 포함)와 이름 · 순서가 지워지고, 페이지가 종류별 기본 폴더(디자인 · 코딩 · 문서)로 돌아갑니다. 페이지 내용은 그대로입니다.'),
+      confirmText: t('되돌리기'),
     });
     if (!ok) return;
     resetLayout(ws.doc);
-    toast.success('폴더 구성을 처음 상태로 되돌렸습니다');
+    toast.success(t('폴더 구성을 처음 상태로 되돌렸습니다'));
   };
 
   const movePageTo = (p: { module: ItemModule; id: string; name: string }, section: SectionView) => {
@@ -255,7 +271,7 @@ export function Explorer() {
       if (s && !same) {
         if (moveSection(ws.doc, features, drag.id, drop.parentId, drop.beforeId)) {
           if (drop.parentId) expandPath(drop.parentId);
-        } else toast.warning('여기로 옮길 수 없습니다', `폴더는 자기 안으로 넣을 수 없고, ${MAX_FOLDER_DEPTH}단계까지만 넣을 수 있습니다.`);
+        } else toast.warning(t('여기로 옮길 수 없습니다'), t('폴더는 자기 안으로 넣을 수 없고, {MAX_FOLDER_DEPTH}단계까지만 넣을 수 있습니다.', { MAX_FOLDER_DEPTH }));
       }
     }
     endDrag();
@@ -290,26 +306,26 @@ export function Explorer() {
     <TreeContext.Provider value={api}>
       <div className="explorer">
         <div className="ex-head">
-          <span className="ex-head-title">페이지</span>
+          <span className="ex-head-title">{t('페이지')}</span>
           {ws.canEdit && (
             <>
               <Menu
                 align="start"
                 width={228}
                 items={() => [
-                  { heading: true, label: '새 페이지' },
+                  { heading: true, label: t('새 페이지') },
                   ...(['docs', 'design', 'code'] as ItemModule[]).map(
                     (m): MenuItem => ({
                       label: PAGE_NOUN[m],
                       icon: <span>{FEATURE_INFO[m].emoji}</span>,
-                      hint: features.includes(m) ? undefined : <span className="menu-new-area">영역 추가</span>,
+                      hint: features.includes(m) ? undefined : <span className="menu-new-area">{t('영역 추가')}</span>,
                       onSelect: () => addPage(m),
                     }),
                   ),
                   { divider: true, label: '' },
-                  { label: '새 폴더', icon: <FolderPlus size={15} />, onSelect: () => addSection() },
+                  { label: t('새 폴더'), icon: <FolderPlus size={15} />, onSelect: () => addSection() },
                   {
-                    label: '새 비밀 노트',
+                    label: t('새 비밀 노트'),
                     icon: <Lock size={15} />,
                     onSelect: () => {
                       ws.go('notes');
@@ -318,8 +334,8 @@ export function Explorer() {
                   },
                 ]}
                 trigger={({ toggle: openMenu, ref, open }) => (
-                  <button ref={ref} type="button" className={cx('ex-add-btn', open && 'is-open')} onClick={openMenu} aria-label="페이지 · 폴더 추가" data-tip="문서 · 디자인 · 코드 파일 · 폴더 추가">
-                    <Plus size={14} /> 추가
+                  <button ref={ref} type="button" className={cx('ex-add-btn', open && 'is-open')} onClick={openMenu} aria-label={t('페이지 · 폴더 추가')} data-tip={t('문서 · 디자인 · 코드 파일 · 폴더 추가')}>
+                    <Plus size={14} /> {t('추가')}
                   </button>
                 )}
               />
@@ -327,14 +343,14 @@ export function Explorer() {
                 align="start"
                 width={220}
                 items={() => [
-                  { label: '새 폴더', icon: <FolderPlus size={15} />, onSelect: () => addSection() },
-                  { label: '모든 폴더 펼치기', icon: <ChevronsUpDown size={15} />, onSelect: () => setCollapsedMany(layout.all.map((s) => s.id), false) },
-                  { label: '모든 폴더 접기', icon: <ChevronsDownUp size={15} />, onSelect: () => setCollapsedMany(layout.all.map((s) => s.id), true) },
+                  { label: t('새 폴더'), icon: <FolderPlus size={15} />, onSelect: () => addSection() },
+                  { label: t('모든 폴더 펼치기'), icon: <ChevronsUpDown size={15} />, onSelect: () => setCollapsedMany(layout.all.map((s) => s.id), false) },
+                  { label: t('모든 폴더 접기'), icon: <ChevronsDownUp size={15} />, onSelect: () => setCollapsedMany(layout.all.map((s) => s.id), true) },
                   { divider: true, label: '' },
-                  { label: '폴더 구성 초기화', icon: <RotateCcw size={15} />, disabled: !isCustomized(ws.doc), onSelect: () => void onReset() },
+                  { label: t('폴더 구성 초기화'), icon: <RotateCcw size={15} />, disabled: !isCustomized(ws.doc), onSelect: () => void onReset() },
                 ]}
                 trigger={({ toggle: openMenu, ref }) => (
-                  <IconButton ref={ref} label="폴더 설정" size="sm" onClick={openMenu} tipSide="right">
+                  <IconButton ref={ref} label={t('폴더 설정')} size="sm" onClick={openMenu} tipSide="right">
                     <MoreHorizontal size={15} />
                   </IconButton>
                 )}
@@ -353,7 +369,7 @@ export function Explorer() {
               <FolderNode key={s.id} section={s} />
             ))}
           </div>
-          {layout.all.length === 0 && <p className="ex-empty">켜진 영역이 없습니다. 위의 ‘추가’로 문서 · 디자인 · 코드 파일을 만들어 보세요.</p>}
+          {layout.all.length === 0 && <p className="ex-empty">{t('켜진 영역이 없습니다. 위의 ‘추가’로 문서 · 디자인 · 코드 파일을 만들어 보세요.')}</p>}
           {ws.canEdit && (
             <button
               type="button"
@@ -371,19 +387,19 @@ export function Explorer() {
                 applyDrop();
               }}
             >
-              <FolderPlus size={14} /> 새 폴더
+              <FolderPlus size={14} /> {t('새 폴더')}
             </button>
           )}
 
           <NotesSection collapsed={!!collapsed.notes} onToggle={() => toggle('notes')} />
 
           {ws.view.module === 'docs' && ws.view.itemId && (
-            <Section title="목차" collapsed={!!collapsed.outline} onToggle={() => toggle('outline')}>
+            <Section title={t('목차')} collapsed={!!collapsed.outline} onToggle={() => toggle('outline')}>
               <DocOutline docId={ws.view.itemId} />
             </Section>
           )}
           {ws.view.module === 'design' && ws.view.itemId && (
-            <Section title="레이어" collapsed={!!collapsed.layers} onToggle={() => toggle('layers')}>
+            <Section title={t('레이어')} collapsed={!!collapsed.layers} onToggle={() => toggle('layers')}>
               <DesignLayers boardId={ws.view.itemId} />
             </Section>
           )}
@@ -423,7 +439,7 @@ function Section({
           {count !== undefined && <span className="ex-count">{count}</span>}
         </button>
         {onAdd && (
-          <IconButton label={addLabel ?? '추가'} size="sm" onClick={onAdd} tipSide="right">
+          <IconButton label={addLabel ?? t('추가')} size="sm" onClick={onAdd} tipSide="right">
             <Plus size={15} />
           </IconButton>
         )}
@@ -438,10 +454,10 @@ const acceptsDrag = (e: DragEvent, drag: Drag | null) => drag !== null && (e.dat
 /** 폴더 하나 (하위 폴더 → 페이지 순으로, 안에 다시 폴더가 들어갈 수 있다) */
 function FolderNode({ section: s }: { section: SectionView }) {
   const ws = useWorkspace();
-  const t = useTree();
-  const { layout, drag, drop } = t;
-  const collapsed = !!t.collapsed[s.id];
-  const editing = t.editing === s.id;
+  const tree = useTree();
+  const { layout, drag, drop } = tree;
+  const collapsed = !!tree.collapsed[s.id];
+  const editing = tree.editing === s.id;
   const [draft, setDraft] = useState(s.name);
   useEffect(() => {
     if (editing) setDraft(s.name);
@@ -452,8 +468,8 @@ function FolderNode({ section: s }: { section: SectionView }) {
   const canSub = s.depth + 1 < MAX_FOLDER_DEPTH;
 
   const commit = () => {
-    t.setEditing(null);
-    t.rename(s, draft);
+    tree.setEditing(null);
+    tree.rename(s, draft);
   };
 
   const dropHere = drop?.kind === 'page' && drop.sectionId === s.id && drop.pos === 'end';
@@ -467,16 +483,16 @@ function FolderNode({ section: s }: { section: SectionView }) {
     if (drag!.kind === 'page') {
       e.preventDefault();
       e.dataTransfer.dropEffect = 'move';
-      if (!dropHere) t.setDrop({ kind: 'page', sectionId: s.id, beforeId: null, markId: null, pos: 'end' });
+      if (!dropHere) tree.setDrop({ kind: 'page', sectionId: s.id, beforeId: null, markId: null, pos: 'end' });
       return;
     }
     if (!canNestInto(layout, drag!.id, s.id)) {
-      if (drop) t.setDrop(null);
+      if (drop) tree.setDrop(null);
       return;
     }
     e.preventDefault();
     e.dataTransfer.dropEffect = 'move';
-    if (mark !== 'into') t.setDrop({ kind: 'section', parentId: s.id, beforeId: null, markId: s.id, pos: 'into' });
+    if (mark !== 'into') tree.setDrop({ kind: 'section', parentId: s.id, beforeId: null, markId: s.id, pos: 'into' });
   };
 
   /** 폴더 머리 위(폴더를 끄는 중): 위쪽 = 앞, 아래쪽 = 뒤, 가운데 = 안으로 */
@@ -488,51 +504,51 @@ function FolderNode({ section: s }: { section: SectionView }) {
     let pos: 'before' | 'after' | 'into' = y < 0.3 ? 'before' : y > 0.7 ? 'after' : 'into';
     if (pos === 'into' && !canNestInto(layout, drag.id, s.id)) pos = y < 0.5 ? 'before' : 'after';
     if (pos !== 'into' && !canNestInto(layout, drag.id, s.parent)) {
-      if (drop) t.setDrop(null);
+      if (drop) tree.setDrop(null);
       return;
     }
     e.preventDefault();
     e.dataTransfer.dropEffect = 'move';
     if (mark === pos) return;
-    if (pos === 'into') t.setDrop({ kind: 'section', parentId: s.id, beforeId: null, markId: s.id, pos });
-    else t.setDrop({ kind: 'section', parentId: s.parent, beforeId: pos === 'before' ? s.id : (siblings[index + 1]?.id ?? null), markId: s.id, pos });
+    if (pos === 'into') tree.setDrop({ kind: 'section', parentId: s.id, beforeId: null, markId: s.id, pos });
+    else tree.setDrop({ kind: 'section', parentId: s.parent, beforeId: pos === 'before' ? s.id : (siblings[index + 1]?.id ?? null), markId: s.id, pos });
   };
 
   const onDrop = (e: DragEvent<HTMLElement>) => {
     if (!acceptsDrag(e, drag)) return;
     e.preventDefault();
     e.stopPropagation();
-    t.applyDrop();
+    tree.applyDrop();
   };
 
   const addItems = (): MenuItem[] => [
-    { heading: true, label: `‘${s.name}’에 추가` },
+    { heading: true, label: t('‘{name}’에 추가', { name: s.name }) },
     ...pageKinds(s.builtin).map(
       (m): MenuItem => ({
-        label: `새 ${PAGE_NOUN[m]}`,
+        label: NEW_PAGE[m],
         icon: <span>{FEATURE_INFO[m].emoji}</span>,
-        hint: ws.template.features.includes(m) ? undefined : <span className="menu-new-area">영역 추가</span>,
-        onSelect: () => t.addPage(m, s.id),
+        hint: ws.template.features.includes(m) ? undefined : <span className="menu-new-area">{t('영역 추가')}</span>,
+        onSelect: () => tree.addPage(m, s.id),
       }),
     ),
     { divider: true, label: '' },
-    { label: '새 하위 폴더', icon: <FolderPlus size={14} />, disabled: !canSub, hint: canSub ? undefined : `${MAX_FOLDER_DEPTH}단계까지`, onSelect: () => t.addSection({ parentId: s.id }) },
+    { label: t('새 하위 폴더'), icon: <FolderPlus size={14} />, disabled: !canSub, hint: canSub ? undefined : t('{MAX_FOLDER_DEPTH}단계까지', { MAX_FOLDER_DEPTH }), onSelect: () => tree.addSection({ parentId: s.id }) },
   ];
 
   const folderMenu = (): MenuItem[] => [
-    { label: '이름 변경', icon: <Pencil size={14} />, hint: 'F2', onSelect: () => t.setEditing(s.id) },
-    { label: '아이콘 바꾸기', icon: <Smile size={14} />, onSelect: () => t.setEmojiFor(s.id) },
+    { label: t('이름 변경'), icon: <Pencil size={14} />, hint: 'F2', onSelect: () => tree.setEditing(s.id) },
+    { label: t('아이콘 바꾸기'), icon: <Smile size={14} />, onSelect: () => tree.setEmojiFor(s.id) },
     { divider: true, label: '' },
-    { label: '하위 폴더 만들기', icon: <FolderTree size={14} />, disabled: !canSub, hint: canSub ? undefined : `${MAX_FOLDER_DEPTH}단계까지`, onSelect: () => t.addSection({ parentId: s.id }) },
-    { label: '아래에 새 폴더', icon: <FolderPlus size={14} />, onSelect: () => t.addSection({ afterId: s.id }) },
+    { label: t('하위 폴더 만들기'), icon: <FolderTree size={14} />, disabled: !canSub, hint: canSub ? undefined : t('{MAX_FOLDER_DEPTH}단계까지', { MAX_FOLDER_DEPTH }), onSelect: () => tree.addSection({ parentId: s.id }) },
+    { label: t('아래에 새 폴더'), icon: <FolderPlus size={14} />, onSelect: () => tree.addSection({ afterId: s.id }) },
     { divider: true, label: '' },
-    { label: '위로 이동', icon: <ArrowUp size={14} />, disabled: index <= 0, onSelect: () => shiftSection(ws.doc, ws.template.features, s.id, -1) },
-    { label: '아래로 이동', icon: <ArrowDown size={14} />, disabled: index >= siblings.length - 1, onSelect: () => shiftSection(ws.doc, ws.template.features, s.id, 1) },
+    { label: t('위로 이동'), icon: <ArrowUp size={14} />, disabled: index <= 0, onSelect: () => shiftSection(ws.doc, ws.template.features, s.id, -1) },
+    { label: t('아래로 이동'), icon: <ArrowDown size={14} />, disabled: index >= siblings.length - 1, onSelect: () => shiftSection(ws.doc, ws.template.features, s.id, 1) },
     ...(s.parent
-      ? [{ label: '상위 폴더 밖으로 꺼내기', icon: <CornerLeftUp size={14} />, onSelect: () => outdentSection(ws.doc, ws.template.features, s.id) }]
+      ? [{ label: t('상위 폴더 밖으로 꺼내기'), icon: <CornerLeftUp size={14} />, onSelect: () => outdentSection(ws.doc, ws.template.features, s.id) }]
       : []),
     { divider: true, label: '' },
-    { label: '폴더 삭제', icon: <Trash2 size={14} />, danger: true, disabled: layout.all.length <= 1, hint: layout.all.length <= 1 ? '마지막 폴더' : undefined, onSelect: () => t.remove(s) },
+    { label: t('폴더 삭제'), icon: <Trash2 size={14} />, danger: true, disabled: layout.all.length <= 1, hint: layout.all.length <= 1 ? t('마지막 폴더') : undefined, onSelect: () => tree.remove(s) },
   ];
 
   return (
@@ -552,9 +568,9 @@ function FolderNode({ section: s }: { section: SectionView }) {
           e.dataTransfer.setData(SECTION_MIME, s.id);
           e.dataTransfer.setData('text/plain', s.name);
           e.dataTransfer.effectAllowed = 'move';
-          t.setDrag({ kind: 'section', id: s.id });
+          tree.setDrag({ kind: 'section', id: s.id });
         }}
-        onDragEnd={t.endDrag}
+        onDragEnd={tree.endDrag}
         onDragOver={onHeadDragOver}
       >
         {editing ? (
@@ -566,29 +582,29 @@ function FolderNode({ section: s }: { section: SectionView }) {
               value={draft}
               autoFocus
               maxLength={40}
-              aria-label="폴더 이름"
+              aria-label={t('폴더 이름')}
               onFocus={(e) => e.currentTarget.select()}
               onChange={(e) => setDraft(e.target.value)}
               onBlur={commit}
               onKeyDown={(e) => {
                 if (e.key === 'Enter') commit();
-                if (e.key === 'Escape') t.setEditing(null);
+                if (e.key === 'Escape') tree.setEditing(null);
               }}
             />
           </div>
         ) : (
           <button
             className="ex-section-toggle"
-            onClick={() => t.toggle(s.id)}
-            onDoubleClick={() => ws.canEdit && t.setEditing(s.id)}
+            onClick={() => tree.toggle(s.id)}
+            onDoubleClick={() => ws.canEdit && tree.setEditing(s.id)}
             onKeyDown={(e) => {
               if (e.key === 'F2' && ws.canEdit) {
                 e.preventDefault();
-                t.setEditing(s.id);
+                tree.setEditing(s.id);
               }
             }}
             aria-expanded={!collapsed}
-            title={ws.canEdit ? '더블클릭하여 이름 변경 · 끌어서 옮기기 (가운데에 놓으면 폴더 안으로)' : undefined}
+            title={ws.canEdit ? t('더블클릭하여 이름 변경 · 끌어서 옮기기 (가운데에 놓으면 폴더 안으로)') : undefined}
           >
             <ChevronRight size={14} className="ex-chevron" />
             <span className="ex-feature-emoji">{s.emoji}</span>
@@ -603,7 +619,7 @@ function FolderNode({ section: s }: { section: SectionView }) {
               width={214}
               items={addItems}
               trigger={({ toggle, ref }) => (
-                <IconButton ref={ref} label={`‘${s.name}’에 추가`} size="sm" onClick={toggle} tipSide="right">
+                <IconButton ref={ref} label={t('‘{name}’에 추가', { name: s.name })} size="sm" onClick={toggle} tipSide="right">
                   <Plus size={15} />
                 </IconButton>
               )}
@@ -613,7 +629,7 @@ function FolderNode({ section: s }: { section: SectionView }) {
               width={214}
               items={folderMenu}
               trigger={({ toggle, ref }) => (
-                <IconButton ref={ref} label="폴더 메뉴" size="sm" onClick={toggle} tipSide="right">
+                <IconButton ref={ref} label={t('폴더 메뉴')} size="sm" onClick={toggle} tipSide="right">
                   <MoreHorizontal size={14} />
                 </IconButton>
               )}
@@ -621,14 +637,14 @@ function FolderNode({ section: s }: { section: SectionView }) {
           </span>
         )}
       </div>
-      {t.emojiFor === s.id && (
+      {tree.emojiFor === s.id && (
         <EmojiStrip
           value={s.emoji}
           onPick={(e) => {
             setSectionEmoji(ws.doc, s.id, e);
-            t.setEmojiFor(null);
+            tree.setEmojiFor(null);
           }}
-          onClose={() => t.setEmojiFor(null)}
+          onClose={() => tree.setEmojiFor(null)}
         />
       )}
       {!collapsed && (
@@ -637,7 +653,7 @@ function FolderNode({ section: s }: { section: SectionView }) {
             <FolderNode key={c.id} section={c} />
           ))}
           {s.pages.length === 0 && s.children.length === 0 && (
-            <p className={cx('ex-empty', !s.builtin && 'ex-drop-hint')}>{s.builtin ? '아직 항목이 없습니다' : ws.canEdit ? '페이지 · 폴더를 끌어다 놓거나 + 로 추가하세요' : '비어 있는 폴더입니다'}</p>
+            <p className={cx('ex-empty', !s.builtin && 'ex-drop-hint')}>{s.builtin ? t('아직 항목이 없습니다') : ws.canEdit ? t('페이지 · 폴더를 끌어다 놓거나 + 로 추가하세요') : t('비어 있는 폴더입니다')}</p>
           )}
           {s.pages.map((p, i) => (
             <ExplorerItem key={`${p.module}:${p.id}`} page={p} section={s} index={i} />
@@ -655,14 +671,14 @@ function EmojiStrip({ value, onPick, onClose }: { value: string; onPick(e: strin
     return () => window.removeEventListener('keydown', onKey);
   }, [onClose]);
   return (
-    <div className="ex-emoji-strip" role="listbox" aria-label="폴더 아이콘">
+    <div className="ex-emoji-strip" role="listbox" aria-label={t('폴더 아이콘')}>
       {SECTION_EMOJIS.map((e) => (
         <button key={e} type="button" role="option" aria-selected={e === value} className={cx('ex-emoji-choice', e === value && 'is-selected')} onClick={() => onPick(e)}>
           {e}
         </button>
       ))}
       <button type="button" className="ex-emoji-close link small" onClick={onClose}>
-        닫기
+        {t('닫기')}
       </button>
     </div>
   );
@@ -680,7 +696,7 @@ function ItemIcon({ item, module }: { item: YItem; module: ItemModule }) {
 function ExplorerItem({ page, section, index }: { page: PageRef; section: SectionView; index: number }) {
   const { item, module, id } = page;
   const ws = useWorkspace();
-  const t = useTree();
+  const tree = useTree();
   const me = useSession((s) => s.user)!;
   const navigate = useNavigate();
   const [editing, setEditing] = useState(false);
@@ -688,7 +704,7 @@ function ExplorerItem({ page, section, index }: { page: PageRef; section: Sectio
   const active = ws.view.module === module && ws.view.itemId === id;
   const others = usePresence((s) => s.others);
   const viewers = Object.values(others).filter((p) => p.view.module === module && p.view.itemId === id);
-  const { drag, drop } = t;
+  const { drag, drop } = tree;
   const dragging = drag?.kind === 'page' && drag.module === module && drag.id === id;
   const dropMark = drop?.kind === 'page' && drop.sectionId === section.id && drop.markId === id ? drop.pos : null;
 
@@ -701,10 +717,10 @@ function ExplorerItem({ page, section, index }: { page: PageRef; section: Sectio
     const r = e.currentTarget.getBoundingClientRect();
     const before = e.clientY < r.top + r.height / 2;
     const beforeId = before ? id : (section.pages[index + 1]?.id ?? null);
-    if (dropMark !== (before ? 'before' : 'after')) t.setDrop({ kind: 'page', sectionId: section.id, beforeId, markId: id, pos: before ? 'before' : 'after' });
+    if (dropMark !== (before ? 'before' : 'after')) tree.setDrop({ kind: 'page', sectionId: section.id, beforeId, markId: id, pos: before ? 'before' : 'after' });
   };
 
-  const targets = t.layout.all.filter((s) => s.id !== section.id);
+  const targets = tree.layout.all.filter((s) => s.id !== section.id);
 
   return (
     <div
@@ -718,9 +734,9 @@ function ExplorerItem({ page, section, index }: { page: PageRef; section: Sectio
         e.dataTransfer.setData(PAGE_MIME, `${module}:${id}`);
         e.dataTransfer.setData('text/plain', label);
         e.dataTransfer.effectAllowed = 'move';
-        t.setDrag({ kind: 'page', module, id });
+        tree.setDrag({ kind: 'page', module, id });
       }}
-      onDragEnd={t.endDrag}
+      onDragEnd={tree.endDrag}
       onDragOver={onDragOver}
       data-page={`${module}:${id}`}
       onKeyDown={(e) => {
@@ -738,7 +754,7 @@ function ExplorerItem({ page, section, index }: { page: PageRef; section: Sectio
         onCommit={(v) => renameItem(ws, module, id, v)}
       />
       {viewers.length > 0 && (
-        <span className="ex-viewers" data-tip={`${viewers.map((v) => v.user.name).join(', ')} 보는 중`}>
+        <span className="ex-viewers" data-tip={t('{x} 보는 중', { x: viewers.map((v) => v.user.name).join(', ') })}>
           {viewers.slice(0, 3).map((v) => (
             <span key={v.socketId} className="ex-viewer" style={{ background: v.user.color }}>
               {v.user.avatar}
@@ -751,15 +767,15 @@ function ExplorerItem({ page, section, index }: { page: PageRef; section: Sectio
           align="start"
           width={230}
           items={() => [
-            { label: '이름 변경', icon: <Pencil size={14} />, hint: 'F2', disabled: !ws.canEdit, onSelect: () => setEditing(true) },
-            { label: '복제', icon: <Copy size={14} />, disabled: !ws.canEdit, onSelect: () => duplicateItem(ws, module, id, me) },
+            { label: t('이름 변경'), icon: <Pencil size={14} />, hint: 'F2', disabled: !ws.canEdit, onSelect: () => setEditing(true) },
+            { label: t('복제'), icon: <Copy size={14} />, disabled: !ws.canEdit, onSelect: () => duplicateItem(ws, module, id, me) },
             ...(module === 'code'
-              ? [{ label: '다운로드', icon: <Download size={14} />, onSelect: () => downloadText(label, String((item.get('content') as Y.Text).toString())) }]
+              ? [{ label: t('다운로드'), icon: <Download size={14} />, onSelect: () => downloadText(label, String((item.get('content') as Y.Text).toString())) }]
               : []),
             ...(ws.canEdit
               ? [
                   { divider: true, label: '' },
-                  { heading: true, label: '다른 폴더로 이동' },
+                  { heading: true, label: t('다른 폴더로 이동') },
                   ...targets.map(
                     (f): MenuItem => ({
                       label: (
@@ -768,17 +784,17 @@ function ExplorerItem({ page, section, index }: { page: PageRef; section: Sectio
                         </span>
                       ),
                       icon: <span>{f.emoji}</span>,
-                      onSelect: () => t.movePageTo({ module, id, name: label }, f),
+                      onSelect: () => tree.movePageTo({ module, id, name: label }, f),
                     }),
                   ),
-                  { label: '새 폴더로 이동', icon: <FolderInput size={14} />, onSelect: () => t.newFolderFor(page, section) },
+                  { label: t('새 폴더로 이동'), icon: <FolderInput size={14} />, onSelect: () => tree.newFolderFor(page, section) },
                 ]
               : []),
             { divider: true, label: '' },
-            { label: '삭제', icon: <Trash2 size={14} />, danger: true, disabled: !ws.canEdit, onSelect: () => void deleteItem(ws, module, id) },
+            { label: t('삭제'), icon: <Trash2 size={14} />, danger: true, disabled: !ws.canEdit, onSelect: () => void deleteItem(ws, module, id) },
           ]}
           trigger={({ toggle, ref }) => (
-            <IconButton ref={ref} label="더 보기" size="sm" onClick={toggle} tipSide="right">
+            <IconButton ref={ref} label={t('더 보기')} size="sm" onClick={toggle} tipSide="right">
               <MoreHorizontal size={14} />
             </IconButton>
           )}
@@ -795,7 +811,7 @@ function NotesSection({ collapsed, onToggle }: { collapsed: boolean; onToggle: (
   const others = usePresence((s) => s.others);
   return (
     <Section
-      title="비밀 노트"
+      title={t('비밀 노트')}
       icon={<Lock size={13} className="ex-lock" />}
       count={ws.notes.length}
       collapsed={collapsed}
@@ -808,9 +824,9 @@ function NotesSection({ collapsed, onToggle }: { collapsed: boolean; onToggle: (
             }
           : undefined
       }
-      addLabel="새 비밀 노트"
+      addLabel={t('새 비밀 노트')}
     >
-      {ws.notes.length === 0 && <p className="ex-empty">{ws.isPrivate ? '비밀번호로 잠가 두는 나만의 노트' : '비밀번호를 아는 멤버만 여는 노트'}</p>}
+      {ws.notes.length === 0 && <p className="ex-empty">{ws.isPrivate ? t('비밀번호로 잠가 두는 나만의 노트') : t('비밀번호를 아는 멤버만 여는 노트')}</p>}
       {ws.notes.map((n) => {
         const active = ws.view.module === 'notes' && ws.view.itemId === n.id;
         const unlocked = !!ws.tickets[n.id];
@@ -828,12 +844,12 @@ function NotesSection({ collapsed, onToggle }: { collapsed: boolean; onToggle: (
               navigate(viewPath(ws.template.id, 'notes', n.id));
             }}
           >
-            <span className={cx('ex-emoji', unlocked && 'is-unlocked')} data-tip={unlocked ? '잠금 해제됨' : '잠김'}>
+            <span className={cx('ex-emoji', unlocked && 'is-unlocked')} data-tip={unlocked ? t('잠금 해제됨') : t('잠김')}>
               {unlocked ? '🔓' : '🔒'}
             </span>
             <span className="ex-item-name">{n.title}</span>
             {viewers.length > 0 && (
-              <span className="ex-viewers" data-tip={`${viewers.map((v) => v.user.name).join(', ')} 보는 중`}>
+              <span className="ex-viewers" data-tip={t('{x} 보는 중', { x: viewers.map((v) => v.user.name).join(', ') })}>
                 {viewers.slice(0, 3).map((v) => (
                   <span key={v.socketId} className="ex-viewer" style={{ background: v.user.color }}>
                     {v.user.avatar}

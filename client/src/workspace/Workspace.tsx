@@ -36,6 +36,7 @@ import { MAX_DOC_BYTES } from '@shared/protocol';
 import { lazyWithPreload, whenIdle } from '../lib/lazy';
 import { GUEST, demoPresetId, dropDemoEntry, isDemoId, putDemoEntry } from '../lib/demo';
 import { newId } from '../lib/util';
+import { activityText, t, translateLabel, translateServer } from '../i18n';
 
 // 에디터 모듈은 필요할 때 불러온다 (초기 로딩 경량화)
 function ModuleLoading() {
@@ -59,7 +60,7 @@ const CURSOR_MS = 100;
 /** 같은 행동 라벨 재전송 간격 (말풍선이 3.5초 유지되므로 그 안에서 한 번이면 계속 보인다) */
 const ACTION_REPEAT_MS = 3000;
 
-const ROLE_LABEL = { owner: '소유자', editor: '편집자', viewer: '뷰어' } as const;
+const ROLE_LABEL = { owner: t('소유자'), editor: t('편집자'), viewer: t('뷰어') } as const;
 
 /**
  * 가입 전 둘러보기: 로그인하지 않은 사람이 예시 템플릿(/t/demo-…)을 연다.
@@ -129,26 +130,26 @@ export function Workspace() {
         {lookup === 'missing' ? (
           <EmptyState
             icon={<SearchX size={36} />}
-            title="템플릿을 찾을 수 없습니다"
+            title={t('템플릿을 찾을 수 없습니다')}
             action={
               <Button variant="primary" onClick={() => navigate('/')}>
-                대시보드로 이동
+                {t('대시보드로 이동')}
               </Button>
             }
           >
-            이 브라우저에 없는 템플릿이거나, 삭제되었거나, 접근 권한이 없습니다.
+            {t('이 브라우저에 없는 템플릿이거나, 삭제되었거나, 접근 권한이 없습니다.')}
           </EmptyState>
         ) : lookup === 'error' ? (
           <EmptyState
             icon={<RefreshCw size={36} />}
-            title="서버에 연결할 수 없습니다"
+            title={t('서버에 연결할 수 없습니다')}
             action={
               <Button variant="primary" icon={<RefreshCw size={15} />} onClick={() => setLookup('idle')}>
-                다시 시도
+                {t('다시 시도')}
               </Button>
             }
           >
-            네트워크 상태를 확인한 뒤 다시 시도해 주세요.
+            {t('네트워크 상태를 확인한 뒤 다시 시도해 주세요.')}
           </EmptyState>
         ) : (
           <div className="center-fill">
@@ -209,7 +210,7 @@ function WorkspaceInner({ entry }: { entry: TemplateEntry }) {
       const provider = new LocalProvider(doc);
       void import('@shared/seed').then(({ seedTemplateDoc }) => {
         if (cancelled) return;
-        seedTemplateDoc(doc, demoPresetId(tid), entry.features, 'madang', () => newId());
+        seedTemplateDoc(doc, demoPresetId(tid), entry.features, 'madang', () => newId(), t);
         setConn({ doc, provider, room: null });
       });
       return () => {
@@ -277,13 +278,13 @@ function WorkspaceInner({ entry }: { entry: TemplateEntry }) {
     const presence = usePresence.getState();
     const connection = useConnection.getState();
     const setRoleInStore = (role: TemplateEntry['myRole']) => {
-      const t = useTemplates.getState().templates[tid];
-      if (t) useTemplates.getState().upsert({ ...t, myRole: role });
+      const tpl = useTemplates.getState().templates[tid];
+      if (tpl) useTemplates.getState().upsert({ ...tpl, myRole: role });
     };
     const onStatus = (s: RoomStatus) => {
       connection.setStatus(s === 'online' ? 'online' : s === 'connecting' ? 'connecting' : 'offline');
       if (s === 'denied') {
-        setError(room.deniedReason ?? '템플릿에 접근할 수 없습니다.');
+        setError(room.deniedReason ?? t('템플릿에 접근할 수 없습니다.'));
         setOutdated(room.outdated);
       }
       if (s !== 'online') usePresence.getState().clear();
@@ -313,9 +314,15 @@ function WorkspaceInner({ entry }: { entry: TemplateEntry }) {
         if (n >= 2) usePresence.getState().setCursor(m.sid, { x: pen.pts[n - 2], y: pen.pts[n - 1] });
       }),
       room.on('cursor', (m) => usePresence.getState().setCursor(m.sid, m.c)),
-      room.on('action', (m) => usePresence.getState().setAction(m.sid, m.label)),
+      room.on('action', (m) => usePresence.getState().setAction(m.sid, translateLabel(m.label))),
       room.on('timeline', (m) => dispatchTimelineEvent(m)),
-      room.on('toast', (m) => toast.show(m.toast)),
+      room.on('toast', ({ toast: x }) =>
+        toast.show({
+          ...x,
+          title: translateServer(x.title),
+          message: x.activity ? activityText({ ...x.activity, text: x.message ?? '' }) : x.message && translateServer(x.message),
+        }),
+      ),
       room.on('notes', (m) => setNotes(m.notes)),
       room.on('chat', (m) => {
         setChat((c) => [...c.slice(-299), m.message]);
@@ -323,7 +330,7 @@ function WorkspaceInner({ entry }: { entry: TemplateEntry }) {
           setUnread((n) => n + 1);
           toast.show({
             kind: 'info',
-            title: `${m.message.user.name} · 채팅`,
+            title: t('{name} · 채팅', { name: m.message.user.name }),
             message: m.message.text.length > 80 ? `${m.message.text.slice(0, 80)}…` : m.message.text,
             user: m.message.user,
           });
@@ -334,7 +341,7 @@ function WorkspaceInner({ entry }: { entry: TemplateEntry }) {
       }),
       room.on('role', (m) => {
         setRoleInStore(m.role);
-        toast.show({ kind: 'info', title: '내 권한이 변경되었습니다', message: `이제 ${ROLE_LABEL[m.role]}입니다.${m.role === 'viewer' ? ' 읽기 전용으로 전환됩니다.' : ''}` });
+        toast.show({ kind: 'info', title: t('내 권한이 변경되었습니다'), message: m.role === 'viewer' ? t('이제 뷰어입니다. 읽기 전용으로 전환됩니다.') : t('이제 {role}입니다.', { role: ROLE_LABEL[m.role] }) });
       }),
       room.on('requests', (m) => {
         setRequests(m.requests);
@@ -344,8 +351,11 @@ function WorkspaceInner({ entry }: { entry: TemplateEntry }) {
         const name = entryRef.current.name;
         useTemplates.getState().remove(tid, { dropLocalCopy: true });
         if (m.reason === 'deleted')
-          toast.show({ kind: 'danger', title: '템플릿이 휴지통으로 이동했습니다', message: `${m.by ?? '소유자'} 님이 ‘${name}’ 템플릿을 삭제했습니다. 소유자는 30일 안에 복원할 수 있습니다.` });
-        else if (m.reason === 'removed') toast.warning('템플릿에서 제외되었습니다', `‘${name}’ 템플릿에 더 이상 접근할 수 없습니다.`);
+          toast.show({ kind: 'danger', title: t('템플릿이 휴지통으로 이동했습니다'), message: m.by
+              ? t('{by} 님이 ‘{name}’ 템플릿을 삭제했습니다. 소유자는 30일 안에 복원할 수 있습니다.', { by: m.by, name })
+              : t('소유자가 ‘{name}’ 템플릿을 삭제했습니다. 소유자는 30일 안에 복원할 수 있습니다.', { name }),
+          });
+        else if (m.reason === 'removed') toast.warning(t('템플릿에서 제외되었습니다'), t('‘{name}’ 템플릿에 더 이상 접근할 수 없습니다.', { name }));
         navigateRef.current('/', { replace: true });
       }),
     ];
@@ -424,11 +434,11 @@ function WorkspaceInner({ entry }: { entry: TemplateEntry }) {
   useEffect(() => {
     if (!follow) return;
     if (!followed) {
-      const t = setTimeout(() => {
+      const timer = setTimeout(() => {
         setFollow(null);
-        toast.info('따라가기를 중지했습니다', '따라가던 사용자가 템플릿을 떠났습니다.');
+        toast.info(t('따라가기를 중지했습니다'), t('따라가던 사용자가 템플릿을 떠났습니다.'));
       }, 6000);
-      return () => clearTimeout(t);
+      return () => clearTimeout(timer);
     }
     if (!sameView(followed.view, viewRef.current)) {
       navigate(viewPath(tid, followed.view.module, followed.view.itemId));
@@ -490,10 +500,10 @@ function WorkspaceInner({ entry }: { entry: TemplateEntry }) {
     };
   }, [room]);
 
-  const setTicket = useCallback((noteId: string, t: UnlockedNote | null) => {
+  const setTicket = useCallback((noteId: string, note: UnlockedNote | null) => {
     setTickets((prev) => {
       const next = { ...prev };
-      if (t) next[noteId] = t;
+      if (note) next[noteId] = note;
       else delete next[noteId];
       return next;
     });
@@ -511,15 +521,15 @@ function WorkspaceInner({ entry }: { entry: TemplateEntry }) {
       <AppShell>
         <EmptyState
           icon={outdated ? <RefreshCw size={36} /> : <ShieldAlert size={36} />}
-          title={outdated ? '새 버전이 나왔습니다' : '템플릿을 열 수 없습니다'}
+          title={outdated ? t('새 버전이 나왔습니다') : t('템플릿을 열 수 없습니다')}
           action={
             outdated ? (
               <Button variant="primary" icon={<RefreshCw size={15} />} onClick={() => window.location.reload()}>
-                새로고침
+                {t('새로고침')}
               </Button>
             ) : (
               <Button variant="primary" onClick={() => navigate('/')}>
-                대시보드로 이동
+                {t('대시보드로 이동')}
               </Button>
             )
           }
@@ -588,7 +598,7 @@ function WorkspaceInner({ entry }: { entry: TemplateEntry }) {
           <ModuleView module={view.module} key={`${view.module}`} />
         )}
       </AppShell>
-      <span className="sr-only">{me.name} 님으로 작업 중</span>
+      <span className="sr-only">{t('{name} 님으로 작업 중', { name: me.name })}</span>
     </WorkspaceContext.Provider>
   );
 }
@@ -600,15 +610,15 @@ function DemoBanner() {
     <div className="demo-banner" role="note">
       <Eye size={16} aria-hidden />
       <span>
-        <b>예시 템플릿을 체험하는 중입니다.</b> 마음껏 고치고 실행해 보세요. 바뀐 내용은 저장되지 않습니다.
-        {guest ? ' 가입하면 내 템플릿을 만들어 저장할 수 있습니다.' : ''}
+        <b>{t('예시 템플릿을 체험하는 중입니다.')}</b> {t('마음껏 고치고 실행해 보세요. 바뀐 내용은 저장되지 않습니다.')}
+        {guest ? ` ${t('가입하면 내 템플릿을 만들어 저장할 수 있습니다.')}` : ''}
       </span>
       <Link className="btn btn-ghost btn-sm" to="/explore">
-        다른 예시
+        {t('다른 예시')}
       </Link>
       {guest && (
         <Link className="btn btn-primary btn-sm" to="/login">
-          가입하고 만들기
+          {t('가입하고 만들기')}
         </Link>
       )}
     </div>
@@ -619,9 +629,9 @@ function DemoBanner() {
 function TooLargeBanner({ templateId }: { templateId: string }) {
   const reset = async () => {
     const ok = await confirmDialog({
-      title: '클라우드에 저장된 상태로 되돌릴까요?',
-      message: `이 기기에만 있고 저장되지 못한 변경(방금 넣은 이미지 등)을 버리고, 마지막으로 저장된 상태를 다시 불러옵니다. 그다음 필요 없는 이미지를 지우면 다시 편집할 수 있습니다.`,
-      confirmText: '되돌리기',
+      title: t('클라우드에 저장된 상태로 되돌릴까요?'),
+      message: t('이 기기에만 있고 저장되지 못한 변경(방금 넣은 이미지 등)을 버리고, 마지막으로 저장된 상태를 다시 불러옵니다. 그다음 필요 없는 이미지를 지우면 다시 편집할 수 있습니다.'),
+      confirmText: t('되돌리기'),
       danger: true,
     });
     if (ok) resetDocCopy(templateId);
@@ -629,11 +639,11 @@ function TooLargeBanner({ templateId }: { templateId: string }) {
   return (
     <div className="too-large-banner" role="alert">
       <span>
-        <b>이 템플릿이 저장 한도({MAX_DOC_BYTES / 1024 / 1024}MB)에 닿아 더 이상 저장되지 않습니다.</b> 문서 이미지가 대부분을 차지합니다. 저장되지 못한 변경을 버리고 되돌린 뒤
-        이미지 몇 개를 지우면 다시 편집할 수 있습니다.
+        <b>{t('이 템플릿이 저장 한도({mb}MB)에 닿아 더 이상 저장되지 않습니다.', { mb: MAX_DOC_BYTES / 1024 / 1024 })}</b>{' '}
+        {t('문서 이미지가 대부분을 차지합니다. 저장되지 못한 변경을 버리고 되돌린 뒤 이미지 몇 개를 지우면 다시 편집할 수 있습니다.')}
       </span>
       <Button size="sm" variant="primary" onClick={() => void reset()}>
-        저장된 상태로 되돌리기
+        {t('저장된 상태로 되돌리기')}
       </Button>
     </div>
   );
@@ -690,7 +700,7 @@ function AddAreaPrompt({ module }: { module: ItemModule }) {
   return (
     <EmptyState
       icon={<span className="empty-emoji">{info.emoji}</span>}
-      title={`이 템플릿에는 아직 ${info.name} 영역이 없습니다`}
+      title={t('이 템플릿에는 아직 {name} 영역이 없습니다', { name: t(info.name) })}
       action={
         ws.canEdit ? (
           <Button
@@ -702,12 +712,12 @@ function AddAreaPrompt({ module }: { module: ItemModule }) {
               setBusy(false);
             }}
           >
-            {info.name} 영역 추가
+            {t('{name} 영역 추가', { name: t(info.name) })}
           </Button>
         ) : undefined
       }
     >
-      {ws.canEdit ? `${info.description} 추가하면 왼쪽 목록과 메뉴에 바로 나타납니다.` : '편집 권한이 있는 멤버가 영역을 추가할 수 있습니다.'}
+      {ws.canEdit ? t('{description} 추가하면 왼쪽 목록과 메뉴에 바로 나타납니다.', { description: t(info.description) }) : t('편집 권한이 있는 멤버가 영역을 추가할 수 있습니다.')}
     </EmptyState>
   );
 }

@@ -30,6 +30,7 @@ import { usePresence, uniqueUsers } from '../store/presence';
 import { useOptionalWorkspace, viewPath } from '../workspace/context';
 import { Kbd } from './ui';
 import { cx } from '../lib/util';
+import { t } from '../i18n';
 
 interface Command {
   id: string;
@@ -45,6 +46,7 @@ interface Command {
 
 /* ───────────── 한글 초성 검색 ───────────── */
 
+// i18n-ignore — 초성 검색표
 const CHOSUNG = 'ㄱㄲㄴㄷㄸㄹㅁㅂㅃㅅㅆㅇㅈㅉㅊㅋㅌㅍㅎ';
 /** 한글 음절을 초성으로 바꾼다 (다른 글자는 그대로) */
 function chosung(s: string): string {
@@ -78,7 +80,7 @@ function matches(cmd: Command, q: string): boolean {
   const needle = q.toLowerCase();
   if (JAMO_ONLY.test(needle)) {
     const jamo = needle.replace(/\s+/g, '');
-    return [cmd.label, cmd.keywords ?? '', cmd.group].some((t) => chosungMatch(t, jamo));
+    return [cmd.label, cmd.keywords ?? '', cmd.group].some((text) => chosungMatch(text, jamo));
   }
   const hay = `${cmd.label} ${cmd.keywords ?? ''} ${cmd.group}`.toLowerCase();
   return hay.includes(needle);
@@ -89,7 +91,7 @@ function matches(cmd: Command, q: string): boolean {
 /** 내용 검색을 시작하는 최소 글자 수 · 최대 결과 수 */
 const CONTENT_MIN = 2;
 const CONTENT_MAX = 30;
-const CONTENT_GROUP = '내용에서 찾음';
+const contentGroup = () => t('내용에서 찾음');
 
 interface ContentSource {
   key: string;
@@ -159,7 +161,7 @@ function collectSources(doc: Y.Doc, features: string[]): ContentSource[] {
 
 /** 찾은 곳 앞뒤를 잘라 한 줄로 */
 function makeSnippet(text: string, at: number, len: number): NonNullable<Command['snippet']> {
-  const flat = (t: string) => t.replace(/\s+/g, ' ');
+  const flat = (text: string) => text.replace(/\s+/g, ' ');
   const start = Math.max(0, at - 28);
   const end = Math.min(text.length, at + len + 60);
   return {
@@ -236,7 +238,7 @@ function Palette_() {
           const lang = getLanguage(item.get('language') as string);
           list.push({
             id: `file:${item.get('id')}`,
-            group: '코드 파일',
+            group: t('코드 파일'),
             label: String(item.get('name')),
             hint: lang.name,
             icon: <Code2 size={16} />,
@@ -247,7 +249,7 @@ function Palette_() {
         for (const item of sortedItems(getDocs(ws.doc)))
           list.push({
             id: `doc:${item.get('id')}`,
-            group: '문서',
+            group: t('문서'),
             label: String(item.get('title')),
             icon: <span>{String(item.get('emoji') ?? '📄')}</span>,
             run: () => ws.go('docs', item.get('id') as string),
@@ -256,26 +258,26 @@ function Palette_() {
         for (const item of sortedItems(getBoards(ws.doc)))
           list.push({
             id: `board:${item.get('id')}`,
-            group: '디자인 보드',
+            group: t('디자인 보드'),
             label: String(item.get('name')),
             icon: <Palette size={16} />,
             run: () => ws.go('design', item.get('id') as string),
           });
       for (const n of ws.notes)
-        list.push({ id: `note:${n.id}`, group: '비밀 노트', label: n.title, icon: <Lock size={16} />, run: () => ws.go('notes', n.id) });
+        list.push({ id: `note:${n.id}`, group: t('비밀 노트'), label: n.title, icon: <Lock size={16} />, run: () => ws.go('notes', n.id) });
 
       if (ws.canEdit) {
         // 꺼져 있는 영역이어도 만들 수 있다 (만들면 그 영역이 켜진다)
-        const area = (m: 'code' | 'docs' | 'design') => (f.includes(m) ? undefined : '영역 추가');
-        list.push({ id: 'new-doc', group: '만들기', label: '새 문서', hint: area('docs'), icon: <FileText size={16} />, keywords: 'new document 문서 추가', run: () => void import('../workspace/actions').then((a) => a.createDocument(ws, me)) });
-        list.push({ id: 'new-board', group: '만들기', label: '새 디자인 보드', hint: area('design'), icon: <Palette size={16} />, keywords: 'new board canvas 디자인 추가', run: () => void import('../workspace/actions').then((a) => a.createBoard(ws, me)) });
-        list.push({ id: 'new-file', group: '만들기', label: '새 코드 파일', hint: area('code'), icon: <FilePlus2 size={16} />, keywords: 'new file 파일 추가 코딩', run: () => void import('../workspace/actions').then((a) => a.createCodeFile(ws, me)) });
+        const area = (m: 'code' | 'docs' | 'design') => (f.includes(m) ? undefined : t('영역 추가'));
+        list.push({ id: 'new-doc', group: t('만들기'), label: t('새 문서'), hint: area('docs'), icon: <FileText size={16} />, keywords: t('new document 문서 추가'), run: () => void import('../workspace/actions').then((a) => a.createDocument(ws, me)) });
+        list.push({ id: 'new-board', group: t('만들기'), label: t('새 디자인 보드'), hint: area('design'), icon: <Palette size={16} />, keywords: t('new board canvas 디자인 추가'), run: () => void import('../workspace/actions').then((a) => a.createBoard(ws, me)) });
+        list.push({ id: 'new-file', group: t('만들기'), label: t('새 코드 파일'), hint: area('code'), icon: <FilePlus2 size={16} />, keywords: t('new file 파일 추가 코딩'), run: () => void import('../workspace/actions').then((a) => a.createCodeFile(ws, me)) });
         list.push({
           id: 'new-note',
-          group: '만들기',
-          label: '새 비밀 노트',
+          group: t('만들기'),
+          label: t('새 비밀 노트'),
           icon: <Lock size={16} />,
-          keywords: 'secret password 비밀번호',
+          keywords: t('secret password 비밀번호'),
           run: () => {
             ws.go('notes');
             ui.setNewNoteOpen(true);
@@ -283,58 +285,58 @@ function Palette_() {
         });
         list.push({
           id: 'share',
-          group: '작업',
-          label: ws.isPrivate ? '팀원 초대하기 (협업 공간으로 전환)' : '팀원 초대하기',
+          group: t('작업'),
+          label: ws.isPrivate ? t('팀원 초대하기 (협업 공간으로 전환)') : t('팀원 초대하기'),
           icon: <Share2 size={16} />,
-          keywords: 'invite link 링크 초대 협업',
+          keywords: t('invite link 링크 초대 협업'),
           run: () => ui.setShareOpen(true),
         });
       }
       if (!ws.isPrivate)
-        list.push({ id: 'chat', group: '작업', label: ws.chatOpen ? '채팅 닫기' : '채팅 열기', icon: <MessageSquare size={16} />, run: () => ws.setChatOpen(!ws.chatOpen) });
+        list.push({ id: 'chat', group: t('작업'), label: ws.chatOpen ? t('채팅 닫기') : t('채팅 열기'), icon: <MessageSquare size={16} />, run: () => ws.setChatOpen(!ws.chatOpen) });
       for (const p of uniqueUsers(others, me?.id))
         list.push({
           id: `follow:${p.socketId}`,
-          group: '함께 작업 중',
-          label: `${p.user.name} 따라가기`,
+          group: t('함께 작업 중'),
+          label: t('{name} 따라가기', { name: p.user.name }),
           icon: <Eye size={16} />,
           keywords: 'follow',
           run: () => ws.setFollow(p.user.id),
         });
 
       const nav: [string, string, ReactNode, Parameters<typeof viewPath>[1]][] = [
-        ['nav-overview', '개요', <LayoutDashboard size={16} />, 'overview'],
-        ['nav-timeline', '템플릿 타임라인', <History size={16} />, 'timeline'],
-        ['nav-members', '멤버 관리', <Users size={16} />, 'members'],
-        ['nav-settings', '템플릿 설정', <Settings size={16} />, 'settings'],
-        ['nav-notes', '비밀 노트 목록', <Lock size={16} />, 'notes'],
+        ['nav-overview', t('개요'), <LayoutDashboard size={16} />, 'overview'],
+        ['nav-timeline', t('템플릿 타임라인'), <History size={16} />, 'timeline'],
+        ['nav-members', t('멤버 관리'), <Users size={16} />, 'members'],
+        ['nav-settings', t('템플릿 설정'), <Settings size={16} />, 'settings'],
+        ['nav-notes', t('비밀 노트 목록'), <Lock size={16} />, 'notes'],
       ];
       for (const [id, label, icon, module] of nav)
-        list.push({ id, group: '이동', label, icon, run: () => navigate(viewPath(tid, module)) });
+        list.push({ id, group: t('이동'), label, icon, run: () => navigate(viewPath(tid, module)) });
     }
 
-    for (const t of Object.values(templates).sort((a, b) => b.updatedAt - a.updatedAt))
+    for (const entry of Object.values(templates).sort((a, b) => b.updatedAt - a.updatedAt))
       list.push({
-        id: `tpl:${t.id}`,
-        group: '템플릿',
-        label: t.name,
-        hint: t.id === ws?.template.id ? '현재' : undefined,
-        icon: <span>{t.emoji}</span>,
-        run: () => navigate(`/t/${t.id}`),
+        id: `tpl:${entry.id}`,
+        group: t('템플릿'),
+        label: entry.name,
+        hint: entry.id === ws?.template.id ? t('현재') : undefined,
+        icon: <span>{entry.emoji}</span>,
+        run: () => navigate(`/t/${entry.id}`),
       });
-    list.push({ id: 'new-template', group: '템플릿', label: '새 템플릿 만들기', icon: <Plus size={16} />, keywords: 'create new', run: () => navigate('/?new=1') });
-    list.push({ id: 'global-timeline', group: '이동', label: '전체 타임라인', icon: <History size={16} />, run: () => navigate('/timeline') });
-    list.push({ id: 'home', group: '이동', label: '대시보드', icon: <LayoutDashboard size={16} />, keywords: 'home 홈', run: () => navigate('/') });
+    list.push({ id: 'new-template', group: t('템플릿'), label: t('새 템플릿 만들기'), icon: <Plus size={16} />, keywords: 'create new', run: () => navigate('/?new=1') });
+    list.push({ id: 'global-timeline', group: t('이동'), label: t('전체 타임라인'), icon: <History size={16} />, run: () => navigate('/timeline') });
+    list.push({ id: 'home', group: t('이동'), label: t('대시보드'), icon: <LayoutDashboard size={16} />, keywords: t('home 홈'), run: () => navigate('/') });
     list.push({
       id: 'theme',
-      group: '설정',
-      label: theme === 'dark' ? '라이트 테마로 전환' : '다크 테마로 전환',
+      group: t('설정'),
+      label: theme === 'dark' ? t('라이트 테마로 전환') : t('다크 테마로 전환'),
       icon: <Moon size={16} />,
       keywords: 'theme dark light',
       run: () => setTheme(theme === 'dark' ? 'light' : 'dark'),
     });
-    list.push({ id: 'profile', group: '설정', label: '프로필 수정', icon: <UserRound size={16} />, run: () => ui.setProfileOpen(true) });
-    list.push({ id: 'shortcuts', group: '설정', label: '키보드 단축키 보기', icon: <Keyboard size={16} />, run: () => ui.setShortcutsOpen(true) });
+    list.push({ id: 'profile', group: t('설정'), label: t('프로필 수정'), icon: <UserRound size={16} />, run: () => ui.setProfileOpen(true) });
+    list.push({ id: 'shortcuts', group: t('설정'), label: t('키보드 단축키 보기'), icon: <Keyboard size={16} />, run: () => ui.setShortcutsOpen(true) });
     return list;
   }, [ws, me, templates, others, theme]); // eslint-disable-line react-hooks/exhaustive-deps
 
@@ -356,9 +358,9 @@ function Palette_() {
       const base = src.lower.length === src.text.length ? src.text : src.lower;
       out.push({
         id: `content:${src.key}`,
-        group: CONTENT_GROUP,
+        group: contentGroup(),
         label: src.title,
-        hint: count > 1 ? `${count > 99 ? '99+' : count}곳` : undefined,
+        hint: count > 1 ? t('{count}곳', { count: count > 99 ? '99+' : count }) : undefined,
         icon: src.icon,
         snippet: makeSnippet(base, at, needle.length),
         run: () => {
@@ -408,19 +410,19 @@ function Palette_() {
 
   return createPortal(
     <div className="modal-backdrop palette-backdrop" onMouseDown={(e) => e.target === e.currentTarget && close()}>
-      <div className="palette" role="dialog" aria-label="명령 팔레트">
+      <div className="palette" role="dialog" aria-label={t('명령 팔레트')}>
         <div className="palette-input">
           <Search size={18} />
           <input
             autoFocus
             value={q}
             role="combobox"
-            aria-label="명령 · 페이지 검색"
+            aria-label={t('명령 · 페이지 검색')}
             aria-expanded="true"
             aria-controls={listId}
             aria-autocomplete="list"
             aria-activedescendant={filtered.length ? optionId(safeIndex) : undefined}
-            placeholder="무엇을 찾고 있나요? (초성 검색 가능: ㅁㅅ → 문서)"
+            placeholder={t('무엇을 찾고 있나요? (초성 검색 가능: ㅁㅅ → 문서)')}
             onChange={(e) => setQ(e.target.value)}
             onKeyDown={(e) => {
               if (e.key === 'ArrowDown') {
@@ -437,10 +439,10 @@ function Palette_() {
           />
           <Kbd>Esc</Kbd>
         </div>
-        <div className="palette-list" ref={listRef} id={listId} role="listbox" aria-label="검색 결과">
+        <div className="palette-list" ref={listRef} id={listId} role="listbox" aria-label={t('검색 결과')}>
           {filtered.length === 0 && (
             <div className="palette-empty" role="presentation">
-              일치하는 항목이 없습니다
+              {t('일치하는 항목이 없습니다')}
             </div>
           )}
           {groups.map((g, gi) => (
@@ -483,12 +485,12 @@ function Palette_() {
         <div className="palette-footer">
           <span>
             <Kbd>↑</Kbd>
-            <Kbd>↓</Kbd> 이동
+            <Kbd>↓</Kbd> {t('이동')}
           </span>
           <span>
-            <Kbd>Enter</Kbd> 실행
+            <Kbd>Enter</Kbd> {t('실행')}
           </span>
-          {ws && query.length > 0 && query.length < CONTENT_MIN && <span>두 글자 이상이면 본문 내용도 찾습니다</span>}
+          {ws && query.length > 0 && query.length < CONTENT_MIN && <span>{t('두 글자 이상이면 본문 내용도 찾습니다')}</span>}
         </div>
       </div>
     </div>,

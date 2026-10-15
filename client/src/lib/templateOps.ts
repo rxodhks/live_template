@@ -6,6 +6,7 @@ import { useTemplates } from '../store/templates';
 import { ApiError, api } from './api';
 import { isDemoId, patchDemoEntry } from './demo';
 import { buildShareUpload, clearSharedLocalData, recordLocal } from './local';
+import { ko, t } from '../i18n';
 
 /*
  * 템플릿 단위 작업 — 아직 이 기기에만 있는 템플릿은 브라우저에서, 클라우드에 있는 템플릿은 서버에서 처리한다.
@@ -14,53 +15,53 @@ import { buildShareUpload, clearSharedLocalData, recordLocal } from './local';
 
 export type TemplatePatch = Partial<{ name: string; description: string; emoji: string; features: Feature[] }>;
 
-export async function updateTemplate(t: TemplateEntry, patch: TemplatePatch): Promise<TemplateEntry> {
+export async function updateTemplate(tpl: TemplateEntry, patch: TemplatePatch): Promise<TemplateEntry> {
   const store = useTemplates.getState();
-  if (t.mode === 'shared') {
-    const res = await api<{ template: TemplateSummary }>('PATCH', `/templates/${t.id}`, patch);
+  if (tpl.mode === 'shared') {
+    const res = await api<{ template: TemplateSummary }>('PATCH', `/templates/${tpl.id}`, patch);
     return store.upsertShared(res.template);
   }
-  const next = { ...t };
+  const next = { ...tpl };
   const changes: string[] = [];
-  if (patch.name !== undefined && patch.name.trim() && patch.name.trim() !== t.name) {
+  if (patch.name !== undefined && patch.name.trim() && patch.name.trim() !== tpl.name) {
     next.name = patch.name.trim().slice(0, 60);
-    changes.push(`이름 → ${next.name}`);
+    changes.push(ko('이름 → {name}', { name: next.name }));
   }
-  if (patch.description !== undefined && patch.description.trim() !== t.description) {
+  if (patch.description !== undefined && patch.description.trim() !== tpl.description) {
     next.description = patch.description.trim().slice(0, 200);
-    changes.push('설명 수정');
+    changes.push(ko('설명 수정'));
   }
-  if (patch.emoji && patch.emoji !== t.emoji) {
+  if (patch.emoji && patch.emoji !== tpl.emoji) {
     next.emoji = patch.emoji;
-    changes.push(`아이콘 → ${patch.emoji}`);
+    changes.push(ko('아이콘 → {emoji}', { emoji: patch.emoji }));
   }
   if (patch.features) {
     const f = FEATURE_ORDER.filter((x) => patch.features!.includes(x));
-    if (!f.length) throw new Error('기능은 하나 이상 필요합니다.');
-    if (f.join() !== t.features.join()) {
+    if (!f.length) throw new Error(t('기능은 하나 이상 필요합니다.'));
+    if (f.join() !== tpl.features.join()) {
       next.features = f;
-      changes.push(`기능 → ${f.map((x) => FEATURE_INFO[x].name).join(', ')}`);
+      changes.push(ko('기능 → {features}', { features: f.map((x) => FEATURE_INFO[x].name).join(', ') }));
     }
   }
-  if (!changes.length) return t;
+  if (!changes.length) return tpl;
   next.updatedAt = Date.now();
-  if (isDemoId(t.id)) return patchDemoEntry(next); // 둘러보기 예시는 저장하지 않는다
+  if (isDemoId(tpl.id)) return patchDemoEntry(next); // 둘러보기 예시는 저장하지 않는다
   store.upsert(next);
   await recordLocal(next, useSession.getState().user!, { type: 'template.update', detail: changes.join(', ') });
   return next;
 }
 
 /** 삭제 = 휴지통으로 이동 (30일 동안 복원 가능). 이 기기에만 있던 템플릿은 먼저 백업해서 복원할 수 있게 한다 */
-export async function deleteTemplate(t: TemplateEntry): Promise<void> {
-  const saved = t.mode === 'personal' ? await backupTemplate(t) : t;
+export async function deleteTemplate(tpl: TemplateEntry): Promise<void> {
+  const saved = tpl.mode === 'personal' ? await backupTemplate(tpl) : tpl;
   await api('DELETE', `/templates/${saved.id}`);
   useTemplates.getState().remove(saved.id, { dropLocalCopy: true });
 }
 
-export async function leaveTemplate(t: TemplateEntry): Promise<void> {
+export async function leaveTemplate(tpl: TemplateEntry): Promise<void> {
   const me = useSession.getState().user!;
-  await api('DELETE', `/templates/${t.id}/members/${me.id}`);
-  useTemplates.getState().remove(t.id, { dropLocalCopy: true });
+  await api('DELETE', `/templates/${tpl.id}/members/${me.id}`);
+  useTemplates.getState().remove(tpl.id, { dropLocalCopy: true });
 }
 
 /**
@@ -69,17 +70,17 @@ export async function leaveTemplate(t: TemplateEntry): Promise<void> {
  *  · shared : 첫 초대와 함께 협업 공간으로
  * 이미 클라우드에 있는 개인 템플릿은 초대 링크를 만들 때 서버가 협업 공간으로 바꾼다.
  */
-async function upload(t: TemplateEntry, visibility: 'private' | 'shared', openDoc?: Y.Doc): Promise<TemplateEntry> {
-  if (t.mode === 'shared') return t;
-  const body = await buildShareUpload(t, openDoc);
-  const res = await api<{ template: TemplateSummary }>('POST', `/templates/${t.id}/${visibility === 'private' ? 'backup' : 'share'}`, body);
+async function upload(tpl: TemplateEntry, visibility: 'private' | 'shared', openDoc?: Y.Doc): Promise<TemplateEntry> {
+  if (tpl.mode === 'shared') return tpl;
+  const body = await buildShareUpload(tpl, openDoc);
+  const res = await api<{ template: TemplateSummary }>('POST', `/templates/${tpl.id}/${visibility === 'private' ? 'backup' : 'share'}`, body);
   const saved = useTemplates.getState().upsertShared(res.template);
   await clearSharedLocalData(body);
   return saved;
 }
 
-export const backupTemplate = (t: TemplateEntry, openDoc?: Y.Doc) => upload(t, 'private', openDoc);
-export const shareTemplate = (t: TemplateEntry, openDoc?: Y.Doc) => upload(t, 'shared', openDoc);
+export const backupTemplate = (tpl: TemplateEntry, openDoc?: Y.Doc) => upload(tpl, 'private', openDoc);
+export const shareTemplate = (tpl: TemplateEntry, openDoc?: Y.Doc) => upload(tpl, 'shared', openDoc);
 
 /** 지금 편집 화면에 열려 있는 템플릿 (백업 중에 바뀐 내용이 섞이지 않도록 닫힌 뒤에 백업한다) */
 let openTemplateId: string | null = null;
@@ -92,15 +93,15 @@ export function backupPending(): Promise<number> {
   backupRun ??= (async () => {
     let done = 0;
     try {
-      for (const t of Object.values(useTemplates.getState().templates)) {
-        if (t.mode !== 'personal' || t.id === openTemplateId || isDemoId(t.id)) continue;
+      for (const tpl of Object.values(useTemplates.getState().templates)) {
+        if (tpl.mode !== 'personal' || tpl.id === openTemplateId || isDemoId(tpl.id)) continue;
         try {
-          await backupTemplate(t);
+          await backupTemplate(tpl);
           done++;
         } catch (err) {
           // 오프라인이거나 오늘 올릴 수 있는 수를 다 썼으면 (하루 상한) 나머지는 다음에. 이 기기에는 그대로 남아 있다
           if (err instanceof ApiError && (err.status === 0 || err.status === 429)) break;
-          console.warn('개인 템플릿 백업 실패', t.id, err);
+          console.warn('개인 템플릿 백업 실패', tpl.id, err);
         }
       }
     } finally {
@@ -112,7 +113,7 @@ export function backupPending(): Promise<number> {
 }
 
 /** 아직 백업되지 않은 개인 템플릿 수 */
-export const unbackedCount = () => Object.values(useTemplates.getState().templates).filter((t) => t.mode === 'personal' && !isDemoId(t.id)).length;
+export const unbackedCount = () => Object.values(useTemplates.getState().templates).filter((tpl) => tpl.mode === 'personal' && !isDemoId(tpl.id)).length;
 
 /* ───────────── 휴지통 ───────────── */
 
@@ -130,8 +131,8 @@ export const purgeFromTrash = (id: string) => api('DELETE', `/trash/${id}`);
 export const listVersions = (templateId: string) => api<{ versions: VersionInfo[] }>('GET', `/templates/${templateId}/versions`);
 
 /** 이전 버전으로 나만 보는 사본 만들기 (지금 문서는 그대로) */
-export async function copyVersion(t: TemplateEntry, v: VersionInfo, label: string): Promise<TemplateEntry> {
-  const name = `${t.name} (${label} 버전)`.slice(0, 60);
-  const res = await api<{ template: TemplateSummary }>('POST', `/templates/${t.id}/versions/${v.id}/copy`, { name, label });
+export async function copyVersion(tpl: TemplateEntry, v: VersionInfo, label: string): Promise<TemplateEntry> {
+  const name = t('{name} ({label} 버전)', { name: tpl.name, label }).slice(0, 60);
+  const res = await api<{ template: TemplateSummary }>('POST', `/templates/${tpl.id}/versions/${v.id}/copy`, { name, label });
   return useTemplates.getState().upsertShared(res.template);
 }

@@ -5,6 +5,7 @@ import { dispatchTimelineEvent, useTemplates } from '../store/templates';
 import { deleteDocDb, docDbName, idbAll, idbByTemplate, idbDelete, idbDeleteByTemplate, idbPut } from './idb';
 import { toB64 } from './crypto';
 import { newId } from './util';
+import { t } from '../i18n';
 
 /*
  * 개인 공간 — 서버 없이 이 브라우저(IndexedDB)에만 저장된다.
@@ -33,7 +34,7 @@ export async function createPersonalTemplate(
   const doc = new Y.Doc();
   const idb = new IndexeddbPersistence(docDbName(id), doc);
   await idb.whenSynced;
-  seedTemplateDoc(doc, input.presetId, input.features, me.id, () => newId());
+  seedTemplateDoc(doc, input.presetId, input.features, me.id, () => newId(), t);
   await storeState(idb, true);
   await idb.destroy();
   doc.destroy();

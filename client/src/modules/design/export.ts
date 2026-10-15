@@ -3,6 +3,7 @@ import type { Shape } from '@shared/schema';
 import { downloadBlob } from '../../lib/util';
 import { boundsOf, intersects, unionBounds } from './geometry';
 import { ShapeView } from './ShapeView';
+import { t } from '../../i18n';
 
 /** 보드를 독립적인 SVG 문서로 만든다 (ShapeView를 그대로 재사용). transparent면 배경을 깔지 않는다 */
 export async function boardToSvg(shapes: Shape[], background: string, transparent = false): Promise<{ svg: string; width: number; height: number }> {
@@ -56,7 +57,7 @@ export async function frameToSvg(frame: Shape, all: Shape[], transparent = false
 
 export async function exportFrame(frame: Shape, all: Shape[], format: 'svg' | 'png', scale = 2, transparent = false): Promise<void> {
   const { svg, width, height } = await frameToSvg(frame, all, transparent);
-  const name = (frame.name || '아트보드').replace(/[\\/:*?"<>|]/g, '_');
+  const name = (frame.name || t('아트보드')).replace(/[\\/:*?"<>|]/g, '_');
   if (format === 'svg') return downloadBlob(`${name}.svg`, new Blob([svg], { type: 'image/svg+xml' }));
   await svgToPng(svg, width, height, scale, `${name}.png`);
 }
@@ -67,7 +68,7 @@ async function svgToPng(svg: string, width: number, height: number, scale: numbe
     const img = new Image();
     await new Promise<void>((resolve, reject) => {
       img.onload = () => resolve();
-      img.onerror = () => reject(new Error('이미지를 만들 수 없습니다'));
+      img.onerror = () => reject(new Error(t('이미지를 만들 수 없습니다')));
       img.src = url;
     });
     const canvas = document.createElement('canvas');
