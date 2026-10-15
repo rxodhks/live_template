@@ -15,6 +15,7 @@ export default {
   '새 파일 만들기': 'Create new file',
   '파일 이름의 확장자로 언어가 자동 선택되며, 편집기 상단에서 언어를 바꿀 수 있습니다.': 'The language is chosen automatically from the file extension. You can change it at the top of the editor.',
   '[미리보기] {x}': '[Preview] {x}',
+  '다른 파일({x})의 미리보기 메시지는 그 파일을 열면 보입니다.': 'Preview messages from other files ({x}) appear when you open that file.',
   '미리보기를 만들지 못했습니다: {x}': 'Couldn’t build the preview: {x}',
   '[미리보기] {x}초 넘게 응답이 없어 미리보기를 멈췄습니다. 끝나지 않는 반복(while (true) 등)이 있는지 확인해 보세요.': (v) =>
     `[Preview] Stopped the preview because it didn’t respond for over ${plural(v.x, 'second')}. Check for loops that never end (such as while (true)).`,

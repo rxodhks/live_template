@@ -9,6 +9,8 @@ export interface OutputLine {
   table?: { columns: string[]; rows: unknown[][]; total: number };
   /** 미리보기 화면의 console · 오류 */
   fromPreview?: boolean;
+  /** 미리보기 메시지가 나온 파일 (모르면 비어 있다) */
+  file?: string;
 }
 
 let lineSeq = 0;
@@ -16,7 +18,17 @@ export const line = (level: OutputLine['level'], text: string): OutputLine => ({
 
 /* ───────── HTML 미리보기: 템플릿의 CSS · SCSS · JS · TS 파일을 합쳐 하나의 문서로 ───────── */
 
-const PREVIEW_CONSOLE = `<script>(function(){var p=function(l,a){try{parent.postMessage({__ltPreview:true,level:l,text:Array.prototype.map.call(a,function(x){try{return typeof x==='string'?x:JSON.stringify(x)}catch(e){return String(x)}}).join(' ')},'*')}catch(e){}};['log','info','warn','error'].forEach(function(l){var o=console[l];console[l]=function(){p(l,arguments);o&&o.apply(console,arguments)}});window.addEventListener('error',function(e){p('error',[e.message])});})();<\/script>`;
+/*
+ * 미리보기 콘솔 — console.* · 오류를 화면으로 보내고, 어느 파일에서 났는지(file)도 같이 알린다.
+ *  · 스택에 ‘파일 이름:줄’(sourceURL)이 있으면 그 파일, 없으면 지금 실행 중인 파일(__ltCur)로 본다
+ *  · 문법 오류처럼 스택이 없는 오류도 파일마다 앞에 넣은 __ltCur 표시로 구분된다
+ */
+export const PREVIEW_CONSOLE = `<script>(function(){var src=function(st){var re=/([^\\s()@]+):\\d+:\\d+/g,m;while((m=re.exec(String(st||'')))){var u=m[1];if(/^[a-z][a-z0-9+.-]*:/i.test(u))continue;u=u.replace(/^\\.\\//,'');try{return decodeURI(u)}catch(e){return u}}return null};var who=function(st){return src(st)||window.__ltCur||null};var p=function(l,a,f){try{parent.postMessage({__ltPreview:true,level:l,file:f,text:Array.prototype.map.call(a,function(x){try{return typeof x==='string'?x:JSON.stringify(x)}catch(e){return String(x)}}).join(' ')},'*')}catch(e){}};['log','info','warn','error'].forEach(function(l){var o=console[l];console[l]=function(){p(l,arguments,who(new Error().stack));o&&o.apply(console,arguments)}});window.addEventListener('error',function(e){var f=e.filename?src(e.filename+':0:0'):null;p('error',[e.message],f||who(e.error&&e.error.stack))});window.addEventListener('unhandledrejection',function(e){var r=e.reason;p('error',[String(r&&r.message||r)],who(r&&r.stack))});})();<\/script>`;
+
+/** 미리보기 콘솔이 메시지를 어느 파일 것으로 볼지 정한다 (`<script>` 안에 넣어도 안전하게) */
+const markFile = (name: string) => `<script>window.__ltCur=${JSON.stringify(name).replace(/</g, '\\u003c')}<\/script>`;
+/** 인라인으로 넣은 스크립트에 붙이는 파일 이름 — 오류 스택에 ‘main.js:3:5’처럼 나온다 */
+const sourceUrl = (name: string) => `\n//# sourceURL=${encodeURI(name)}`;
 
 /*
  * 미리보기 멈춤 감지 — 미리보기 문서가 0.5초마다 신호를 보낸다.
@@ -94,7 +106,7 @@ export function buildPreview(doc: Y.Doc, preferredHtmlId?: string | null, extras
   if (!html) return null;
   let out = html.content;
   const escapeRe = (s: string) => s.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
-  const headExtra: string[] = [PREVIEW_CONSOLE];
+  const headExtra: string[] = [PREVIEW_CONSOLE, markFile(html.name)];
   const bodyExtra: string[] = [];
   // HTML이 로컬 CSS/JS 파일을 직접 연결했으면 연결한 파일만 넣고, 하나도 연결하지 않았을 때만 모든 CSS/JS를 자동으로 붙인다
   const linksLocal = (attr: 'href' | 'src') => files.some((f) => new RegExp(`${attr}=["']\\.?/?${escapeRe(f.name)}["']`, 'i').test(html.content));
@@ -115,7 +127,8 @@ export function buildPreview(doc: Y.Doc, preferredHtmlId?: string | null, extras
       const safe = js.replace(/<\/script/gi, '<\\/script');
       const m = re.exec(out);
       const module = m && /type=["']module["']/i.test(m[1] + m[2]);
-      const tag = `<script data-file="${f.name}"${module ? ' type="module"' : ''}>\n${safe}\n</script>`;
+      // 앞뒤 표시로 이 파일에서 난 오류인지 구분한다 (끝나면 다시 HTML 파일로)
+      const tag = `${markFile(f.name)}<script data-file="${f.name}"${module ? ' type="module"' : ''}>\n${safe}${sourceUrl(f.name)}\n</script>${markFile(html.name)}`;
       if (m) out = out.replace(re, () => tag);
       else if (f.lang === 'javascript' && autoJs) bodyExtra.push(tag);
     }
