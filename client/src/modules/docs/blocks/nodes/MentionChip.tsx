@@ -3,6 +3,7 @@ import { Mention } from '@tiptap/extension-mention';
 import { NodeViewWrapper, ReactNodeViewRenderer, type ReactNodeViewProps } from '@tiptap/react';
 import { cx } from '../../../../lib/util';
 import { type DocEnv, EMPTY_ENV, PAGE_MODULE_NAME, dateLabel, parseMentionId } from '../env';
+import { t } from '../../../../i18n';
 
 /** 멘션 (@사람 · @페이지 · @날짜) — 저장은 id와 입력할 때의 이름, 화면에는 지금 이름을 보여 준다 */
 export const DocMention = Mention.extend<{ env: DocEnv } & Record<string, unknown>>({
@@ -23,7 +24,7 @@ function MentionView({ node, extension }: ReactNodeViewProps) {
   if (ref?.kind === 'user') {
     const u = env.users().find((x) => x.id === ref.id);
     return (
-      <NodeViewWrapper as="span" className="mention mention-user" data-tip={u ? undefined : '템플릿에 없는 사람'}>
+      <NodeViewWrapper as="span" className="mention mention-user" data-tip={u ? undefined : t('템플릿에 없는 사람')}>
         @{u?.name ?? fallback}
       </NodeViewWrapper>
     );
@@ -36,7 +37,7 @@ function MentionView({ node, extension }: ReactNodeViewProps) {
         className={cx('mention mention-page', !p && 'is-missing')}
         role="link"
         tabIndex={0}
-        data-tip={p ? `${PAGE_MODULE_NAME[ref.module]} 열기` : '삭제된 페이지'}
+        data-tip={p ? t('{x} 열기', { x: PAGE_MODULE_NAME[ref.module] }) : t('삭제된 페이지')}
         onClick={() => p && env.openPage(ref.module, ref.id)}
         onKeyDown={(e: React.KeyboardEvent) => e.key === 'Enter' && p && env.openPage(ref.module, ref.id)}
       >

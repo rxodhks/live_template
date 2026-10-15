@@ -28,6 +28,7 @@ import { Button, Field, Spinner, confirmDialog } from '../components/ui';
 import { BRAND, BrandMark } from '../components/Brand';
 import { ProfileForm, type ProfileDraft } from '../components/ProfileForm';
 import { LegalLinks } from './Legal';
+import { t, tr } from '../i18n';
 
 /*
  * 로그인 · 가입
@@ -48,9 +49,9 @@ async function offerPasskey(): Promise<void> {
   if (!account || (account.passkeys ?? 0) > 0 || passkeyOfferDismissed()) return;
   if (!(await platformPasskeyAvailable())) return;
   const ok = await confirmDialog({
-    title: '다음부터 더 빠르게 로그인할까요?',
-    message: '이 기기에 패스키를 등록하면 다음부터 이메일과 인증 코드 없이 지문 · 얼굴 · 기기 PIN으로 바로 로그인합니다. 프로필 수정에서 언제든 관리할 수 있습니다.',
-    confirmText: '패스키 등록',
+    title: t('다음부터 더 빠르게 로그인할까요?'),
+    message: t('이 기기에 패스키를 등록하면 다음부터 이메일과 인증 코드 없이 지문 · 얼굴 · 기기 PIN으로 바로 로그인합니다. 프로필 수정에서 언제든 관리할 수 있습니다.'),
+    confirmText: t('패스키 등록'),
   });
   if (!ok) {
     dismissPasskeyOffer();
@@ -61,39 +62,39 @@ async function offerPasskey(): Promise<void> {
     rememberLogin('passkey');
     const s = useSession.getState();
     if (s.user && s.account) s.setAuthed(s.user, { ...s.account, passkeys: (s.account.passkeys ?? 0) + 1 }, s.offline);
-    toast.success('패스키를 등록했습니다', '다음부터 로그인 화면에서 "패스키로 로그인"을 누르면 바로 들어옵니다.');
+    toast.success(t('패스키를 등록했습니다'), t('다음부터 로그인 화면에서 "패스키로 로그인"을 누르면 바로 들어옵니다.'));
   } catch (err) {
     if (isPasskeyCancel(err)) return;
-    toast.error('패스키를 등록하지 못했습니다', errorMessage(err));
+    toast.error(t('패스키를 등록하지 못했습니다'), errorMessage(err));
   }
 }
 
 /** 로그인 버튼 옆 '최근 사용' 표시 */
 function RecentBadge({ show }: { show: boolean }) {
-  return show ? <span className="auth-recent">최근 사용</span> : null;
+  return show ? <span className="auth-recent">{t('최근 사용')}</span> : null;
 }
 
 const FEATURES = [
-  { icon: <MousePointer2 size={18} />, title: '실시간 커서와 행동 표시', text: '누가 어디서 무엇을 하는지 각 사용자의 커서에서 확인할 수 있습니다.' },
-  { icon: <Palette size={18} />, title: '디자인 캔버스', text: '다양한 디자인 툴을 이용한 작업이 가능합니다.' },
-  { icon: <Code2 size={18} />, title: '코드 에디터', text: '24개 언어, 실행과 미리보기까지. 간단한 작업을 수행할 수 있습니다.' },
-  { icon: <FileText size={18} />, title: '문서 작성', text: '리치 텍스트 문서를 동시에 편집합니다.' },
-  { icon: <Lock size={18} />, title: '비밀 노트', text: '개인 혹은 협업자들만의 암호화된 노트를 사용할 수 있습니다.' },
+  { icon: <MousePointer2 size={18} />, title: t('실시간 커서와 행동 표시'), text: t('누가 어디서 무엇을 하는지 각 사용자의 커서에서 확인할 수 있습니다.') },
+  { icon: <Palette size={18} />, title: t('디자인 캔버스'), text: t('다양한 디자인 툴을 이용한 작업이 가능합니다.') },
+  { icon: <Code2 size={18} />, title: t('코드 에디터'), text: t('24개 언어, 실행과 미리보기까지. 간단한 작업을 수행할 수 있습니다.') },
+  { icon: <FileText size={18} />, title: t('문서 작성'), text: t('리치 텍스트 문서를 동시에 편집합니다.') },
+  { icon: <Lock size={18} />, title: t('비밀 노트'), text: t('개인 혹은 협업자들만의 암호화된 노트를 사용할 수 있습니다.') },
 ];
 
 const PROVIDERS: { id: OAuthProvider; label: string; icon: ReactNode }[] = [
-  { id: 'google', label: 'Google로 계속하기', icon: <GoogleLogo /> },
-  { id: 'github', label: 'GitHub로 계속하기', icon: <GitHubLogo /> },
+  { id: 'google', label: t('Google로 계속하기'), icon: <GoogleLogo /> },
+  { id: 'github', label: t('GitHub로 계속하기'), icon: <GitHubLogo /> },
 ];
 
-const PROVIDER_NAME: Record<string, string> = { google: 'Google', github: 'GitHub', email: '이메일' };
+const PROVIDER_NAME: Record<string, string> = { google: 'Google', github: 'GitHub', email: t('이메일') };
 
 const LOGIN_ERRORS: Record<string, string> = {
-  cancelled: '로그인을 취소했습니다. 다른 방법으로 계속할 수 있습니다.',
-  expired: '로그인 시간이 지났습니다. 다시 시도해 주세요.',
-  failed: '외부 계정으로 로그인하지 못했습니다. 잠시 후 다시 시도해 주세요.',
-  unavailable: '지금은 사용할 수 없는 로그인 방법입니다.',
-  signup: '가입 절차가 만료되었습니다. 다시 로그인해 주세요.',
+  cancelled: t('로그인을 취소했습니다. 다른 방법으로 계속할 수 있습니다.'),
+  expired: t('로그인 시간이 지났습니다. 다시 시도해 주세요.'),
+  failed: t('외부 계정으로 로그인하지 못했습니다. 잠시 후 다시 시도해 주세요.'),
+  unavailable: t('지금은 사용할 수 없는 로그인 방법입니다.'),
+  signup: t('가입 절차가 만료되었습니다. 다시 로그인해 주세요.'),
 };
 
 function AuthLayout({ children }: { children: ReactNode }) {
@@ -103,17 +104,18 @@ function AuthLayout({ children }: { children: ReactNode }) {
         <div className="onboarding-brand">
           <BrandMark size={36} />
           <span>
-            {BRAND} <small className="brand-ko">마당</small>
+            {BRAND} <small className="brand-ko">마당</small>{/* i18n-ignore — 이름의 한국어 표기 */}
           </span>
         </div>
-        <p className="onboarding-tagline">개인 공간을 넘어 모두의 공간으로.</p>
+        <p className="onboarding-tagline">{t('개인 공간을 넘어 모두의 공간으로.')}</p>
         <h1>
-          다양한 작업을
-          <br />한 화면에서 <em>함께</em>.
+          {t('다양한 작업을')}
+          <br />
+          {tr('한 화면에서 {together}.', { together: <em>{t('함께')}</em> })}
         </h1>
-        <p>템플릿 하나에 필요한 기능만 골라 담고, 혼자 시작해서 필요할 때 팀원을 초대해 실시간으로 함께 작업하세요.</p>
+        <p>{t('템플릿 하나에 필요한 기능만 골라 담고, 혼자 시작해서 필요할 때 팀원을 초대해 실시간으로 함께 작업하세요.')}</p>
         <Link className="btn btn-secondary onboarding-explore" to="/explore">
-          <Eye size={15} /> 가입 없이 체험해 보기
+          <Eye size={15} /> {t('가입 없이 체험해 보기')}
         </Link>
         <ul className="onboarding-features">
           {FEATURES.map((f) => (
@@ -139,9 +141,9 @@ function AuthLayout({ children }: { children: ReactNode }) {
 
 /** 가입 단계 표시: 본인 확인 → 이름 → 시작 */
 function Steps({ current }: { current: 1 | 2 }) {
-  const steps = ['본인 확인', '이름 정하기', '시작'];
+  const steps = [t('본인 확인'), t('이름 정하기'), t('시작')];
   return (
-    <ol className="auth-steps" aria-label="가입 단계">
+    <ol className="auth-steps" aria-label={t('가입 단계')}>
       {steps.map((s, i) => (
         <li key={s} className={cx(i + 1 < current && 'is-done', i + 1 === current && 'is-current')} aria-current={i + 1 === current ? 'step' : undefined}>
           <span className="auth-step-dot">{i + 1 < current ? <CheckCircle2 size={14} /> : i + 1}</span>
@@ -218,7 +220,7 @@ export function LoginPage() {
     }
     rememberLogin(method, address);
     await completeLogin(res.user!);
-    toast.success(`다시 오셨네요, ${res.user!.name} 님!`);
+    toast.success(t('다시 오셨네요, {name} 님!', { name: res.user!.name }));
     if (method === 'email') void offerPasskey();
   };
 
@@ -320,12 +322,12 @@ export function LoginPage() {
       {step === 'start' ? (
         <>
           <div className="auth-head">
-            <h2>{BRAND} 시작하기</h2>
-            <p className="muted">로그인하거나 새 계정을 만드세요. 처음이라면 본인 확인 후 이름만 정하면 가입이 끝납니다.</p>
+            <h2>{t('{BRAND} 시작하기', { BRAND })}</h2>
+            <p className="muted">{t('로그인하거나 새 계정을 만드세요. 처음이라면 본인 확인 후 이름만 정하면 가입이 끝납니다.')}</p>
           </div>
           {invited && (
             <div className="auth-callout">
-              <UserPlus size={16} /> 초대 링크로 오셨네요. 로그인하면 바로 참여할 수 있습니다.
+              <UserPlus size={16} /> {t('초대 링크로 오셨네요. 로그인하면 바로 참여할 수 있습니다.')}
             </div>
           )}
           {notice && (
@@ -366,7 +368,7 @@ export function LoginPage() {
                   {showPasskey && (
                     <button type="button" className={cx('auth-provider', 'is-passkey', last?.method === 'passkey' && 'is-first')} disabled={busy !== null} onClick={() => void passkeyLogin()}>
                       {busy === 'passkey' ? <Spinner size={16} /> : <Fingerprint size={18} />}
-                      <span>패스키로 로그인</span>
+                      <span>{t('패스키로 로그인')}</span>
                       <RecentBadge show={last?.method === 'passkey'} />
                     </button>
                   )}
@@ -374,7 +376,7 @@ export function LoginPage() {
               )}
               {(oauth.length > 0 || showPasskey) && config?.email && (
                 <div className="auth-divider">
-                  <span>또는 이메일로</span>
+                  <span>{t('또는 이메일로')}</span>
                 </div>
               )}
               {config?.email ? (
@@ -388,13 +390,13 @@ export function LoginPage() {
                   <Field
                     label={
                       <>
-                        이메일 <RecentBadge show={last?.method === 'email' && Boolean(last.email) && email === last.email} />
+                        {t('이메일')} <RecentBadge show={last?.method === 'email' && Boolean(last.email) && email === last.email} />
                       </>
                     }
                     hint={
                       last?.email && email === last.email ? (
                         <span className="auth-remembered">
-                          이 기기에서 마지막으로 쓴 이메일입니다.{' '}
+                          {t('이 기기에서 마지막으로 쓴 이메일입니다.')}{' '}
                           <button
                             type="button"
                             className="link small"
@@ -404,7 +406,7 @@ export function LoginPage() {
                               setEmail('');
                             }}
                           >
-                            기억 지우기
+                            {t('기억 지우기')}
                           </button>
                         </span>
                       ) : undefined
@@ -423,19 +425,19 @@ export function LoginPage() {
                     />
                   </Field>
                   <Button type="submit" variant="primary" size="lg" className="w-full" icon={<Mail size={16} />} loading={busy === 'email'} disabled={!email.trim() || busy !== null}>
-                    이메일로 계속하기
+                    {t('이메일로 계속하기')}
                   </Button>
                 </form>
               ) : (
                 oauth.length === 0 && (
                   <div className="auth-alert" role="alert">
-                    아직 사용할 수 있는 로그인 방법이 없습니다. 관리자가 로그인 설정을 마치면 이용할 수 있습니다.
+                    {t('아직 사용할 수 있는 로그인 방법이 없습니다. 관리자가 로그인 설정을 마치면 이용할 수 있습니다.')}
                   </div>
                 )
               )}
               <p className="auth-foot muted small">
-                <ShieldCheck size={13} /> 비밀번호 없이 로그인합니다. 이메일은 로그인 확인에만 사용됩니다.
-                {passkeys && ' 이메일로 한 번 들어온 뒤 패스키를 등록하면 다음부터는 코드 없이 들어옵니다.'}
+                <ShieldCheck size={13} /> {t('비밀번호 없이 로그인합니다. 이메일은 로그인 확인에만 사용됩니다.')}
+                {passkeys && ` ${t('이메일로 한 번 들어온 뒤 패스키를 등록하면 다음부터는 코드 없이 들어옵니다.')}`}
               </p>
             </>
           )}
@@ -443,19 +445,19 @@ export function LoginPage() {
       ) : (
         <>
           <button type="button" className="auth-back" onClick={() => setStep('start')}>
-            <ArrowLeft size={15} /> 다른 방법으로 로그인
+            <ArrowLeft size={15} /> {t('다른 방법으로 로그인')}
           </button>
           <div className="auth-head">
-            <h2>메일을 확인해 주세요</h2>
+            <h2>{t('메일을 확인해 주세요')}</h2>
             <p className="muted">
-              <b className="auth-email-addr">{sentTo}</b> 주소로 6자리 인증 코드를 보냈습니다. 인증 코드의 유효 기간은 10분입니다.
+              {tr('{email} 주소로 6자리 인증 코드를 보냈습니다. 인증 코드의 유효 기간은 10분입니다.', { email: <b className="auth-email-addr">{sentTo}</b> })}
             </p>
           </div>
           {devCode && (
             <div className="auth-dev" role="note">
-              개발 모드 · 메일 대신 코드를 바로 보여 줍니다: <b>{devCode}</b>
+              {t('개발 모드 · 메일 대신 코드를 바로 보여 줍니다:')} <b>{devCode}</b>
               <button type="button" className="link small" onClick={() => (setCode(devCode), void verify(devCode))}>
-                입력하기
+                {t('입력하기')}
               </button>
             </div>
           )}
@@ -482,13 +484,13 @@ export function LoginPage() {
               </div>
             )}
             <Button type="submit" variant="primary" size="lg" className="w-full" loading={busy === 'verify'} disabled={code.length !== 6}>
-              확인
+              {t('확인')}
             </Button>
           </form>
           <div className="auth-resend">
-            <span className="muted small">메일이 오지 않았나요? 스팸함도 확인해 주세요.</span>
+            <span className="muted small">{t('메일이 오지 않았나요? 스팸함도 확인해 주세요.')}</span>
             <button type="button" className="link small" disabled={wait > 0 || busy !== null} onClick={() => void sendCode(sentTo)}>
-              <RotateCw size={13} /> {wait > 0 ? `${wait}초 후 다시 보내기` : '코드 다시 보내기'}
+              <RotateCw size={13} /> {wait > 0 ? t('{wait}초 후 다시 보내기', { wait }) : t('코드 다시 보내기')}
             </button>
           </div>
         </>
@@ -510,7 +512,7 @@ function CodeInput({ value, onChange, invalid, disabled }: { value: string; onCh
         value={value}
         inputMode="numeric"
         autoComplete="one-time-code"
-        aria-label="6자리 인증 코드"
+        aria-label={t('6자리 인증 코드')}
         maxLength={6}
         disabled={disabled}
         onFocus={() => setFocused(true)}
@@ -563,7 +565,7 @@ export function SignupPage() {
       const { user } = await completeSignup(draft);
       rememberLogin(info?.provider ?? 'email', info?.provider === 'email' ? info.email ?? undefined : undefined);
       await completeLogin(user);
-      toast.success(`환영합니다, ${user.name} 님!`, next.startsWith('/join/') ? '초대받은 템플릿으로 이동합니다.' : '첫 템플릿을 만들어 보세요.');
+      toast.success(t('환영합니다, {name} 님!', { name: user.name }), next.startsWith('/join/') ? t('초대받은 템플릿으로 이동합니다.') : t('첫 템플릿을 만들어 보세요.'));
       if (info?.provider === 'email') void offerPasskey();
     } catch (err) {
       if (err instanceof ApiError && err.data.reason === 'expired') {
@@ -580,9 +582,9 @@ export function SignupPage() {
       <Steps current={2} />
       <div className="auth-head">
         <h2>
-          <UserRound size={20} /> 이름을 정해 주세요
+          <UserRound size={20} /> {t('이름을 정해 주세요')}
         </h2>
-        <p className="muted">사이트에서 다른 사람에게 보이는 이름입니다. 함께 작업할 때 커서 옆에도 이 이름이 표시되고, 나중에 언제든 바꿀 수 있습니다.</p>
+        <p className="muted">{t('사이트에서 다른 사람에게 보이는 이름입니다. 함께 작업할 때 커서 옆에도 이 이름이 표시되고, 나중에 언제든 바꿀 수 있습니다.')}</p>
       </div>
       {!info || !draft ? (
         <div className="auth-loading">
@@ -593,7 +595,7 @@ export function SignupPage() {
           <div className="auth-verified">
             <CheckCircle2 size={16} />
             <span>
-              {info.provider === 'email' ? '이메일 인증 완료' : `${PROVIDER_NAME[info.provider]} 계정 확인 완료`}
+              {info.provider === 'email' ? t('이메일 인증 완료') : t('{provider} 계정 확인 완료', { provider: PROVIDER_NAME[info.provider] })}
               {info.email && <b> · {info.email}</b>}
             </span>
           </div>
@@ -604,13 +606,16 @@ export function SignupPage() {
             </div>
           )}
           <p className="auth-consent muted small">
-            가입을 완료하면 <Link to="/terms">이용약관</Link>에 동의하고 <Link to="/privacy">개인정보처리방침</Link>을 확인한 것으로 봅니다.
+            {tr('가입을 완료하면 {terms}에 동의하고 {privacy}을 확인한 것으로 봅니다.', {
+              terms: <Link to="/terms">{t('이용약관')}</Link>,
+              privacy: <Link to="/privacy">{t('개인정보처리방침')}</Link>,
+            })}
           </p>
           <Button variant="primary" size="lg" className="w-full" onClick={submit} loading={saving} disabled={!draft.name.trim()}>
-            가입 완료하고 시작하기
+            {t('가입 완료하고 시작하기')}
           </Button>
           <button type="button" className="link small auth-switch" onClick={() => navigate('/login', { replace: true })}>
-            다른 계정으로 로그인
+            {t('다른 계정으로 로그인')}
           </button>
         </>
       )}

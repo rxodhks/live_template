@@ -9,6 +9,6 @@ self.onmessage = (e: MessageEvent<{ id: number; text: string; name: string }>) =
     postMessage({ id, ok: true, text: r.css });
   } catch (err) {
     const msg = err instanceof Error ? err.message : String(err);
-    postMessage({ id, ok: false, text: `SCSS 오류: ${msg}` });
+    postMessage({ id, ok: false, text: msg });
   }
 };

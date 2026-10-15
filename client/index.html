@@ -42,6 +42,41 @@
       />
     </noscript>
     <script>
+      // 화면 언어 (src/i18n/index.ts의 detect와 같은 규칙): 고른 언어 → 없으면 브라우저 언어 (한국어 브라우저가 아니면 영어)
+      (function () {
+        var lang = null;
+        try {
+          lang = localStorage.getItem('lt.lang');
+        } catch (e) {}
+        if (lang !== 'ko' && lang !== 'en') {
+          var first = (navigator.languages && navigator.languages[0]) || navigator.language || 'ko';
+          lang = /^ko\b/i.test(first) ? 'ko' : 'en';
+        }
+        if (lang !== 'en') return;
+        document.documentElement.lang = 'en';
+        // 초대 링크처럼 서버가 제목을 바꿔 보낸 페이지는 그대로 둔다 (worker/src/index.ts invitePage)
+        if (document.title === 'Madang · 함께 만드는 작업 마당') {
+          document.title = 'Madang · A shared space for building together';
+          var desc = document.querySelector('meta[name="description"]');
+          if (desc) desc.setAttribute('content', 'Real-time collaborative templates for design, code, and docs in one shared space. Start in your own room, then build together.');
+        }
+        // 앱을 불러오지 못했을 때의 안내도 영어로
+        document.addEventListener('DOMContentLoaded', function () {
+          var box = document.getElementById('app-outage');
+          if (!box) return;
+          box.querySelector('h1').textContent = 'Couldn’t load Madang';
+          box.querySelector('[data-outage="lead"]').textContent = 'The server may be having a temporary issue, or your internet connection is unstable. Please refresh the page in a moment.';
+          box.querySelector('button').textContent = 'Refresh';
+          var help = box.querySelector('[data-outage="help"]');
+          var mail = help.querySelector('a');
+          mail.href = mail.href.replace(/\?.*$/, '?subject=' + encodeURIComponent('[Madang error] Page didn’t load'));
+          help.textContent = 'If the problem continues, let us know at ';
+          help.appendChild(mail);
+          help.appendChild(document.createTextNode('.'));
+        });
+      })();
+    </script>
+    <script>
       // 첫 페인트 전에 테마를 적용해 깜빡임 방지
       try {
         // 고른 적이 없으면 다크 (store/session.ts와 같은 규칙)
@@ -111,9 +146,9 @@
       <div class="box">
         <img src="/favicon.svg" width="40" height="40" alt="" />
         <h1>Madang 화면을 불러오지 못했습니다</h1>
-        <p>서버에 일시적인 문제가 있거나 인터넷 연결이 불안정합니다. 잠시 후 새로고침해 주세요.</p>
+        <p data-outage="lead">서버에 일시적인 문제가 있거나 인터넷 연결이 불안정합니다. 잠시 후 새로고침해 주세요.</p>
         <button type="button" onclick="location.reload()">새로고침</button>
-        <p>문제가 계속되면 <a href="mailto:%CONTACT_EMAIL%?subject=%5BMadang%20%EC%98%A4%EB%A5%98%5D%20%ED%99%94%EB%A9%B4%EC%9D%84%20%EB%B6%88%EB%9F%AC%EC%98%A4%EC%A7%80%20%EB%AA%BB%ED%95%A8">%CONTACT_EMAIL%</a>로 알려 주세요.</p>
+        <p data-outage="help">문제가 계속되면 <a href="mailto:%CONTACT_EMAIL%?subject=%5BMadang%20%EC%98%A4%EB%A5%98%5D%20%ED%99%94%EB%A9%B4%EC%9D%84%20%EB%B6%88%EB%9F%AC%EC%98%A4%EC%A7%80%20%EB%AA%BB%ED%95%A8">%CONTACT_EMAIL%</a>로 알려 주세요.</p>
       </div>
     </div>
     <script type="module" src="/src/main.tsx"></script>

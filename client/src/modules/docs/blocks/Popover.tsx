@@ -4,6 +4,7 @@ import { Baseline } from 'lucide-react';
 import type { Editor } from '@tiptap/core';
 import { cx } from '../../../lib/util';
 import { DOC_COLORS, type DocColorKey, bgColor, colorKeyOf, textColor } from './colors';
+import { t } from '../../../i18n';
 
 /** 화면 안에 들어오도록 자리 잡는 떠 있는 상자 (바깥을 누르거나 Esc로 닫힘) */
 export function Popover({ anchor, onClose, children, className, side = 'right' }: { anchor: DOMRect; onClose(): void; children: ReactNode; className?: string; side?: 'right' | 'bottom' }) {
@@ -50,9 +51,9 @@ export function ColorPalette({ editor, onPick }: { editor: Editor; onPick(kind: 
   const currentBg = colorKeyOf(editor.getAttributes('highlight').color as string | undefined);
   return (
     <div className="color-palette">
-      <div className="popover-label">글자 색</div>
+      <div className="popover-label">{t('글자 색')}</div>
       <div className="color-row">
-        <button type="button" className={cx('swatch-text', !current && 'is-selected')} aria-label="기본 글자 색" data-tip="기본" onClick={() => onPick('text', null)}>
+        <button type="button" className={cx('swatch-text', !current && 'is-selected')} aria-label={t('기본 글자 색')} data-tip={t('기본')} onClick={() => onPick('text', null)}>
           <Baseline size={15} />
         </button>
         {DOC_COLORS.map((c) => (
@@ -61,7 +62,7 @@ export function ColorPalette({ editor, onPick }: { editor: Editor; onPick(kind: 
             type="button"
             className={cx('swatch-text', current === c.key && 'is-selected')}
             style={{ color: textColor(c.key) }}
-            aria-label={`${c.name} 글자`}
+            aria-label={t('{name} 글자', { name: c.name })}
             data-tip={c.name}
             onClick={() => onPick('text', c.key)}
           >
@@ -69,16 +70,16 @@ export function ColorPalette({ editor, onPick }: { editor: Editor; onPick(kind: 
           </button>
         ))}
       </div>
-      <div className="popover-label">배경 색</div>
+      <div className="popover-label">{t('배경 색')}</div>
       <div className="color-row">
-        <button type="button" className={cx('swatch-bg is-none', !currentBg && !editor.isActive('highlight') && 'is-selected')} aria-label="배경 없음" data-tip="없음" onClick={() => onPick('bg', null)} />
+        <button type="button" className={cx('swatch-bg is-none', !currentBg && !editor.isActive('highlight') && 'is-selected')} aria-label={t('배경 없음')} data-tip={t('없음')} onClick={() => onPick('bg', null)} />
         {DOC_COLORS.map((c) => (
           <button
             key={c.key}
             type="button"
             className={cx('swatch-bg', currentBg === c.key && 'is-selected')}
             style={{ background: bgColor(c.key) }}
-            aria-label={`${c.name} 배경`}
+            aria-label={t('{name} 배경', { name: c.name })}
             data-tip={c.name}
             onClick={() => onPick('bg', c.key)}
           />

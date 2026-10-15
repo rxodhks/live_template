@@ -15,6 +15,7 @@ interface ActivityDef {
 
 const q = (s: string) => (s ? `‘${s}’ ` : '');
 
+// i18n-ignore-start — 영어판은 client/src/i18n/en/activity.ts (ActivityType마다 하나씩 있어야 타입 검사를 통과한다)
 export const ACTIVITY: Record<ActivityType, ActivityDef> = {
   'presence.join': { module: 'presence', label: '접속', text: () => '템플릿에 접속했습니다', important: true, toastKind: 'success' },
   'presence.leave': { module: 'presence', label: '퇴장', text: () => '템플릿에서 나갔습니다', important: true, toastKind: 'info' },
@@ -63,6 +64,7 @@ export const ACTIVITY: Record<ActivityType, ActivityDef> = {
   'section.delete': { module: 'template', label: '폴더 삭제', text: (t, d) => `${q(t)}폴더를 삭제했습니다${d ? ` · ${d}` : ''}` },
   'page.move': { module: 'template', label: '페이지 이동', text: (t, d) => `${q(t)}페이지를 옮겼습니다${d ? ` · ${d}` : ''}`, coalesce: true },
 };
+// i18n-ignore-end
 
 export const ACTIVITY_TYPES = Object.keys(ACTIVITY) as ActivityType[];
 

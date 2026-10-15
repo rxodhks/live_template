@@ -17,6 +17,7 @@ import { type Box, type Handle, bendAt, eraseRun, penRun, boundsOf, contains, in
 import { DEFAULT_SIZE, copyShapes, defaultShape, deleteShapes, insertShapes, maxZ, newFrame, updateShapes, useShapes, withFrameChildren, type ShapeMap } from './ops';
 import { promptDialog } from '../../components/ui';
 import { storePx } from '../docs/page/pageSizes';
+import { ko, t } from '../../i18n';
 
 type Drag =
   | { kind: 'pan'; sx: number; sy: number; orig: Viewport }
@@ -194,8 +195,8 @@ export function DesignCanvas({ board, onApi, onZoom, onAddArtboard }: Props) {
         const zoom = Math.min(MAX_ZOOM, Math.max(MIN_ZOOM, Math.min((el.clientWidth - pad * 2) / w, (el.clientHeight - pad * 2) / h, 1)));
         setView({ zoom, x: el.clientWidth / 2 - (x + w / 2) * zoom, y: el.clientHeight / 2 - (y + h / 2) * zoom });
       }
-      ws.action(`▢ 아트보드 추가 · ${name}`);
-      ws.report({ type: 'design.shape.add', targetId: boardId, targetName: boardName, detail: `아트보드 ${name}` });
+      ws.action(t('▢ 아트보드 추가 · {name}', { name }));
+      ws.report({ type: 'design.shape.add', targetId: boardId, targetName: boardName, detail: ko('아트보드 {name}', { name }) });
     },
     [map, me.id, ws, boardId, boardName],
   );
@@ -369,7 +370,7 @@ export function DesignCanvas({ board, onApi, onZoom, onAddArtboard }: Props) {
       const d: Drag = { kind: 'erase', last: p, cut: new Map() };
       beginDrag(d, e.pointerId);
       eraseAlong(d, p);
-      ws.action('🧽 지우개로 지우는 중');
+      ws.action(t('🧽 지우개로 지우는 중'));
       return;
     }
 
@@ -386,13 +387,13 @@ export function DesignCanvas({ board, onApi, onZoom, onAddArtboard }: Props) {
       beginDrag(d, e.pointerId);
       setDraft({ points: d.points.slice(), stroke: shape.stroke, strokeWidth: shape.strokeWidth, opacity: shape.opacity });
       sendPen(d);
-      ws.action('✏️ 펜으로 그리는 중');
+      ws.action(t('✏️ 펜으로 그리는 중'));
       return;
     }
     insertShapes(map, [shape]);
     setSelection([shape.id]);
     beginDrag({ kind: 'create', id: shape.id, start: { x, y }, type: shape.type }, e.pointerId);
-    ws.action(`${SHAPE_LABEL[shape.type]} 그리는 중`);
+    ws.action(t('{x} 그리는 중', { x: t(SHAPE_LABEL[shape.type]) }));
   };
 
   const onPointerMove = (e: React.PointerEvent) => {
@@ -430,7 +431,7 @@ export function DesignCanvas({ board, onApi, onZoom, onAddArtboard }: Props) {
         }
         if (!d.moved && Math.hypot(dx, dy) * viewRef.current.zoom < 2) return;
         d.moved = true;
-        ws.action('↔️ 도형 이동 중');
+        ws.action(t('↔️ 도형 이동 중'));
         schedule(() => {
           const patches: Record<string, Partial<Shape>> = {};
           for (const [id, o] of d.orig) patches[id] = { x: o.x + dx, y: o.y + dy };
@@ -442,7 +443,7 @@ export function DesignCanvas({ board, onApi, onZoom, onAddArtboard }: Props) {
         const o = d.orig;
         const px = snapTo(p.x, snap);
         const py = snapTo(p.y, snap);
-        ws.action(d.handle === 'bend' ? '↪️ 화살표 휘는 중' : isLine(o) ? '⤡ 끝점 옮기는 중' : '⤡ 크기 조절 중');
+        ws.action(d.handle === 'bend' ? t('↪️ 화살표 휘는 중') : isLine(o) ? t('⤡ 끝점 옮기는 중') : t('⤡ 크기 조절 중'));
         schedule(() => {
           if (isLine(o)) {
             if (d.handle === 'bend') {
@@ -543,7 +544,7 @@ export function DesignCanvas({ board, onApi, onZoom, onAddArtboard }: Props) {
         }
         setTool('select');
         if (TEXT_TYPES.has(s.type) && (s.type === 'text' || s.type === 'sticky')) setEditing(s.id);
-        ws.action(`➕ ${SHAPE_LABEL[s.type]} 추가`);
+        ws.action(t('➕ {x} 추가', { x: t(SHAPE_LABEL[s.type]) }));
         report('design.shape.add', SHAPE_LABEL[s.type]);
       }
     } else if (d.kind === 'pen') {
@@ -553,7 +554,7 @@ export function DesignCanvas({ board, onApi, onZoom, onAddArtboard }: Props) {
         // 완성된 선을 한 번에 저장 (그리는 동안 매 프레임 문서에 쓰지 않음)
         insertShapes(map, [{ ...d.shape, ...penPatch(d.points) }]);
         sendPen(d, 'commit');
-        ws.action('✏️ 펜 드로잉 추가');
+        ws.action(t('✏️ 펜 드로잉 추가'));
         report('design.shape.add', SHAPE_LABEL.pen);
       }
     } else if (d.kind === 'erase') {
@@ -573,8 +574,8 @@ export function DesignCanvas({ board, onApi, onZoom, onAddArtboard }: Props) {
           deleteShapes(map, ids);
           insertShapes(map, pieces);
         });
-        ws.action('🧽 지우개로 지움');
-        report('design.edit', `지우개 ${ids.length}개 선`);
+        ws.action(t('🧽 지우개로 지움'));
+        report('design.edit', ko('지우개 {n}개 선', { n: ids.length }));
       }
     } else if ((d.kind === 'move' && d.moved) || d.kind === 'resize') {
       report('design.edit');
@@ -625,7 +626,7 @@ export function DesignCanvas({ board, onApi, onZoom, onAddArtboard }: Props) {
       const s = selection.length === 1 ? byId.get(selection[0]) : undefined;
       if (handle === 'bend' && s?.bend && !s.locked) {
         updateShapes(map, { [s.id]: { bend: 0 } });
-        ws.action('➖ 화살표 곧게 펴기');
+        ws.action(t('➖ 화살표 곧게 펴기'));
       }
       return;
     }
@@ -633,7 +634,7 @@ export function DesignCanvas({ board, onApi, onZoom, onAddArtboard }: Props) {
     const s = shapeId ? byId.get(shapeId) : undefined;
     // 아트보드 이름표를 두 번 누르면 이름 바꾸기
     if (s?.type === 'frame' && !s.locked) {
-      void promptDialog({ title: '아트보드 이름', label: '이름', initial: s.name ?? '', confirmText: '바꾸기' }).then((v) => v && updateShapes(map, { [s.id]: { name: v.slice(0, 60) } }));
+      void promptDialog({ title: t('아트보드 이름'), label: t('이름'), initial: s.name ?? '', confirmText: t('바꾸기') }).then((v) => v && updateShapes(map, { [s.id]: { name: v.slice(0, 60) } }));
       return;
     }
     if (s && TEXT_TYPES.has(s.type) && !s.locked) {
@@ -688,7 +689,7 @@ export function DesignCanvas({ board, onApi, onZoom, onAddArtboard }: Props) {
         e.preventDefault();
         if (e.shiftKey) undo.redo();
         else undo.undo();
-        ws.action(e.shiftKey ? '↪️ 다시 실행' : '↩️ 실행 취소');
+        ws.action(e.shiftKey ? t('↪️ 다시 실행') : t('↩️ 실행 취소'));
         return;
       }
       if (mod && key === 'y') {
@@ -737,8 +738,8 @@ export function DesignCanvas({ board, onApi, onZoom, onAddArtboard }: Props) {
         const removable = sel.filter((id) => !map.get(id)?.locked);
         deleteShapes(map, removable);
         st.setSelection([]);
-        ws.action(`🗑 도형 ${removable.length}개 삭제`);
-        report('design.shape.delete', `${removable.length}개`);
+        ws.action(t('🗑 도형 {n}개 삭제', { n: removable.length }));
+        report('design.shape.delete', ko('{n}개', { n: removable.length }));
         return;
       }
       if (e.key.startsWith('Arrow') && sel.length) {
@@ -786,8 +787,8 @@ export function DesignCanvas({ board, onApi, onZoom, onAddArtboard }: Props) {
     const copies = copyShapes(map, source, offset, me.id);
     setSelection(copies.map((s) => s.id));
     clipboard = copies;
-    ws.action(`📋 도형 ${copies.length}개 복제`);
-    report('design.shape.add', `복제 ${copies.length}개`);
+    ws.action(t('📋 도형 {n}개 복제', { n: copies.length }));
+    report('design.shape.add', ko('복제 {n}개', { n: copies.length }));
   };
 
   const reorder = (ids: string[], dir: 'up' | 'down') => {
@@ -847,7 +848,7 @@ export function DesignCanvas({ board, onApi, onZoom, onAddArtboard }: Props) {
         setEraserAt(null);
       }}
       role="application"
-      aria-label={`디자인 보드 ${boardName}`}
+      aria-label={t('디자인 보드 {boardName}', { boardName })}
     >
       <svg
         ref={svgRef}
@@ -929,7 +930,7 @@ export function DesignCanvas({ board, onApi, onZoom, onAddArtboard }: Props) {
               )}
               {selectedShapes.some((s) => s.locked) && (
                 <text x={selBounds.x} y={selBounds.y - 6 / view.zoom} fontSize={12 / view.zoom} className="lock-label">
-                  🔒 잠김
+                  {t('🔒 잠김')}
                 </text>
               )}
             </g>
@@ -949,12 +950,12 @@ export function DesignCanvas({ board, onApi, onZoom, onAddArtboard }: Props) {
         })}
       </div>
 
-      {editing && <TextEditOverlay shape={editing} view={view} map={map} onDone={finishEditing} onTyping={() => ws.action('✏️ 텍스트 입력 중')} />}
+      {editing && <TextEditOverlay shape={editing} view={view} map={map} onDone={finishEditing} onTyping={() => ws.action(t('✏️ 텍스트 입력 중'))} />}
 
       {shapes.length === 0 && !readOnly && (
         <div className="canvas-hint">
-          <b>빈 보드입니다</b>
-          <span>위 도구에서 도형을 고르거나, 빈 곳을 더블클릭해 텍스트를 추가하세요. 정해진 크기(iPhone · A4 · 슬라이드…)로 그리려면 아트보드(F)를 추가하세요.</span>
+          <b>{t('빈 보드입니다')}</b>
+          <span>{t('위 도구에서 도형을 고르거나, 빈 곳을 더블클릭해 텍스트를 추가하세요. 정해진 크기(iPhone · A4 · 슬라이드…)로 그리려면 아트보드(F)를 추가하세요.')}</span>
         </div>
       )}
     </div>
@@ -1001,10 +1002,10 @@ function Handles({ shape, size }: { shape: Shape; size: number }) {
             g.mx,
             g.my,
             <circle cx={g.mx} cy={g.my} r={size / 2.1} className={`handle handle-bend${g.curved ? ' is-curved' : ''}`} strokeWidth={size / 6} />,
-            g.curved ? '끌어서 휘기 · 두 번 눌러 곧게' : '끌어서 휘기',
+            g.curved ? t('끌어서 휘기 · 두 번 눌러 곧게') : t('끌어서 휘기'),
           )}
-        {grip('start', g.x1, g.y1, <circle cx={g.x1} cy={g.y1} r={size / 1.6} className="handle handle-round" strokeWidth={size / 5} />, '시작점 · Shift: 45° 단위')}
-        {grip('end', g.x2, g.y2, <circle cx={g.x2} cy={g.y2} r={size / 1.6} className="handle handle-round" strokeWidth={size / 5} />, '끝점 · Shift: 45° 단위')}
+        {grip('start', g.x1, g.y1, <circle cx={g.x1} cy={g.y1} r={size / 1.6} className="handle handle-round" strokeWidth={size / 5} />, t('시작점 · Shift: 45° 단위'))}
+        {grip('end', g.x2, g.y2, <circle cx={g.x2} cy={g.y2} r={size / 1.6} className="handle handle-round" strokeWidth={size / 5} />, t('끝점 · Shift: 45° 단위'))}
       </>
     );
   }
@@ -1046,7 +1047,7 @@ function TextEditOverlay({ shape, view, map, onDone, onTyping }: { shape: Shape;
       ref={ref}
       className="canvas-textedit"
       value={shape.text ?? ''}
-      placeholder="텍스트 입력"
+      placeholder={t('텍스트 입력')}
       style={{
         left: b.x * view.zoom + view.x,
         top: b.y * view.zoom + view.y,

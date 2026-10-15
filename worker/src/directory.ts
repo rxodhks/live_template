@@ -23,7 +23,8 @@ import type {
 import type { TemplateBroadcast } from '../../shared/protocol';
 import { USER_AVATARS, USER_COLORS, isHexColor } from '../../shared/colors';
 import type { Env } from './env';
-import { type SecurityAlertKind, sendSecurityAlert } from './mail';
+import { type SecurityAlertKind, sendSecurityAlert, unknownDevice } from './mail';
+import type { Lang } from './lang';
 import { type Result, clampText, fail, isId, newId, ok, safeEqual, sha256Hex, wsSessionKey } from './util';
 import { type PasskeyAlg, PasskeyError, b64urlDecode, b64urlEncode, checkPublicKey, isPasskeyAlg, readAuthData, readClientData, verifySignature } from './passkey';
 
@@ -103,6 +104,8 @@ export interface LoginClient {
   /** 알림 메일에 넣을 사이트 주소와 대략적인 위치 (저장하지 않는다) */
   origin: string;
   place: string;
+  /** 알림 메일 언어 */
+  lang: Lang;
 }
 
 /** 인증을 마친 신원 (이메일 코드 또는 외부 계정) */
@@ -130,7 +133,7 @@ function parseTransports(raw: string): string[] {
 }
 
 /** 패스키 · 로그인 기기 목록에 보일 기기 이름 (브라우저 · 운영체제) */
-export function deviceLabel(agent: string, fallback = '패스키'): string {
+export function deviceLabel(agent: string, fallback = '패스키', lang: Lang = 'ko'): string {
   const os = /iPhone|iPad/.test(agent)
     ? 'iOS'
     : /Android/.test(agent)
@@ -147,9 +150,9 @@ export function deviceLabel(agent: string, fallback = '패스키'): string {
   const browser = /Edg\//.test(agent)
     ? 'Edge'
     : /SamsungBrowser/.test(agent)
-      ? '삼성 인터넷'
+      ? (lang === 'en' ? 'Samsung Internet' : '삼성 인터넷')
       : /Whale/.test(agent)
-        ? '웨일'
+        ? (lang === 'en' ? 'Whale' : '웨일')
         : /Firefox\//.test(agent)
           ? 'Firefox'
           : /Chrome\//.test(agent)
@@ -369,14 +372,14 @@ export class Directory extends DurableObject<Env> {
   private securityAlert(userId: string, kind: SecurityAlertKind, client: LoginClient, at: number): void {
     const email = this.sql.exec<{ email: string | null }>('SELECT email FROM users WHERE id = ?', userId).toArray()[0]?.email;
     if (!email) return;
-    const label = kind === 'login' ? '새 기기 로그인 알림' : '새 패스키 등록 알림';
-    const alert = { device: deviceLabel(client.agent, '알 수 없는 기기'), place: client.place, at, origin: client.origin };
+    const label = kind === 'login' ? '새 기기 로그인 알림' : '새 패스키 등록 알림'; // i18n-ignore (기록용)
+    const alert = { device: deviceLabel(client.agent, unknownDevice(client.lang), client.lang), place: client.place, at, origin: client.origin };
     if (!this.takeAlertQuota(userId)) return;
     if (!this.env.RESEND_API_KEY) {
       console.log(`[개발 모드] ${email} ${label}: ${alert.device} ${alert.place}`);
       return;
     }
-    this.ctx.waitUntil(sendSecurityAlert(this.env, email, kind, alert).catch((err) => console.error(`${label} 메일 발송 실패`, err)));
+    this.ctx.waitUntil(sendSecurityAlert(this.env, email, kind, alert, client.lang).catch((err) => console.error(`${label} 메일 발송 실패`, err)));
   }
 
   private putFlow(id: string, kind: keyof typeof FLOW_TTL_MS, data: unknown): void {

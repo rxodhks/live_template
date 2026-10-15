@@ -11,6 +11,7 @@ import { useSession } from '../store/session';
 import { cx } from '../lib/util';
 import { Spinner } from '../components/ui';
 import './notices.css';
+import { t } from '../i18n';
 
 /*
  * 공지사항 (/notices, /notices/:id) — 로그인하지 않아도 볼 수 있다
@@ -33,7 +34,7 @@ function Frame({ children }: { children: ReactNode }) {
           <BrandMark size={26} /> {BRAND}
         </Link>
         <Link to="/login" className="legal-back">
-          <ArrowLeft size={15} /> 로그인 화면으로
+          <ArrowLeft size={15} /> {t('로그인 화면으로')}
         </Link>
       </header>
       {children}
@@ -50,7 +51,7 @@ export function NoticesPage() {
 
   useEffect(() => {
     const prev = document.title;
-    document.title = `${open ? open.title : '공지사항'} · ${BRAND}`;
+    document.title = `${open ? open.title : t('공지사항')} · ${BRAND}`;
     return () => void (document.title = prev);
   }, [open]);
   useEffect(() => {
@@ -63,12 +64,12 @@ export function NoticesPage() {
   return (
     <Frame>
       <main className="notices-page">
-        <h1>공지사항</h1>
-        <p className="notices-lead">{BRAND}의 새 기능, 점검, 정책 변경을 알려 드려요.</p>
+        <h1>{t('공지사항')}</h1>
+        <p className="notices-lead">{t('{BRAND}의 새 기능, 점검, 정책 변경을 알려 드려요.', { BRAND })}</p>
         {s.list === null &&
-          (s.failed ? <p className="notices-empty">공지를 불러오지 못했습니다. 잠시 뒤 다시 열어 주세요.</p> : <div className="notices-empty"><Spinner /></div>)}
-        {s.list?.length === 0 && <p className="notices-empty">아직 공지가 없습니다.</p>}
-        {id && s.list && !open && <p className="notices-empty">찾는 공지가 없습니다. 아래 목록에서 골라 주세요.</p>}
+          (s.failed ? <p className="notices-empty">{t('공지를 불러오지 못했습니다. 잠시 뒤 다시 열어 주세요.')}</p> : <div className="notices-empty"><Spinner /></div>)}
+        {s.list?.length === 0 && <p className="notices-empty">{t('아직 공지가 없습니다.')}</p>}
+        {id && s.list && !open && <p className="notices-empty">{t('찾는 공지가 없습니다. 아래 목록에서 골라 주세요.')}</p>}
         <ol className="notices-list">
           {s.list?.map((n) => {
             const isOpen = n.id === id;
@@ -78,7 +79,7 @@ export function NoticesPage() {
                 <div>
                   <Link className="notice-row-title" to={isOpen ? '/notices' : `/notices/${n.id}`} aria-expanded={isOpen}>
                     {n.title}
-                    <span className={cx('notice-tag', isUrgent(n) && 'is-urgent')}>{n.tag}</span>
+                    <span className={cx('notice-tag', isUrgent(n) && 'is-urgent')}>{t(n.tag)}</span>
                     {deployLabel(n) && <span className={cx('notice-tag', n.deployedAt ? 'is-done' : 'is-urgent')}>{deployLabel(n)}</span>}
                   </Link>
                   {isOpen ? (

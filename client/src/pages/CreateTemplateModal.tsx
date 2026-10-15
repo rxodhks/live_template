@@ -10,6 +10,7 @@ import { toast } from '../store/toasts';
 import { useSession } from '../store/session';
 import { Button, Field, Modal } from '../components/ui';
 import { cx } from '../lib/util';
+import { t } from '../i18n';
 
 const EMOJIS = ['🗂️', '🚀', '🎨', '💻', '📝', '🧭', '🌐', '🧪', '📊', '🎯', '🛠️', '💡', '📚', '🎮', '🏝️', '🔥'];
 
@@ -26,7 +27,7 @@ export function CreateTemplateModal({
   /** 이 프리셋을 고른 상태로 연다 (첫 화면의 프리셋 카드) */
   initialPresetId?: string;
   onClose: () => void;
-  onCreated: (t: TemplateEntry) => void;
+  onCreated: (tpl: TemplateEntry) => void;
 }) {
   const start = initialPresetId && initialPresetId !== 'blank' ? getPreset(initialPresetId) : null;
   const [name, setName] = useState(start?.name ?? '');
@@ -46,7 +47,7 @@ export function CreateTemplateModal({
     if (id !== 'blank') {
       setFeatures(p.features);
       if (emoji === '🗂️' || emoji === prev?.emoji) setEmoji(p.emoji);
-      if (!name.trim() || name === prev?.name) setName(p.name);
+      if (!name.trim() || name === (prev && t(prev.name))) setName(t(p.name));
     }
   };
 
@@ -70,13 +71,16 @@ export function CreateTemplateModal({
       // 새 템플릿은 나만 보는 개인 공간에 만들어지고 곧바로 클라우드에 백업된다 (오프라인이면 연결되는 대로).
       // 초대하는 순간 협업 공간으로 전환된다
       const local = await createPersonalTemplate({ name, description, emoji, features, presetId }, useSession.getState().user!);
-      const t = await backupTemplate(local).catch(() => local);
-      toast.success('템플릿을 만들었습니다', `${t.emoji} ${t.name} · 개인 공간${t.mode === 'personal' ? ' (인터넷에 연결되면 백업)' : ''}`);
-      onCreated(t);
+      const tpl = await backupTemplate(local).catch(() => local);
+      toast.success(
+        t('템플릿을 만들었습니다'),
+        `${tpl.emoji} ${tpl.name} · ${tpl.mode === 'personal' ? t('개인 공간 (인터넷에 연결되면 백업)') : t('개인 공간')}`,
+      );
+      onCreated(tpl);
     } catch (err) {
       // 알림만 띄우면 서버에 남지 않는다 — 테스터가 다른 경로로 알려 와도 원인을 찾을 수 있게 화면 오류로 보낸다
       reportError(err);
-      toast.error('템플릿을 만들지 못했습니다', errorMessage(err));
+      toast.error(t('템플릿을 만들지 못했습니다'), errorMessage(err));
     } finally {
       setSaving(false);
     }
@@ -84,26 +88,26 @@ export function CreateTemplateModal({
 
   return (
     <Modal
-      title="새 템플릿 만들기"
-      description="사용할 기능을 고르세요. 여러 개를 함께 선택하면 한 템플릿 안에서 동시에 작업할 수 있습니다. 새 템플릿은 개인 공간에 만들어지고, 팀원을 초대하면 협업 공간으로 전환됩니다."
+      title={t('새 템플릿 만들기')}
+      description={t('사용할 기능을 고르세요. 여러 개를 함께 선택하면 한 템플릿 안에서 동시에 작업할 수 있습니다. 새 템플릿은 개인 공간에 만들어지고, 팀원을 초대하면 협업 공간으로 전환됩니다.')}
       icon={<LayoutTemplate size={18} />}
       onClose={onClose}
       width={760}
       footer={
         <>
-          <span className="footer-note">{features.length === 0 ? '기능을 하나 이상 선택해 주세요' : `${features.map((f) => FEATURE_INFO[f].name).join(' + ')} 템플릿`}</span>
+          <span className="footer-note">{features.length === 0 ? t('기능을 하나 이상 선택해 주세요') : t('{features} 템플릿', { features: features.map((f) => t(FEATURE_INFO[f].name)).join(' + ') })}</span>
           <Button variant="ghost" onClick={onClose}>
-            취소
+            {t('취소')}
           </Button>
           <Button variant="primary" onClick={create} loading={saving} disabled={!name.trim() || features.length === 0}>
-            만들기
+            {t('만들기')}
           </Button>
         </>
       }
     >
       <div className="create-template">
         <div className="create-row">
-          <Field label="아이콘">
+          <Field label={t('아이콘')}>
             <div className="emoji-grid">
               {EMOJIS.map((e) => (
                 <button key={e} type="button" className={cx('emoji-choice', emoji === e && 'is-selected')} onClick={() => setEmoji(e)}>
@@ -113,12 +117,12 @@ export function CreateTemplateModal({
             </div>
           </Field>
           <div className="create-names">
-            <Field label="템플릿 이름">
+            <Field label={t('템플릿 이름')}>
               <input
                 className="input"
                 value={name}
                 maxLength={60}
-                placeholder="예) 신규 서비스 런칭"
+                placeholder={t('예) 신규 서비스 런칭')}
                 onChange={(e) => setName(e.target.value)}
                 onKeyDown={(e) => {
                   if (e.key === 'Enter' && !e.nativeEvent.isComposing) void create();
@@ -126,16 +130,16 @@ export function CreateTemplateModal({
                 data-autofocus
               />
             </Field>
-            <Field label="설명 (선택)">
-              <input className="input" value={description} maxLength={200} placeholder="팀원들이 알아야 할 한 줄 설명" onChange={(e) => setDescription(e.target.value)} />
+            <Field label={t('설명 (선택)')}>
+              <input className="input" value={description} maxLength={200} placeholder={t('팀원들이 알아야 할 한 줄 설명')} onChange={(e) => setDescription(e.target.value)} />
             </Field>
           </div>
         </div>
 
         <div className="field-label">
-          기능 선택 <span className="muted">· 중복 선택 가능</span>
+          {t('기능 선택')} <span className="muted">{t('· 중복 선택 가능')}</span>
         </div>
-        <div className="feature-picker" role="group" aria-label="기능 선택">
+        <div className="feature-picker" role="group" aria-label={t('기능 선택')}>
           {FEATURE_ORDER.map((f) => {
             const info = FEATURE_INFO[f];
             const on = features.includes(f);
@@ -143,11 +147,11 @@ export function CreateTemplateModal({
               <button key={f} type="button" className={cx('feature-card', `feature-${f}`, on && 'is-on')} aria-pressed={on} onClick={() => toggleFeature(f)}>
                 <span className="feature-check">{on && <Check size={14} />}</span>
                 <span className="feature-emoji">{info.emoji}</span>
-                <b>{info.name}</b>
-                <span className="feature-desc">{info.description}</span>
+                <b>{t(info.name)}</b>
+                <span className="feature-desc">{t(info.description)}</span>
                 <ul>
-                  {info.tools.map((t) => (
-                    <li key={t}>{t}</li>
+                  {info.tools.map((text) => (
+                    <li key={text}>{t(text)}</li>
                   ))}
                 </ul>
               </button>
@@ -155,14 +159,14 @@ export function CreateTemplateModal({
           })}
         </div>
 
-        <div className="field-label">시작 프리셋</div>
+        <div className="field-label">{t('시작 프리셋')}</div>
         <div className="preset-list">
           {PRESETS.map((p) => (
             <button key={p.id} type="button" className={cx('preset', presetId === p.id && 'is-selected')} onClick={() => choosePreset(p.id)}>
               <span className="preset-emoji">{p.emoji}</span>
               <span className="preset-text">
-                <b>{p.name}</b>
-                <span>{p.description}</span>
+                <b>{t(p.name)}</b>
+                <span>{t(p.description)}</span>
               </span>
               <span className="preset-features">{p.features.map((f) => FEATURE_INFO[f].emoji).join(' ')}</span>
             </button>
@@ -171,11 +175,11 @@ export function CreateTemplateModal({
 
         {contents.length > 0 && (
           <div className="create-preview">
-            <span className="field-label">만들어질 내용</span>
+            <span className="field-label">{t('만들어질 내용')}</span>
             <div className="create-preview-items">
               {contents.map(({ f, items }) => (
                 <div key={f} className={`preview-chip feature-${f}`}>
-                  {FEATURE_INFO[f].emoji} {FEATURE_INFO[f].name}: {items.join(', ')}
+                  {FEATURE_INFO[f].emoji} {t(FEATURE_INFO[f].name)}: {items.join(', ')}
                 </div>
               ))}
             </div>

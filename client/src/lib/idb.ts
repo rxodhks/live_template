@@ -1,3 +1,4 @@
+import { t } from '../i18n';
 /*
  * 개인 공간 저장소 (브라우저 IndexedDB) — 로그인한 계정마다 따로 쓴다 (lt-app:<사용자 ID>)
  *  · templates : 템플릿 목록 (개인 공간 + 오프라인용 협업 공간 사본)
@@ -81,7 +82,7 @@ async function migrateLegacy(target: IDBDatabase): Promise<void> {
 function open(): Promise<IDBDatabase> {
   if (dbPromise) return dbPromise;
   const name = dbName;
-  if (!name) return Promise.reject(new Error('로그인 전에는 개인 공간 저장소를 쓸 수 없습니다.'));
+  if (!name) return Promise.reject(new Error(t('로그인 전에는 개인 공간 저장소를 쓸 수 없습니다.')));
   dbPromise = openDb(name, true).then(async (db) => {
     await migrateLegacy(db!);
     return db!;

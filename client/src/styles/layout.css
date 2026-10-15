@@ -537,3 +537,13 @@ body.is-resizing {
 .demo-banner > svg {
   color: var(--accent);
 }
+
+.topbar-lang {
+  font-size: 13px;
+  padding: 0 6px;
+}
+@media (max-width: 640px) {
+  .topbar-lang {
+    display: none;
+  }
+}

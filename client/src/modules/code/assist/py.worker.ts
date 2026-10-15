@@ -66,6 +66,10 @@ async function check({ name, files }: CheckRequest): Promise<AssistDiagnostic[]>
   });
 }
 
+/** 영어 화면이면 Ruff 메시지를 그대로 쓴다 (워커 이름 끝이 ':en' — assist.ts) */
+const EN = self.name.endsWith(':en');
+
+// i18n-ignore-start (영어 화면은 Ruff의 영어 메시지를 쓴다)
 /** 자주 나오는 Ruff 메시지는 한국어로 (규칙 번호는 아래에 함께 보인다) */
 const KO: Record<string, (names: string[]) => string> = {
   F401: ([n]) => `${n}을(를) 가져왔지만 쓰지 않습니다`,
@@ -87,10 +91,11 @@ const FIX_KO: Record<string, string> = {
   E711: 'is 로 바꾸기',
   E712: '조건 그대로 쓰기',
 };
-const fixTitle = (code: string | null, message: string | null) => (code && FIX_KO[code]) || message || '고치기';
+const fixTitle = (code: string | null, message: string | null) => (EN ? message || 'Fix' : (code && FIX_KO[code]) || message || '고치기');
+// i18n-ignore-end
 
 function korean(code: string | null, message: string): string {
-  const ko = code && KO[code];
+  const ko = !EN && code && KO[code];
   if (!ko) return message;
   const names = [...message.matchAll(/`([^`]+)`/g)].map((m) => m[1]);
   return ko(names.map((n) => `'${n}'`));

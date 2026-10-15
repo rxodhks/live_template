@@ -1,3 +1,4 @@
+import { t } from '../../../i18n';
 /*
  * 문서 편집기가 바깥(작업 공간)에서 받는 정보 — 멘션할 사람 · 페이지, 페이지 열기, 이미지 올리기 허용 여부
  * 편집기는 한 번만 만들어지므로, 값이 바뀌어도 항상 최신을 읽도록 함수로 받는다.
@@ -36,7 +37,7 @@ export const EMPTY_ENV: DocEnv = {
   subscribe: () => () => {},
 };
 
-export const PAGE_MODULE_NAME: Record<PageModule, string> = { docs: '문서', code: '코드', design: '디자인' };
+export const PAGE_MODULE_NAME: Record<PageModule, string> = { docs: t('문서'), code: t('코드'), design: t('디자인') };
 
 /* 멘션 id: 사람 u:<id>, 페이지 p:<module>:<id>, 날짜 d:YYYY-MM-DD */
 export type MentionRef = { kind: 'user'; id: string } | { kind: 'page'; module: PageModule; id: string } | { kind: 'date'; date: string };
@@ -57,7 +58,7 @@ export function dateLabel(iso: string, now = new Date()): string {
   const [y, m, d] = iso.split('-').map(Number);
   if (!y || !m || !d) return iso;
   const day = Math.round((Date.UTC(y, m - 1, d) - Date.UTC(now.getFullYear(), now.getMonth(), now.getDate())) / 86_400_000);
-  const rel = day === 0 ? '오늘' : day === 1 ? '내일' : day === -1 ? '어제' : null;
-  const text = `${y === now.getFullYear() ? '' : `${y}년 `}${m}월 ${d}일`;
+  const rel = day === 0 ? t('오늘') : day === 1 ? t('내일') : day === -1 ? t('어제') : null;
+  const text = y === now.getFullYear() ? t('{m}월 {d}일', { m, d }) : t('{y}년 {m}월 {d}일', { y, m, d });
   return rel ? `${rel} (${text})` : text;
 }

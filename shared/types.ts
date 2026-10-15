@@ -274,6 +274,8 @@ export interface ToastPayload {
   icon?: string;
   /** 표시 시간(ms) */
   duration?: number;
+  /** 활동 알림이면 그 활동 — 받는 화면이 자기 언어로 문장을 다시 만든다 (message는 한국어) */
+  activity?: { type: ActivityType; targetName?: string; detail?: string };
 }
 
 export interface ChatMessage {

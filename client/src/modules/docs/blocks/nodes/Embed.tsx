@@ -3,6 +3,7 @@ import { NodeViewWrapper, ReactNodeViewRenderer, type ReactNodeViewProps } from 
 import { ExternalLink, Trash2 } from 'lucide-react';
 import { cx } from '../../../../lib/util';
 import { isAllowedEmbedSrc } from '../embed';
+import { t } from '../../../../i18n';
 
 declare module '@tiptap/core' {
   interface Commands<ReturnType> {
@@ -80,13 +81,13 @@ function EmbedView({ node, selected, deleteNode, editor }: ReactNodeViewProps) {
   return (
     <NodeViewWrapper className={cx('doc-embed', selected && 'is-selected')}>
       <div className="doc-embed-head" contentEditable={false} data-drag-handle>
-        <span className="doc-embed-provider">{provider || '임베드'}</span>
+        <span className="doc-embed-provider">{provider || t('임베드')}</span>
         <span className="doc-embed-url">{link}</span>
-        <a href={link} target="_blank" rel="noreferrer noopener" aria-label="새 탭에서 열기" onMouseDown={(e) => e.stopPropagation()}>
+        <a href={link} target="_blank" rel="noreferrer noopener" aria-label={t('새 탭에서 열기')} onMouseDown={(e) => e.stopPropagation()}>
           <ExternalLink size={13} />
         </a>
         {editor.isEditable && (
-          <button type="button" aria-label="임베드 삭제" onMouseDown={(e) => e.preventDefault()} onClick={() => deleteNode()}>
+          <button type="button" aria-label={t('임베드 삭제')} onMouseDown={(e) => e.preventDefault()} onClick={() => deleteNode()}>
             <Trash2 size={13} />
           </button>
         )}
@@ -95,7 +96,7 @@ function EmbedView({ node, selected, deleteNode, editor }: ReactNodeViewProps) {
         <div className={cx('doc-embed-frame', !height && 'is-video')} style={height ? { height } : undefined}>
           <iframe
             src={src}
-            title={`${provider} 임베드`}
+            title={t('{provider} 임베드', { provider })}
             loading="lazy"
             referrerPolicy="strict-origin-when-cross-origin"
             sandbox="allow-scripts allow-same-origin allow-popups allow-presentation allow-forms"
@@ -104,7 +105,7 @@ function EmbedView({ node, selected, deleteNode, editor }: ReactNodeViewProps) {
           />
         </div>
       ) : (
-        <div className="doc-image-broken">허용되지 않은 임베드 주소입니다</div>
+        <div className="doc-image-broken">{t('허용되지 않은 임베드 주소입니다')}</div>
       )}
     </NodeViewWrapper>
   );

@@ -6,6 +6,7 @@ import { toast } from '../store/toasts';
 import { Avatar, EmptyState, IconButton } from './ui';
 import { formatTime, dayKey, dayLabel } from '../lib/time';
 import { cx } from '../lib/util';
+import { t } from '../i18n';
 
 /** 템플릿 멤버끼리의 실시간 채팅 (자동 저장, 최근 500개 보관) */
 export function ChatPanel() {
@@ -24,10 +25,10 @@ export function ChatPanel() {
     const value = text.trim();
     if (!value || sending) return;
     setSending(true);
-    const res = room ? await room.request({ t: 'chat', text: value }) : { ok: false, error: '협업 공간에서만 채팅할 수 있습니다.' };
+    const res = room ? await room.request({ t: 'chat', text: value }) : { ok: false, error: t('협업 공간에서만 채팅할 수 있습니다.') };
     setSending(false);
     if (!res.ok) {
-      toast.error('메시지를 보내지 못했습니다', res.error);
+      toast.error(t('메시지를 보내지 못했습니다'), res.error);
       return;
     }
     setText('');
@@ -37,16 +38,16 @@ export function ChatPanel() {
     <div className="chat">
       <header className="drawer-header">
         <MessageSquare size={16} />
-        <h3>채팅</h3>
-        <span className="muted small">{template.members.length}명</span>
-        <IconButton label="채팅 닫기" size="sm" onClick={() => setChatOpen(false)}>
+        <h3>{t('채팅')}</h3>
+        <span className="muted small">{t('{n}명', { n: template.members.length })}</span>
+        <IconButton label={t('채팅 닫기')} size="sm" onClick={() => setChatOpen(false)}>
           <X size={16} />
         </IconButton>
       </header>
       <div className="chat-list" ref={listRef}>
         {chat.length === 0 && (
-          <EmptyState icon={<MessageSquare size={28} />} title="아직 대화가 없습니다">
-            팀원들과 아이디어를 나눠 보세요.
+          <EmptyState icon={<MessageSquare size={28} />} title={t('아직 대화가 없습니다')}>
+            {t('팀원들과 아이디어를 나눠 보세요.')}
           </EmptyState>
         )}
         {chat.map((m, i) => {
@@ -77,7 +78,7 @@ export function ChatPanel() {
         <textarea
           value={text}
           rows={1}
-          placeholder="메시지 입력 · Enter 전송, Shift+Enter 줄바꿈"
+          placeholder={t('메시지 입력 · Enter 전송, Shift+Enter 줄바꿈')}
           onChange={(e) => setText(e.target.value)}
           onKeyDown={(e) => {
             if (e.key === 'Enter' && !e.shiftKey && !e.nativeEvent.isComposing) {
@@ -86,7 +87,7 @@ export function ChatPanel() {
             }
           }}
         />
-        <IconButton label="보내기" onClick={() => void send()} disabled={!text.trim() || sending} tipSide="top">
+        <IconButton label={t('보내기')} onClick={() => void send()} disabled={!text.trim() || sending} tipSide="top">
           <Send size={16} />
         </IconButton>
       </div>

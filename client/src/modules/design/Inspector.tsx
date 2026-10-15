@@ -31,17 +31,18 @@ import { frameSize, frameSizeText, framePreset, useBoardUnit } from './units';
 import { exportFrame, exportPng, exportSvg } from './export';
 import { pageSetupDialog } from '../docs/page/PageSetupDialog';
 import { describePage, UNIT_DECIMALS, UNIT_STEP, fromPx, roundTo, storePx, toPx } from '../docs/page/pageSizes';
+import { ko, t } from '../../i18n';
 
 function Swatches({ value, colors, onChange, allowNone, disabled }: { value?: string; colors: string[]; onChange: (c: string) => void; allowNone?: boolean; disabled?: boolean }) {
   return (
     <div className="insp-swatches">
       {allowNone && (
-        <button className={cx('insp-swatch is-none', (!value || value === 'transparent') && 'is-selected')} onClick={() => onChange('transparent')} disabled={disabled} aria-label="없음" data-tip="없음" />
+        <button className={cx('insp-swatch is-none', (!value || value === 'transparent') && 'is-selected')} onClick={() => onChange('transparent')} disabled={disabled} aria-label={t('없음')} data-tip={t('없음')} />
       )}
       {colors.map((c) => (
         <button key={c} className={cx('insp-swatch', value === c && 'is-selected')} style={{ background: c }} onClick={() => onChange(c)} disabled={disabled} aria-label={c} />
       ))}
-      <label className="insp-swatch is-custom" data-tip="직접 선택">
+      <label className="insp-swatch is-custom" data-tip={t('직접 선택')}>
         <input type="color" value={value && value.startsWith('#') ? value : '#000000'} onChange={(e) => onChange(e.target.value)} disabled={disabled} />
       </label>
     </div>
@@ -117,7 +118,7 @@ function LengthInput({ px, unit, onChange, disabled, minPx, label }: { px: numbe
 
 function UnitSelect({ unit, onChange }: { unit: PageUnit; onChange: (u: PageUnit) => void }) {
   return (
-    <select className="input input-xs insp-unit" value={unit} onChange={(e) => onChange(e.target.value as PageUnit)} aria-label="크기 단위" data-tip="크기 단위 — 이 브라우저에서 이 보드에 기억">
+    <select className="input input-xs insp-unit" value={unit} onChange={(e) => onChange(e.target.value as PageUnit)} aria-label={t('크기 단위')} data-tip={t('크기 단위 — 이 브라우저에서 이 보드에 기억')}>
       {PAGE_UNITS.map((u) => (
         <option key={u} value={u}>
           {u}
@@ -131,7 +132,7 @@ function UnitSelect({ unit, onChange }: { unit: PageUnit; onChange: (u: PageUnit
 function ExportButtons({ disabled, onExport }: { disabled?: boolean; onExport: (format: 'png' | 'svg', transparent: boolean) => Promise<void> }) {
   const clear = useDesign((s) => s.clearExport);
   const toggle = useDesign((s) => s.toggleClearExport);
-  const run = (format: 'png' | 'svg') => void onExport(format, clear).catch((e) => toast.error(`${format.toUpperCase()} 내보내기 실패`, String(e)));
+  const run = (format: 'png' | 'svg') => void onExport(format, clear).catch((e) => toast.error(t('{x} 내보내기 실패', { x: format.toUpperCase() }), String(e)));
   return (
     <>
       <div className="insp-buttons">
@@ -143,7 +144,7 @@ function ExportButtons({ disabled, onExport }: { disabled?: boolean; onExport: (
         </Button>
       </div>
       <label className="insp-check">
-        <input type="checkbox" checked={clear} onChange={toggle} /> 배경 투명 (배경 없이 저장)
+        <input type="checkbox" checked={clear} onChange={toggle} /> {t('배경 투명 (배경 없이 저장)')}
       </label>
     </>
   );
@@ -166,7 +167,7 @@ export function Inspector({ board }: { board: YItem }) {
   const first = selected[0];
   const [unit, setUnit] = useBoardUnit(board, shapes);
 
-  const apply = (patch: Partial<Shape>, label = '🎨 스타일 변경') => {
+  const apply = (patch: Partial<Shape>, label = t('🎨 스타일 변경')) => {
     if (readOnly) return;
     const patches: Record<string, Partial<Shape>> = {};
     for (const s of selected) patches[s.id] = patch;
@@ -179,8 +180,8 @@ export function Inspector({ board }: { board: YItem }) {
     const count = shapes.length;
     return (
       <aside className="inspector">
-        <h3>보드</h3>
-        <Row label="배경">
+        <h3>{t('보드')}</h3>
+        <Row label={t('배경')}>
           <div className="insp-swatches">
             {BOARD_BACKGROUNDS.map((c) => (
               <button
@@ -189,30 +190,30 @@ export function Inspector({ board }: { board: YItem }) {
                 style={c ? { background: c } : undefined}
                 onClick={() => !readOnly && board.set('background', c)}
                 disabled={readOnly}
-                data-tip={c ? c : '기본'}
-                aria-label={c || '기본 배경'}
+                data-tip={c ? c : t('기본')}
+                aria-label={c || t('기본 배경')}
               />
             ))}
           </div>
         </Row>
-        <Row label="크기 단위">
+        <Row label={t('크기 단위')}>
           <UnitSelect unit={unit} onChange={setUnit} />
         </Row>
         <div className="insp-toggles">
           <button className={cx('chip-toggle', showGrid && 'is-on')} onClick={toggleGrid}>
-            <Grid3x3 size={13} /> 격자 표시
+            <Grid3x3 size={13} /> {t('격자 표시')}
           </button>
           <button className={cx('chip-toggle', snap && 'is-on')} onClick={toggleSnap}>
-            <Magnet size={13} /> 격자에 맞추기
+            <Magnet size={13} /> {t('격자에 맞추기')}
           </button>
         </div>
-        <h3>내보내기</h3>
+        <h3>{t('내보내기')}</h3>
         <ExportButtons
           disabled={!count}
           onExport={(format, clear) => (format === 'png' ? exportPng(name, sortedShapes(map), background, 2, clear) : exportSvg(name, sortedShapes(map), background, clear))}
         />
         <p className="insp-help">
-          도형 {count}개 · 도형을 선택하면 색상, 선, 텍스트, 위치를 바꿀 수 있습니다. 여러 사람이 같은 도형을 동시에 바꾸면 마지막 변경이 반영됩니다.
+          {t('도형 {count}개 · 도형을 선택하면 색상, 선, 텍스트, 위치를 바꿀 수 있습니다. 여러 사람이 같은 도형을 동시에 바꾸면 마지막 변경이 반영됩니다.', { count })}
         </p>
       </aside>
     );
@@ -242,22 +243,22 @@ export function Inspector({ board }: { board: YItem }) {
       }
     }
     updateShapes(map, patches);
-    ws.action('🗂 순서 변경');
+    ws.action(t('🗂 순서 변경'));
   };
 
   const duplicate = () => {
     // 아트보드는 안의 도형까지, 아트보드는 맨 뒤로
     const copies = copyShapes(map, withFrameChildren(shapes, selected), 20, me.id);
     setSelection(copies.map((s) => s.id));
-    ws.report({ type: 'design.shape.add', targetId: boardId, targetName: name, detail: `복제 ${copies.length}개` });
+    ws.report({ type: 'design.shape.add', targetId: boardId, targetName: name, detail: ko('복제 {n}개', { n: copies.length }) });
   };
 
   const remove = () => {
     const ids = selected.filter((s) => !s.locked).map((s) => s.id);
     deleteShapes(map, ids);
     setSelection([]);
-    ws.action(`🗑 도형 ${ids.length}개 삭제`);
-    ws.report({ type: 'design.shape.delete', targetId: boardId, targetName: name, detail: `${ids.length}개` });
+    ws.action(t('🗑 도형 {n}개 삭제', { n: ids.length }));
+    ws.report({ type: 'design.shape.delete', targetId: boardId, targetName: name, detail: ko('도형 {n}개', { n: ids.length }) });
   };
 
   const frame = selected.length === 1 && first.type === 'frame' ? first : null;
@@ -271,13 +272,13 @@ export function Inspector({ board }: { board: YItem }) {
     if (!r?.page) return;
     const pg = r.page;
     updateShapes(map, { [frame.id]: { w: storePx(pg.width, pg.unit), h: storePx(pg.height, pg.unit), preset: pg.preset, unit: pg.unit } });
-    ws.action(`▢ 아트보드 크기 · ${describePage(r.page)}`);
+    ws.action(t('▢ 아트보드 크기 · {x}', { x: describePage(r.page) }));
   };
 
   return (
     <aside className="inspector">
       <h3>
-        {selected.length === 1 ? (frame ? frame.name || SHAPE_LABEL.frame : SHAPE_LABEL[first.type]) : `${selected.length}개 선택`}
+        {selected.length === 1 ? (frame ? frame.name || t(SHAPE_LABEL.frame) : t(SHAPE_LABEL[first.type])) : t('{n}개 선택', { n: selected.length })}
         {allLocked && <Lock size={13} />}
       </h3>
 
@@ -285,107 +286,107 @@ export function Inspector({ board }: { board: YItem }) {
         <>
           <p className="insp-help">
             <b>
-              {framePreset(frame)?.name ?? '직접 입력'} · {frameSizeText(frame)}
+              {t(framePreset(frame)?.name ?? '직접 입력') /* i18n-ignore */} · {frameSizeText(frame)}
             </b>{' '}
-            — 안에 그린 도형은 아트보드와 함께 움직입니다. 이름표를 두 번 누르면 이름을 바꿉니다.
+            {t('— 안에 그린 도형은 아트보드와 함께 움직입니다. 이름표를 두 번 누르면 이름을 바꿉니다.')}
           </p>
           <div className="insp-buttons">
             <Button size="sm" icon={<Ruler size={14} />} disabled={readOnly || frame.locked} onClick={() => void resizeFrame()}>
-              크기 바꾸기
+              {t('크기 바꾸기')}
             </Button>
           </div>
-          <h4>아트보드 내보내기</h4>
+          <h4>{t('아트보드 내보내기')}</h4>
           <ExportButtons onExport={(format, clear) => exportFrame(frame, shapes, format, 2, clear)} />
         </>
       )}
 
       {canFill && (
-        <Row label="채우기">
-          <Swatches value={first.fill} colors={first.type === 'sticky' ? STICKY_COLORS : PALETTE} onChange={(c) => apply({ fill: c }, '🎨 채우기 색 변경')} allowNone disabled={readOnly} />
+        <Row label={t('채우기')}>
+          <Swatches value={first.fill} colors={first.type === 'sticky' ? STICKY_COLORS : PALETTE} onChange={(c) => apply({ fill: c }, t('🎨 채우기 색 변경'))} allowNone disabled={readOnly} />
         </Row>
       )}
       {first.type !== 'text' && first.type !== 'sticky' && first.type !== 'frame' && (
         <>
-          <Row label="선 색">
-            <Swatches value={first.stroke} colors={PALETTE} onChange={(c) => apply({ stroke: c }, '🎨 선 색 변경')} allowNone={!isLine(first) && first.type !== 'pen'} disabled={readOnly} />
+          <Row label={t('선 색')}>
+            <Swatches value={first.stroke} colors={PALETTE} onChange={(c) => apply({ stroke: c }, t('🎨 선 색 변경'))} allowNone={!isLine(first) && first.type !== 'pen'} disabled={readOnly} />
           </Row>
-          <Row label={`선 굵기 ${first.strokeWidth}px`}>
-            <input type="range" min={0} max={16} value={first.strokeWidth} disabled={readOnly} onChange={(e) => apply({ strokeWidth: Number(e.target.value) }, '선 굵기 변경')} />
+          <Row label={t('선 굵기 {strokeWidth}px', { strokeWidth: first.strokeWidth })}>
+            <input type="range" min={0} max={16} value={first.strokeWidth} disabled={readOnly} onChange={(e) => apply({ strokeWidth: Number(e.target.value) }, t('선 굵기 변경'))} />
           </Row>
         </>
       )}
-      <Row label={`불투명도 ${Math.round((first.opacity ?? 1) * 100)}%`}>
-        <input type="range" min={0.1} max={1} step={0.05} value={first.opacity ?? 1} disabled={readOnly} onChange={(e) => apply({ opacity: Number(e.target.value) }, '불투명도 변경')} />
+      <Row label={t('불투명도 {x}%', { x: Math.round((first.opacity ?? 1) * 100) })}>
+        <input type="range" min={0.1} max={1} step={0.05} value={first.opacity ?? 1} disabled={readOnly} onChange={(e) => apply({ opacity: Number(e.target.value) }, t('불투명도 변경'))} />
       </Row>
       {(first.type === 'rect' || first.type === 'sticky') && (
-        <Row label={`모서리 ${first.radius ?? 0}px`}>
-          <input type="range" min={0} max={48} value={first.radius ?? 0} disabled={readOnly} onChange={(e) => apply({ radius: Number(e.target.value) }, '모서리 변경')} />
+        <Row label={t('모서리 {x}px', { x: first.radius ?? 0 })}>
+          <input type="range" min={0} max={48} value={first.radius ?? 0} disabled={readOnly} onChange={(e) => apply({ radius: Number(e.target.value) }, t('모서리 변경'))} />
         </Row>
       )}
 
       {canText && (
         <>
-          <h4>텍스트</h4>
-          <Row label="글자 색">
-            <Swatches value={first.textColor} colors={['#111827', '#ffffff', '#ef4444', '#2563eb', '#16a34a', '#9333ea']} onChange={(c) => apply({ textColor: c }, '글자 색 변경')} disabled={readOnly} />
+          <h4>{t('텍스트')}</h4>
+          <Row label={t('글자 색')}>
+            <Swatches value={first.textColor} colors={['#111827', '#ffffff', '#ef4444', '#2563eb', '#16a34a', '#9333ea']} onChange={(c) => apply({ textColor: c }, t('글자 색 변경'))} disabled={readOnly} />
           </Row>
-          <Row label="크기">
+          <Row label={t('크기')}>
             <div className="insp-inline">
-              <NumberInput value={first.fontSize ?? 18} min={8} suffix="px" onChange={(v) => apply({ fontSize: Math.min(v, 160) }, '글자 크기 변경')} disabled={readOnly} />
+              <NumberInput value={first.fontSize ?? 18} min={8} suffix="px" onChange={(v) => apply({ fontSize: Math.min(v, 160) }, t('글자 크기 변경'))} disabled={readOnly} />
               <span className="insp-seg">
                 {(['left', 'center', 'right'] as const).map((a) => (
-                  <IconButton key={a} size="sm" label={a === 'left' ? '왼쪽' : a === 'center' ? '가운데' : '오른쪽'} active={(first.align ?? 'center') === a} disabled={readOnly} onClick={() => apply({ align: a }, '정렬 변경')}>
+                  <IconButton key={a} size="sm" label={a === 'left' ? t('왼쪽') : a === 'center' ? t('가운데') : t('오른쪽')} active={(first.align ?? 'center') === a} disabled={readOnly} onClick={() => apply({ align: a }, t('정렬 변경'))}>
                     {a === 'left' ? <AlignLeft size={14} /> : a === 'center' ? <AlignCenter size={14} /> : <AlignRight size={14} />}
                   </IconButton>
                 ))}
               </span>
             </div>
           </Row>
-          {selected.length === 1 && <p className="insp-help">도형을 더블클릭하면 글자를 입력할 수 있습니다.</p>}
+          {selected.length === 1 && <p className="insp-help">{t('도형을 더블클릭하면 글자를 입력할 수 있습니다.')}</p>}
         </>
       )}
 
       {b && (
         <>
           <h4 className="insp-h4-row">
-            <span>위치 · 크기</span>
+            <span>{t('위치 · 크기')}</span>
             <UnitSelect unit={unit} onChange={setUnit} />
           </h4>
           <div className="insp-grid">
             <label>
-              X <LengthInput label="X" px={b.x} unit={unit} disabled={readOnly || first.locked} onChange={(v) => apply({ x: first.x + (v - b.x) }, '위치 변경')} />
+              X <LengthInput label="X" px={b.x} unit={unit} disabled={readOnly || first.locked} onChange={(v) => apply({ x: first.x + (v - b.x) }, t('위치 변경'))} />
             </label>
             <label>
-              Y <LengthInput label="Y" px={b.y} unit={unit} disabled={readOnly || first.locked} onChange={(v) => apply({ y: first.y + (v - b.y) }, '위치 변경')} />
+              Y <LengthInput label="Y" px={b.y} unit={unit} disabled={readOnly || first.locked} onChange={(v) => apply({ y: first.y + (v - b.y) }, t('위치 변경'))} />
             </label>
             {!isLine(first) ? (
               // 아트보드는 입력한 단위를 기억해 이름표에 그 단위로 표시
               <>
                 <label>
-                  W <LengthInput label="W" px={b.w} unit={unit} minPx={4} disabled={readOnly || first.locked} onChange={(v) => apply(frame ? { w: v, unit } : { w: v }, '크기 변경')} />
+                  W <LengthInput label="W" px={b.w} unit={unit} minPx={4} disabled={readOnly || first.locked} onChange={(v) => apply(frame ? { w: v, unit } : { w: v }, t('크기 변경'))} />
                 </label>
                 <label>
-                  H <LengthInput label="H" px={b.h} unit={unit} minPx={4} disabled={readOnly || first.locked} onChange={(v) => apply(frame ? { h: v, unit } : { h: v }, '크기 변경')} />
+                  H <LengthInput label="H" px={b.h} unit={unit} minPx={4} disabled={readOnly || first.locked} onChange={(v) => apply(frame ? { h: v, unit } : { h: v }, t('크기 변경'))} />
                 </label>
               </>
             ) : (
               // 선 · 화살표는 시작점을 기준으로 길이와 각도(위쪽이 +)
               <>
                 <label>
-                  길이 <LengthInput label="길이" px={Math.hypot(first.w, first.h)} unit={unit} minPx={1} disabled={readOnly || first.locked} onChange={(v) => apply(polar(v, lineAngle(first)), '길이 변경')} />
+                  {t('길이')} <LengthInput label={t('길이')} px={Math.hypot(first.w, first.h)} unit={unit} minPx={1} disabled={readOnly || first.locked} onChange={(v) => apply(polar(v, lineAngle(first)), t('길이 변경'))} />
                 </label>
                 <label>
-                  각도 <NumberInput value={lineAngle(first)} suffix="°" disabled={readOnly || first.locked} onChange={(v) => apply(polar(Math.hypot(first.w, first.h), v), '각도 변경')} />
+                  {t('각도')} <NumberInput value={lineAngle(first)} suffix="°" disabled={readOnly || first.locked} onChange={(v) => apply(polar(Math.hypot(first.w, first.h), v), t('각도 변경'))} />
                 </label>
               </>
             )}
           </div>
           {first.type === 'arrow' && (
             <div className="insp-buttons">
-              <Button size="sm" icon={<Spline size={14} />} disabled={readOnly || first.locked || !first.bend} onClick={() => apply({ bend: 0 }, '➖ 화살표 곧게 펴기')}>
-                곧게 펴기
+              <Button size="sm" icon={<Spline size={14} />} disabled={readOnly || first.locked || !first.bend} onClick={() => apply({ bend: 0 }, t('➖ 화살표 곧게 펴기'))}>
+                {t('곧게 펴기')}
               </Button>
-              <span className="insp-help">가운데 점을 끌면 휘어집니다</span>
+              <span className="insp-help">{t('가운데 점을 끌면 휘어집니다')}</span>
             </div>
           )}
         </>
@@ -393,40 +394,40 @@ export function Inspector({ board }: { board: YItem }) {
 
       {!frame && (
         <>
-          <h4>선택한 것만 내보내기</h4>
+          <h4>{t('선택한 것만 내보내기')}</h4>
           <ExportButtons
             onExport={(format, clear) => {
               const picked = new Set(withFrameChildren(shapes, selected).map((s) => s.id));
               const list = sortedShapes(map).filter((s) => picked.has(s.id));
-              const fileName = `${name || '보드'}-선택`;
+              const fileName = `${name || t('보드')}-${t('선택#file')}`;
               return format === 'png' ? exportPng(fileName, list, background, 2, clear) : exportSvg(fileName, list, background, clear);
             }}
           />
         </>
       )}
 
-      <h4>순서 · 동작</h4>
+      <h4>{t('순서 · 동작')}</h4>
       <div className="insp-buttons">
-        <IconButton label="맨 앞으로" disabled={readOnly} onClick={() => zOrder('front')}>
+        <IconButton label={t('맨 앞으로')} disabled={readOnly} onClick={() => zOrder('front')}>
           <ArrowUpToLine size={15} />
         </IconButton>
-        <IconButton label="앞으로 (])" disabled={readOnly} onClick={() => zOrder('up')}>
+        <IconButton label={t('앞으로 (])')} disabled={readOnly} onClick={() => zOrder('up')}>
           <ChevronUp size={15} />
         </IconButton>
-        <IconButton label="뒤로 ([)" disabled={readOnly} onClick={() => zOrder('down')}>
+        <IconButton label={t('뒤로 ([)')} disabled={readOnly} onClick={() => zOrder('down')}>
           <ChevronDown size={15} />
         </IconButton>
-        <IconButton label="맨 뒤로" disabled={readOnly} onClick={() => zOrder('back')}>
+        <IconButton label={t('맨 뒤로')} disabled={readOnly} onClick={() => zOrder('back')}>
           <ArrowDownToLine size={15} />
         </IconButton>
         <span className="tb-sep" />
-        <IconButton label={allLocked ? '잠금 해제' : '잠그기 (이동/편집 방지)'} active={allLocked} disabled={readOnly} onClick={() => apply({ locked: !allLocked }, allLocked ? '🔓 잠금 해제' : '🔒 잠금')}>
+        <IconButton label={allLocked ? t('잠금 해제') : t('잠그기 (이동/편집 방지)')} active={allLocked} disabled={readOnly} onClick={() => apply({ locked: !allLocked }, allLocked ? t('🔓 잠금 해제') : t('🔒 잠금'))}>
           {allLocked ? <Unlock size={15} /> : <Lock size={15} />}
         </IconButton>
-        <IconButton label="복제 (Ctrl+D)" disabled={readOnly} onClick={duplicate}>
+        <IconButton label={t('복제 (Ctrl+D)')} disabled={readOnly} onClick={duplicate}>
           <Copy size={15} />
         </IconButton>
-        <IconButton label="삭제 (Delete)" disabled={readOnly || allLocked} onClick={remove}>
+        <IconButton label={t('삭제 (Delete)')} disabled={readOnly || allLocked} onClick={remove}>
           <Trash2 size={15} />
         </IconButton>
       </div>

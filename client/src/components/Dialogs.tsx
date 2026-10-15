@@ -11,6 +11,7 @@ import { updateProfile } from '../lib/auth';
 import { modKey } from '../lib/util';
 import { Button, Kbd, Modal } from './ui';
 import { ProfileForm, useProfileDraft } from './ProfileForm';
+import { lazyText, t } from '../i18n';
 
 // 패스키 관리는 프로필 수정을 열 때만 불러온다 (첫 화면 크기를 늘리지 않게)
 const PasskeySection = lazy(() => import('./PasskeySection').then((m) => ({ default: m.PasskeySection })));
@@ -37,26 +38,26 @@ function ProfileDialog_() {
       Object.values(store.templates)
         .filter((t) => t.mode === 'personal')
         .forEach((t) => store.upsert(t));
-      toast.success('프로필을 저장했습니다');
+      toast.success(t('프로필을 저장했습니다'));
       setOpen(false);
     } catch (err) {
-      toast.error('저장하지 못했습니다', errorMessage(err));
+      toast.error(t('저장하지 못했습니다'), errorMessage(err));
     } finally {
       setSaving(false);
     }
   };
   return (
     <Modal
-      title="프로필 수정"
+      title={t('프로필 수정')}
       icon={<UserRound size={18} />}
       onClose={() => setOpen(false)}
       footer={
         <>
           <Button variant="ghost" onClick={() => setOpen(false)}>
-            취소
+            {t('취소')}
           </Button>
           <Button variant="primary" onClick={save} loading={saving} disabled={!draft.name.trim()}>
-            저장
+            {t('저장')}
           </Button>
         </>
       }
@@ -70,71 +71,71 @@ function ProfileDialog_() {
   );
 }
 
-const SHORTCUTS: [string, [string, string][]][] = [
+const SHORTCUTS: [string, [string, string][]][] = lazyText(() => [
   [
-    '전역',
+    t('전역'),
     [
-      [`${modKey} K`, '명령 팔레트 (검색 · 이동 · 만들기)'],
-      ['?', '단축키 도움말'],
-      ['Esc', '따라가기 중지 · 대화상자 닫기'],
-      [`${modKey} S`, '자동 저장 확인 (별도 저장 불필요)'],
+      [`${modKey} K`, t('명령 팔레트 (검색 · 이동 · 만들기)')],
+      ['?', t('단축키 도움말')],
+      ['Esc', t('따라가기 중지 · 대화상자 닫기')],
+      [`${modKey} S`, t('자동 저장 확인 (별도 저장 불필요)')],
     ],
   ],
   [
-    '디자인',
+    t('디자인'),
     [
-      ['V / H', '선택 / 손(이동) 도구'],
-      ['R · O · D', '사각형 · 원 · 마름모'],
-      ['L · A · P', '선 · 화살표 · 펜'],
-      ['T · S', '텍스트 · 스티키 노트'],
-      ['F', '아트보드 추가'],
-      ['Space + 드래그', '캔버스 이동'],
-      [`${modKey} + 휠`, '확대 / 축소'],
-      ['+ / -', '확대 / 축소'],
-      [`${modKey} 0`, '100%로 보기'],
-      ['Shift 1', '화면에 맞추기'],
-      [`${modKey} Z / ${modKey} Shift Z`, '실행 취소 / 다시 실행 (내 변경만)'],
-      [`${modKey} A`, '모두 선택'],
-      [`${modKey} D · ${modKey} C/V`, '복제 · 복사/붙여넣기'],
-      ['] / [', '한 단계 앞으로 / 뒤로'],
-      ['← ↑ → ↓', '선택 도형 1px 이동 (Shift: 10px)'],
-      ['Delete', '선택 삭제'],
+      ['V / H', t('선택 / 손(이동) 도구')],
+      ['R · O · D', t('사각형 · 원 · 마름모')],
+      ['L · A · P', t('선 · 화살표 · 펜')],
+      ['T · S', t('텍스트 · 스티키 노트')],
+      ['F', t('아트보드 추가')],
+      [t('Space + 드래그'), t('캔버스 이동')],
+      [t('{modKey} + 휠', { modKey }), t('확대 / 축소')],
+      ['+ / -', t('확대 / 축소')],
+      [`${modKey} 0`, t('100%로 보기')],
+      ['Shift 1', t('화면에 맞추기')],
+      [`${modKey} Z / ${modKey} Shift Z`, t('실행 취소 / 다시 실행 (내 변경만)')],
+      [`${modKey} A`, t('모두 선택')],
+      [`${modKey} D · ${modKey} C/V`, t('복제 · 복사/붙여넣기')],
+      ['] / [', t('한 단계 앞으로 / 뒤로')],
+      ['← ↑ → ↓', t('선택 도형 1px 이동 (Shift: 10px)')],
+      ['Delete', t('선택 삭제')],
     ],
   ],
   [
-    '코드',
+    t('코드'),
     [
-      [`${modKey} Enter`, '실행 / 미리보기'],
-      [`${modKey} F`, '찾기'],
+      [`${modKey} Enter`, t('실행 / 미리보기')],
+      [`${modKey} F`, t('찾기')],
     ],
   ],
   [
-    '문서',
+    t('문서'),
     [
-      ['/', '블록 메뉴'],
-      ['@', '사람 · 페이지 멘션'],
-      [`${modKey} Shift ↑ / ↓`, '블록 위 / 아래로 이동'],
-      [`${modKey} Enter`, '쪽 나누기'],
-      [`${modKey} B / I / U`, '굵게 / 기울임 / 밑줄'],
-      ['# + 공백', '제목 (마크다운 단축 입력)'],
-      ['[] + 공백', '체크리스트'],
+      ['/', t('블록 메뉴')],
+      ['@', t('사람 · 페이지 멘션')],
+      [`${modKey} Shift ↑ / ↓`, t('블록 위 / 아래로 이동')],
+      [`${modKey} Enter`, t('쪽 나누기')],
+      [`${modKey} B / I / U`, t('굵게 / 기울임 / 밑줄')],
+      [t('# + 공백'), t('제목 (마크다운 단축 입력)')],
+      [t('[] + 공백'), t('체크리스트')],
     ],
   ],
   [
-    '탐색기',
+    t('탐색기'),
     [
-      ['Enter', '선택한 페이지 열기'],
-      ['F2', '이름 바꾸기'],
+      ['Enter', t('선택한 페이지 열기')],
+      ['F2', t('이름 바꾸기')],
     ],
   ],
-];
+], []);
 
 export function ShortcutsDialog() {
   const open = useUI((s) => s.shortcutsOpen);
   const setOpen = useUI((s) => s.setShortcutsOpen);
   if (!open) return null;
   return (
-    <Modal title="키보드 단축키" icon={<Keyboard size={18} />} onClose={() => setOpen(false)} width={640}>
+    <Modal title={t('키보드 단축키')} icon={<Keyboard size={18} />} onClose={() => setOpen(false)} width={640}>
       <div className="shortcuts">
         {SHORTCUTS.map(([group, list]) => (
           <section key={group}>
@@ -177,27 +178,27 @@ function FeedbackDialog_() {
           recentErrors: recentErrors(),
         },
       });
-      toast.success('피드백을 보냈습니다', '소중한 의견 고맙습니다!');
+      toast.success(t('피드백을 보냈습니다'), t('소중한 의견 고맙습니다!'));
       setOpen(false);
     } catch (err) {
-      toast.error('보내지 못했습니다', errorMessage(err));
+      toast.error(t('보내지 못했습니다'), errorMessage(err));
     } finally {
       setSending(false);
     }
   };
   return (
     <Modal
-      title="피드백 보내기"
-      description="불편했던 점, 버그, 바라는 기능 무엇이든 좋습니다. 지금 보고 있는 화면 주소와 브라우저 정보가 함께 전달됩니다."
+      title={t('피드백 보내기')}
+      description={t('불편했던 점, 버그, 바라는 기능 무엇이든 좋습니다. 지금 보고 있는 화면 주소와 브라우저 정보가 함께 전달됩니다.')}
       icon={<MessageSquareHeart size={18} />}
       onClose={() => setOpen(false)}
       footer={
         <>
           <Button variant="ghost" onClick={() => setOpen(false)}>
-            취소
+            {t('취소')}
           </Button>
           <Button variant="primary" onClick={() => void send()} loading={sending} disabled={!message.trim()}>
-            보내기
+            {t('보내기')}
           </Button>
         </>
       }
@@ -207,15 +208,15 @@ function FeedbackDialog_() {
         rows={6}
         maxLength={4000}
         autoFocus
-        placeholder="예) 문서에 표를 넣으면 글자가 겹쳐 보여요."
-        aria-label="피드백 내용"
+        placeholder={t('예) 문서에 표를 넣으면 글자가 겹쳐 보여요.')}
+        aria-label={t('피드백 내용')}
         value={message}
         onChange={(e) => setMessage(e.target.value)}
         onKeyDown={(e) => {
           if (e.key === 'Enter' && (e.metaKey || e.ctrlKey)) void send();
         }}
       />
-      <p className="muted small">{modKey} Enter로 보내기</p>
+      <p className="muted small">{t('{modKey} Enter로 보내기', { modKey })}</p>
     </Modal>
   );
 }

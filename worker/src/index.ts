@@ -18,6 +18,7 @@ import {
   withCookies,
 } from './auth';
 import { sendFeedback, sendLoginCode } from './mail';
+import { requestLang } from './lang';
 import { HttpError, isId, json, newId, safeEqual, sha256Hex, unwrap, wsSessionKey } from './util';
 
 export { Directory, TemplateRoom };
@@ -95,7 +96,7 @@ function clientOf(c: Ctx): LoginClient {
   const saved = readCookie(c.req, COOKIE.device);
   const cf = c.req.cf as { city?: unknown; country?: unknown } | undefined;
   const place = [cf?.city, cf?.country].filter((v): v is string => typeof v === 'string' && v.length > 0).join(', ');
-  return { agent: agentOf(c.req), device: isDeviceId(saved) ? saved : newId(32), origin: c.url.origin, place };
+  return { agent: agentOf(c.req), device: isDeviceId(saved) ? saved : newId(32), origin: c.url.origin, place, lang: requestLang(c.req) };
 }
 
 const deviceCookie = (client: LoginClient) => cookie(COOKIE.device, client.device, DEVICE_COOKIE_S);
@@ -245,7 +246,7 @@ route('POST', '/api/auth/email/start', async (c) => {
   const { code, expiresAt } = unwrap(await dir.startEmailCode(addr, dev ? null : clientIp(c.req)));
   if (c.env.RESEND_API_KEY) {
     try {
-      await sendLoginCode(c.env, addr, code);
+      await sendLoginCode(c.env, addr, code, requestLang(c.req));
     } catch (err) {
       await dir.dropEmailCode(addr);
       console.error('인증 메일 발송 실패', err);
@@ -515,7 +516,7 @@ route('POST', '/api/templates/:id/versions/:versionId/copy', async (c) => {
   const { name, label } = await body<{ name?: unknown; label?: unknown }>(c.req);
   const version = unwrap(await room(c.env, templateId).readVersion(versionId));
   const copyId = newId(16);
-  const copyName = (typeof name === 'string' && name.trim() ? name.trim() : `${template.name} (복원본)`).slice(0, 60);
+  const copyName = (typeof name === 'string' && name.trim() ? name.trim() : requestLang(c.req) === 'en' ? `${template.name} (restored)` : `${template.name} (복원본)`).slice(0, 60); // i18n-ignore
   const upload: ShareUpload = {
     id: copyId,
     name: copyName,
@@ -775,14 +776,21 @@ const escapeHtml = (s: string) => s.replace(/[&<>"']/g, (ch) => `&#${ch.charCode
 
 async function invitePage(req: Request, env: Env, token: string): Promise<Response> {
   const page = await env.ASSETS.fetch(new Request(new URL('/', req.url), { headers: { accept: 'text/html' } }));
-  let title = 'Madang 초대장';
-  let description = '디자인 · 코딩 · 문서를 한 마당에서 함께 만드는 실시간 협업 템플릿';
+  // 링크 미리보기 봇은 언어 머리글이 없어 대개 한국어 (lang.ts)
+  const en = requestLang(req) === 'en';
+  // i18n-ignore-start (서버가 그리는 미리보기 카드 — 영어는 바로 옆에)
+  let title = en ? 'Madang invitation' : 'Madang 초대장';
+  let description = en ? 'Real-time collaborative templates for design, code, and docs in one shared space' : '디자인 · 코딩 · 문서를 한 마당에서 함께 만드는 실시간 협업 템플릿';
   try {
     const p = await directory(env).previewInvite(token, null);
     if (p.valid && p.template) {
-      title = `${p.template.emoji} ${p.template.name} — Madang 초대장`;
-      description = `${p.inviter?.name ?? '멤버'} 님이 ${p.role === 'viewer' ? '뷰어' : '편집자'}로 초대했습니다.${p.template.description ? ` ${p.template.description}` : ''}`;
+      title = `${p.template.emoji} ${p.template.name} — ${en ? 'Madang invitation' : 'Madang 초대장'}`;
+      const who = p.inviter?.name ?? (en ? 'A member' : '멤버');
+      const role = p.role === 'viewer' ? (en ? 'Viewer' : '뷰어') : en ? 'Editor' : '편집자';
+      const extra = p.template.description ? ` ${p.template.description}` : '';
+      description = en ? `${who} invited you to join as an ${role}.${extra}` : `${who} 님이 ${role}로 초대했습니다.${extra}`;
     }
+    // i18n-ignore-end
   } catch {
     /* 미리보기 정보가 없어도 페이지는 연다 */
   }
@@ -795,6 +803,7 @@ async function invitePage(req: Request, env: Env, token: string): Promise<Respon
     .map(([k, v]) => `<meta property="${k}" content="${escapeHtml(v)}" />`)
     .join('');
   const res = new HTMLRewriter()
+    .on('html', { element: (el) => void el.setAttribute('lang', en ? 'en' : 'ko') })
     .on('title', { element: (el) => void el.setInnerContent(title) })
     .on('meta[name="description"]', { element: (el) => void el.setAttribute('content', description) })
     .on('head', { element: (el) => void el.append(meta, { html: true }) })

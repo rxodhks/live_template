@@ -3,48 +3,82 @@
  * 안내 문구는 그 언어의 주석 문법으로 쓰므로 그대로 실행해도 오류가 나지 않는다.
  */
 
-const RUN = (name: string) => `함께 코딩해 보세요! 상단의 ▶ 실행 버튼으로 ${name} 코드를 바로 실행할 수 있습니다.`;
-const PREVIEW = (what: string) => `함께 코딩해 보세요! 상단의 ▶ 미리보기 버튼으로 ${what}을 바로 볼 수 있습니다.`;
-const LOCAL = (name: string) => `${name} 코드는 아직 사이트 안에서 실행할 수 없습니다. 코드를 내려받아 로컬에서 실행해 보세요.`;
+type Lang = 'ko' | 'en';
 
-const STARTERS: Record<string, string> = {
-  javascript: `// ${RUN('JavaScript')}\nconsole.log('Hello, Madang!');\n`,
-  typescript: `// ${RUN('TypeScript')}\nconst greet = (name: string): string => \`Hello, \${name}!\`;\nconsole.log(greet('Madang'));\n`,
-  jsx: `// ${PREVIEW('React 컴포넌트')}\nexport default function App() {\n  return <h1>Hello, Madang!</h1>;\n}\n`,
-  tsx: `// ${PREVIEW('React 컴포넌트')}\nexport default function App({ name = 'Madang' }: { name?: string }) {\n  return <h1>Hello, {name}!</h1>;\n}\n`,
-  python: `# ${RUN('Python')}\nprint('Hello, Madang!')\n`,
-  sql: `-- ${RUN('SQL')}\nSELECT 'Hello, Madang!' AS greeting;\n`,
-  lua: `-- ${RUN('Lua')}\nprint('Hello, Madang!')\n`,
-  ruby: `# ${RUN('Ruby')}\nputs 'Hello, Madang!'\n`,
-  php: `<?php\n// ${RUN('PHP')}\necho "Hello, Madang!\\n";\n`,
-  html: `<!-- ${PREVIEW('화면')} -->\n<h1>Hello, Madang!</h1>\n`,
-  css: `/* 함께 꾸며 보세요! HTML 파일이 있으면 상단의 ▶ 미리보기 버튼으로 바로 볼 수 있습니다. */\nbody {\n  font-family: system-ui, sans-serif;\n}\n`,
-  scss: `// 함께 꾸며 보세요! 상단의 ▶ CSS로 변환 버튼으로 결과 CSS를 볼 수 있습니다.\n$brand: #6366f1;\n\nh1 {\n  color: $brand;\n}\n`,
-  // JSON에는 주석을 쓸 수 없어 안내문 없이 예시만 둔다
-  json: `{\n  "message": "Hello, Madang!"\n}\n`,
-  yaml: `# 함께 작성해 보세요! 상단의 ▶ 검사 버튼으로 YAML 형식을 확인할 수 있습니다.\nmessage: Hello, Madang!\n`,
-  markdown: `# Hello, Madang!\n\n함께 작성해 보세요! 상단의 ▶ 미리보기 버튼으로 바로 볼 수 있습니다.\n`,
-  java: `// ${LOCAL('Java')}\npublic class Main {\n  public static void main(String[] args) {\n    System.out.println("Hello, Madang!");\n  }\n}\n`,
-  c: `// ${LOCAL('C')}\n#include <stdio.h>\n\nint main(void) {\n  printf("Hello, Madang!\\n");\n  return 0;\n}\n`,
-  cpp: `// ${LOCAL('C++')}\n#include <iostream>\n\nint main() {\n  std::cout << "Hello, Madang!" << std::endl;\n  return 0;\n}\n`,
-  csharp: `// ${LOCAL('C#')}\nConsole.WriteLine("Hello, Madang!");\n`,
-  go: `// ${LOCAL('Go')}\npackage main\n\nimport "fmt"\n\nfunc main() {\n\tfmt.Println("Hello, Madang!")\n}\n`,
-  rust: `// ${LOCAL('Rust')}\nfn main() {\n    println!("Hello, Madang!");\n}\n`,
-  kotlin: `// ${LOCAL('Kotlin')}\nfun main() {\n    println("Hello, Madang!")\n}\n`,
-  swift: `// ${LOCAL('Swift')}\nprint("Hello, Madang!")\n`,
-  shell: `#!/usr/bin/env bash\n# ${LOCAL('Shell')}\necho "Hello, Madang!"\n`,
-  plaintext: `여기에 자유롭게 적어 보세요.\n`,
+/** 안내 문구 — 한국어 · 영어 (클라이언트 사전을 쓸 수 없는 shared라 여기에 함께 둔다) */
+// i18n-ignore-start
+const TEXT = {
+  ko: {
+    run: (name: string) => `함께 코딩해 보세요! 상단의 ▶ 실행 버튼으로 ${name} 코드를 바로 실행할 수 있습니다.`,
+    preview: (what: 'react' | 'page') => `함께 코딩해 보세요! 상단의 ▶ 미리보기 버튼으로 ${what === 'react' ? 'React 컴포넌트' : '화면'}을 바로 볼 수 있습니다.`,
+    local: (name: string) => `${name} 코드는 아직 사이트 안에서 실행할 수 없습니다. 코드를 내려받아 로컬에서 실행해 보세요.`,
+    css: '함께 꾸며 보세요! HTML 파일이 있으면 상단의 ▶ 미리보기 버튼으로 바로 볼 수 있습니다.',
+    scss: '함께 꾸며 보세요! 상단의 ▶ CSS로 변환 버튼으로 결과 CSS를 볼 수 있습니다.',
+    yaml: '함께 작성해 보세요! 상단의 ▶ 검사 버튼으로 YAML 형식을 확인할 수 있습니다.',
+    markdown: '함께 작성해 보세요! 상단의 ▶ 미리보기 버튼으로 바로 볼 수 있습니다.',
+    plaintext: '여기에 자유롭게 적어 보세요.',
+  },
+  en: {
+    run: (name: string) => `Let’s code together! Click ▶ Run at the top to run this ${name} code right away.`,
+    preview: (what: 'react' | 'page') => `Let’s code together! Click ▶ Preview at the top to see the ${what === 'react' ? 'React component' : 'page'} right away.`,
+    local: (name: string) => `${name} code can’t run on the site yet. Download the code and run it locally.`,
+    css: 'Let’s style this together! If there’s an HTML file, click ▶ Preview at the top to see it right away.',
+    scss: 'Let’s style this together! Click ▶ Convert to CSS at the top to see the resulting CSS.',
+    yaml: 'Let’s write this together! Click ▶ Validate at the top to check the YAML format.',
+    markdown: 'Let’s write this together! Click ▶ Preview at the top to see it right away.',
+    plaintext: 'Write anything you like here.',
+  },
 };
+// i18n-ignore-end
+
+function build(lang: Lang): Record<string, string> {
+  const m = TEXT[lang];
+  const RUN = m.run;
+  const PREVIEW = m.preview;
+  const LOCAL = m.local;
+  return {
+    javascript: `// ${RUN('JavaScript')}\nconsole.log('Hello, Madang!');\n`,
+    typescript: `// ${RUN('TypeScript')}\nconst greet = (name: string): string => \`Hello, \${name}!\`;\nconsole.log(greet('Madang'));\n`,
+    jsx: `// ${PREVIEW('react')}\nexport default function App() {\n  return <h1>Hello, Madang!</h1>;\n}\n`,
+    tsx: `// ${PREVIEW('react')}\nexport default function App({ name = 'Madang' }: { name?: string }) {\n  return <h1>Hello, {name}!</h1>;\n}\n`,
+    python: `# ${RUN('Python')}\nprint('Hello, Madang!')\n`,
+    sql: `-- ${RUN('SQL')}\nSELECT 'Hello, Madang!' AS greeting;\n`,
+    lua: `-- ${RUN('Lua')}\nprint('Hello, Madang!')\n`,
+    ruby: `# ${RUN('Ruby')}\nputs 'Hello, Madang!'\n`,
+    php: `<?php\n// ${RUN('PHP')}\necho "Hello, Madang!\\n";\n`,
+    html: `<!-- ${PREVIEW('page')} -->\n<h1>Hello, Madang!</h1>\n`,
+    css: `/* ${m.css} */\nbody {\n  font-family: system-ui, sans-serif;\n}\n`,
+    scss: `// ${m.scss}\n$brand: #6366f1;\n\nh1 {\n  color: $brand;\n}\n`,
+    // JSON에는 주석을 쓸 수 없어 안내문 없이 예시만 둔다
+    json: `{\n  "message": "Hello, Madang!"\n}\n`,
+    yaml: `# ${m.yaml}\nmessage: Hello, Madang!\n`,
+    markdown: `# Hello, Madang!\n\n${m.markdown}\n`,
+    java: `// ${LOCAL('Java')}\npublic class Main {\n  public static void main(String[] args) {\n    System.out.println("Hello, Madang!");\n  }\n}\n`,
+    c: `// ${LOCAL('C')}\n#include <stdio.h>\n\nint main(void) {\n  printf("Hello, Madang!\\n");\n  return 0;\n}\n`,
+    cpp: `// ${LOCAL('C++')}\n#include <iostream>\n\nint main() {\n  std::cout << "Hello, Madang!" << std::endl;\n  return 0;\n}\n`,
+    csharp: `// ${LOCAL('C#')}\nConsole.WriteLine("Hello, Madang!");\n`,
+    go: `// ${LOCAL('Go')}\npackage main\n\nimport "fmt"\n\nfunc main() {\n\tfmt.Println("Hello, Madang!")\n}\n`,
+    rust: `// ${LOCAL('Rust')}\nfn main() {\n    println!("Hello, Madang!");\n}\n`,
+    kotlin: `// ${LOCAL('Kotlin')}\nfun main() {\n    println("Hello, Madang!")\n}\n`,
+    swift: `// ${LOCAL('Swift')}\nprint("Hello, Madang!")\n`,
+    shell: `#!/usr/bin/env bash\n# ${LOCAL('Shell')}\necho "Hello, Madang!"\n`,
+    plaintext: `${m.plaintext}\n`,
+  };
+}
+
+const STARTERS: Record<Lang, Record<string, string>> = { ko: build('ko'), en: build('en') };
 
 /** 예전 버전의 시작 코드 (이미 만들어진 템플릿에 남아 있다) */
+// i18n-ignore-next-line
 const LEGACY = ["// 함께 코딩해 보세요! 상단의 ▶ 실행 버튼으로 JavaScript를 바로 실행할 수 있습니다.\nconsole.log('Hello, Madang!');\n"];
 
-export function starterCode(langId: string): string {
-  return STARTERS[langId] ?? STARTERS.plaintext;
+export function starterCode(langId: string, lang: Lang = 'ko'): string {
+  const set = STARTERS[lang];
+  return set[langId] ?? set.plaintext;
 }
 
 const normalize = (s: string) => s.replace(/\r\n?/g, '\n').trim();
-const KNOWN = new Set([...Object.values(STARTERS), ...LEGACY].map(normalize));
+const KNOWN = new Set([...Object.values(STARTERS.ko), ...Object.values(STARTERS.en), ...LEGACY].map(normalize));
 
 /** 사용자가 아직 고치지 않은 시작 코드인지 (빈 파일은 아니다) */
 export function isStarterCode(text: string): boolean {

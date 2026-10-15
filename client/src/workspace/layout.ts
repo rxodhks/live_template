@@ -5,6 +5,7 @@ import { FEATURE_INFO, FEATURE_ORDER } from '@shared/presets';
 import { getSections, type SectionRecord, type YItem } from '@shared/schema';
 import { newId } from '../lib/util';
 import { itemLabel, itemsMap, type ItemModule } from './actions';
+import { t } from '../i18n';
 
 /*
  * 왼쪽 탐색기의 폴더 구성
@@ -74,7 +75,7 @@ export function computeLayout(doc: Y.Doc, features: Feature[]): Layout {
     if (!features.includes(f)) continue;
     const r = records.get(f);
     if (r?.deleted) continue;
-    list.push(base(f, r, f, r?.name?.trim() || FEATURE_INFO[f].name, r?.emoji || FEATURE_INFO[f].emoji, typeof r?.order === 'number' ? r.order : BUILTIN_SECTIONS.indexOf(f)));
+    list.push(base(f, r, f, r?.name?.trim() || t(FEATURE_INFO[f].name), r?.emoji || FEATURE_INFO[f].emoji, typeof r?.order === 'number' ? r.order : BUILTIN_SECTIONS.indexOf(f)));
   }
   records.forEach((r, id) => {
     if (isBuiltin(id) || !r || r.deleted || !r.name?.trim()) return;
@@ -251,10 +252,10 @@ export function createSection(doc: Y.Doc, features: Feature[], name: string, by:
 /** 폴더 이름으로 쓸 수 있는 겹치지 않는 기본 이름 */
 export function nextSectionName(doc: Y.Doc, features: Feature[]): string {
   const names = new Set(computeLayout(doc, features).all.map((s) => s.name));
-  if (!names.has('새 폴더')) return '새 폴더';
+  if (!names.has(t('새 폴더'))) return t('새 폴더');
   let n = 2;
-  while (names.has(`새 폴더 ${n}`)) n++;
-  return `새 폴더 ${n}`;
+  while (names.has(t('새 폴더 {n}', { n }))) n++;
+  return t('새 폴더 {n}', { n });
 }
 
 export function renameSection(doc: Y.Doc, id: string, name: string) {

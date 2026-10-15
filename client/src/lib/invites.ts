@@ -2,6 +2,7 @@ import { useCallback, useEffect, useState } from 'react';
 import type { InviteInfo, InviteOptions, JoinRequest, TemplateSummary } from '@shared/types';
 import { useTemplates } from '../store/templates';
 import { api, appUrl, errorMessage } from './api';
+import { lazyText, t } from '../i18n';
 
 /*
  * 초대 방식 — "링크마다 조건이 다른 초대 링크"
@@ -12,42 +13,42 @@ import { api, appUrl, errorMessage } from './api';
 
 export const inviteLink = (token: string) => appUrl(`/join/${token}`);
 
-export const EXPIRY_CHOICES: { days: number | null; label: string }[] = [
-  { days: 1, label: '1일' },
-  { days: 7, label: '7일' },
-  { days: 30, label: '30일' },
-  { days: null, label: '만료 없음' },
-];
+export const EXPIRY_CHOICES: { days: number | null; label: string }[] = lazyText(() => [
+  { days: 1, label: t('1일') },
+  { days: 7, label: t('7일') },
+  { days: 30, label: t('30일') },
+  { days: null, label: t('만료 없음') },
+], []);
 
-export const USES_CHOICES: { uses: number | null; label: string }[] = [
-  { uses: 1, label: '1명만' },
-  { uses: 5, label: '5명까지' },
-  { uses: 20, label: '20명까지' },
-  { uses: null, label: '제한 없음' },
-];
+export const USES_CHOICES: { uses: number | null; label: string }[] = lazyText(() => [
+  { uses: 1, label: t('1명만') },
+  { uses: 5, label: t('5명까지') },
+  { uses: 20, label: t('20명까지') },
+  { uses: null, label: t('제한 없음') },
+], []);
 
 export const DEFAULT_INVITE: InviteOptions = { role: 'editor', expiresInDays: 7, maxUses: null, requireApproval: false, label: '' };
 
 export function expiryText(expiresAt: number | null, now = Date.now()): string {
-  if (!expiresAt) return '만료 없음';
+  if (!expiresAt) return t('만료 없음');
   const ms = expiresAt - now;
-  if (ms <= 0) return '만료됨';
+  if (ms <= 0) return t('만료됨');
   const hours = Math.ceil(ms / 3_600_000);
-  return hours < 24 ? `${hours}시간 남음` : `${Math.ceil(hours / 24)}일 남음`;
+  return hours < 24 ? t('{hours}시간 남음', { hours }) : t('{x}일 남음', { x: Math.ceil(hours / 24) });
 }
 
 export function inviteSummary(i: InviteInfo): string {
-  const parts = [i.role === 'viewer' ? '뷰어' : '편집자', expiryText(i.expiresAt)];
-  parts.push(i.maxUses ? `${i.uses}/${i.maxUses}명 사용` : `${i.uses}명 사용`);
-  if (i.requireApproval) parts.push('승인 필요');
+  const parts = [i.role === 'viewer' ? t('뷰어') : t('편집자'), expiryText(i.expiresAt)];
+  parts.push(i.maxUses ? t('{uses}/{maxUses}명 사용', { uses: i.uses, maxUses: i.maxUses }) : t('{uses}명 사용', { uses: i.uses }));
+  if (i.requireApproval) parts.push(t('승인 필요'));
   return parts.join(' · ');
 }
 
 /** 메신저로 보내기 좋은 초대 문구 */
 export function inviteMessage(templateName: string, i: InviteInfo, inviter: string): string {
-  const role = i.role === 'viewer' ? '뷰어(읽기 전용)' : '편집자';
+  const role = i.role === 'viewer' ? t('뷰어(읽기 전용)') : t('편집자');
   const until = i.expiresAt ? ` (${expiryText(i.expiresAt)})` : '';
-  return `${inviter} 님이 Madang의 ‘${templateName}’ 템플릿에 ${role}로 초대했습니다${until}.\n${inviteLink(i.token)}\n(PC 브라우저에서 열어 주세요. 휴대폰 화면은 아직 지원하지 않습니다.)`;
+  return t('{inviter} 님이 Madang의 ‘{templateName}’ 템플릿에 {role}로 초대했습니다{until}.\n{link}\n(PC 브라우저에서 열어 주세요. 휴대폰 화면은 아직 지원하지 않습니다.)', { inviter, templateName, role, until, link: inviteLink(i.token) });
 }
 
 export function useInvites(templateId: string, enabled: boolean) {

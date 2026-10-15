@@ -33,6 +33,7 @@ import { CursorLayer } from '../../components/Cursors';
 import { loadLanguage } from './languages';
 import { canCheck, checkCode, checkGroup } from './assist/assist';
 import { editorTheme } from './theme';
+import { t } from '../../i18n';
 
 /** 코드 검사 상태 (상태 표시줄) */
 export type LintState = { loading: true } | { loading: false; errors: number; warnings: number; failed?: boolean };
@@ -125,7 +126,7 @@ export function CodeEditor({ file, readOnly, wrap, tabSize, lint, apiRef, onCurs
       state: EditorState.create({
         doc: ytext.toString(),
         extensions: [
-          EditorView.contentAttributes.of({ 'aria-label': '코드 편집기' }),
+          EditorView.contentAttributes.of({ 'aria-label': t('코드 편집기') }),
           lineNumbers(),
           highlightActiveLineGutter(),
           highlightSpecialChars(),
@@ -173,10 +174,10 @@ export function CodeEditor({ file, readOnly, wrap, tabSize, lint, apiRef, onCurs
             );
             const w = wsRef.current;
             if (u.docChanged && local) {
-              w.action('⌨️ 코드 입력 중');
+              w.action(t('⌨️ 코드 입력 중'));
               w.report({ type: 'code.edit', targetId: fileId, targetName: String(file.get('name')) });
             } else if (u.selectionSet && u.transactions.some((tr) => tr.isUserEvent('select')) && !u.state.selection.main.empty) {
-              w.action('🔍 코드 선택 중');
+              w.action(t('🔍 코드 선택 중'));
             }
           }),
         ],
@@ -276,7 +277,7 @@ export function CodeEditor({ file, readOnly, wrap, tabSize, lint, apiRef, onCurs
                   apply: (target: EditorView) => {
                     if (readOnlyRef.current || target.state.doc.toString() !== checked) return;
                     target.dispatch({ changes: f.changes, userEvent: 'input.fix' });
-                    wsRef.current.action('🔧 빠른 수정');
+                    wsRef.current.action(t('🔧 빠른 수정'));
                   },
                 })),
               }));

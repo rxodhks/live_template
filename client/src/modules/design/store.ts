@@ -1,5 +1,6 @@
 import { create } from 'zustand';
 import type { ShapeType } from '@shared/schema';
+import { t } from '../../i18n';
 
 export type Tool = 'select' | 'hand' | 'eraser' | ShapeType;
 
@@ -46,9 +47,9 @@ const write = (k: string, v: boolean) => {
 
 export const PEN_COLORS = ['#1f2937', '#ffffff', '#ef4444', '#f97316', '#eab308', '#22c55e', '#3b82f6', '#8b5cf6', '#ec4899'];
 export const PEN_WIDTHS = [
-  { width: 2, label: '얇게' },
-  { width: 4, label: '보통' },
-  { width: 8, label: '굵게' },
+  { width: 2, label: t('얇게') },
+  { width: 4, label: t('보통') },
+  { width: 8, label: t('굵게') },
 ];
 /** 형광펜: 반투명으로 겹쳐 칠한다 */
 export const HIGHLIGHTER_OPACITY = 0.35;
